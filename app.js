@@ -405,19 +405,23 @@ function formatTafsirText(text, surahNo, ayahNo){
   if(!text) return "";
   const ayahText = getAyahTextFromQuran(surahNo, ayahNo);
 
+  const splitIntoParagraphs = (html) => {
+    const normalized = html.replace(/\n+/g, " ").trim();
+    const segments = normalized.match(/[^.]+(?:\.)?/g) || [];
+    const cleaned = segments.map(s => s.trim()).filter(Boolean);
+    return cleaned.length ? cleaned : [normalized];
+  };
+
   let html = escapeHtml(text);
   html = html.replace(/\{([^{}]+)\}/g, `<span class="tafsir-brace">{$1}</span>`);
+  html = html.replace(/\(([^()]+)\)/g, `<span class="tafsir-paren">($1)</span>`);
   if(ayahText){
     const escapedAyah = escapeHtml(ayahText);
     const regex = new RegExp(escapeRegex(escapedAyah), "g");
     html = html.replace(regex, `<span class="ayah-quote">${escapedAyah}</span>`);
   }
 
-  const sentences = html
-    .replace(/\n+/g, " ")
-    .split(/(?<=\.)/g)
-    .map(s => s.trim())
-    .filter(Boolean);
+  const sentences = splitIntoParagraphs(html);
 
   if(sentences.length){
     return sentences.map(s => `<p class="tafsir-paragraph">${s}</p>`).join("");
