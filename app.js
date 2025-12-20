@@ -652,7 +652,7 @@ async function init(){
   await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي - يركّز على المعنى العام بلا إطالة او تعقيد", "تفسير السعدي");
   await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري - ينقل أقوال السلف بالأسانيد ويرجّح بينها", "تفسير الطبري");
   await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء", "تفسير ابن كثير");
-  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع عناية باللغة والقراءات", "تفسير القرطبي");
+  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع العناية باللغة والقراءات", "تفسير القرطبي");
   await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم", "تفسير البغوي");
   await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق", "تفسير ابن عاشور");
 
