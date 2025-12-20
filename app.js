@@ -305,11 +305,6 @@ function showAyahContext(surahNo, ayahNo){
     ayahContext.appendChild(div);
   }
 
-  const activeEl = ayahContext.querySelector(".ayah-line.active");
-  if(activeEl){
-    activeEl.scrollIntoView({ behavior:"smooth", block:"center" });
-  }
-
   ayahContext.classList.add("animate");
 }
 
