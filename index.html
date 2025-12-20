@@ -1,3 +1,4 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/index.html b/index.html
 index 7ecf0c16a7dba2536d2fb61b1c92cae732eaa0a9..f92a07381d643b05998c3028393162a9ff6a84e9 100644
 --- a/index.html
@@ -221,3 +222,6 @@ index 7ecf0c16a7dba2536d2fb61b1c92cae732eaa0a9..f92a07381d643b05998c3028393162a9
  }
  
  .tafsir-box{
+ 
+EOF
+)
