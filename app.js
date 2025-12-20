@@ -329,6 +329,7 @@ function searchText(q){
 
 /* ---- Primary selection ---- */
 function setPrimaryAyah(surahNo, ayahNo){
+  trackAyahSelect(surahNo, ayahNo);
   CURRENT = { s: surahNo, a: ayahNo };
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
@@ -336,12 +337,12 @@ function setPrimaryAyah(surahNo, ayahNo){
   updateVisibilityState();
 }
 
-function trackAyahSelect(surah, ayah, text) {
+function trackAyahSelect(surah, ayah) {
   if (window.plausible) {
     plausible("select_ayah", {
       props: {
-        ref: `${surah}:${ayah}`,
-        ayah_text: (text || "").slice(0, 80)
+        surah,
+        ayah
       }
     });
   }
@@ -607,7 +608,7 @@ function renderResults(items, query){
 
     // Click: primary selection + collapse to chip
     div.onclick = () => {
-      trackAyahSelect(it.s, it.a, it.textRaw);
+      trackAyahSelect(it.s, it.a);
       setPrimaryAyah(it.s, it.a);
       collapseResultsToChip(it);
     };
@@ -695,7 +696,7 @@ async function init(){
     if(e.key === "Enter"){
       if(LAST_RESULTS?.length){
         const it = LAST_RESULTS[0];
-        trackAyahSelect(it.s, it.a, it.textRaw);
+        trackAyahSelect(it.s, it.a);
         setPrimaryAyah(it.s, it.a);
         collapseResultsToChip(it);
       }
