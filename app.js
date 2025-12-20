@@ -407,7 +407,6 @@ function formatTafsirText(text, surahNo, ayahNo){
 
   let html = escapeHtml(text);
   html = html.replace(/\{([^{}]+)\}/g, `<span class="tafsir-brace">{$1}</span>`);
-  html = html.replace(/\(([^()]+)\)/g, `<span class="tafsir-brace">($1)</span>`);
   if(ayahText){
     const escapedAyah = escapeHtml(ayahText);
     const regex = new RegExp(escapeRegex(escapedAyah), "g");
