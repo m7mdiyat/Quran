@@ -5,8 +5,6 @@
    - en.sahih.json (array of {index,text} OR array of strings)
 */
 
-const Q7M_BASE = "http://www.quran7m.com/searchResults/";
-const pad3 = n => String(n).padStart(3,"0");
 const el = id => document.getElementById(id);
 
 const textSearch = el("textSearch");
@@ -20,8 +18,6 @@ const tafsirHeader = el("tafsirHeader");
 const tafsirSelect = el("tafsirSelect");
 const tafsirTitle  = el("tafsirTitle");
 const tafsirBox    = el("tafsirBox");
-
-const finalUrl = el("finalUrl");
 
 let SURAH_META = [];
 let QURAN = null;
@@ -45,10 +41,6 @@ function normArabic(s){
     .replace(/[^\u0600-\u06FF0-9\s]/g," ")
     .replace(/\s+/g," ")
     .trim();
-}
-
-function buildUrl(s,a){
-  return `${Q7M_BASE}${pad3(s)}${pad3(a)}.html`;
 }
 
 async function loadJson(path){
@@ -274,12 +266,18 @@ function showAyahContext(surahNo, ayahNo){
 
   const mode = langSelect?.value || "ar";
 
+  ayahContext.classList.remove("animate");
+  // force reflow for animation restart
+  void ayahContext.offsetWidth;
+
   ayahContext.innerHTML = "";
   contextHeader.textContent = `${surahName} — الآيات ${start} إلى ${end}`;
 
   for(let i=start;i<=end;i++){
     const a = surah.ayahs.find(x=>x.numberInSurah===i);
     if(!a) continue;
+
+    const numHtml = `<span class="num" dir="ltr">(${i})</span>`;
 
     const div = document.createElement("div");
     div.className = "ayah-line" + (i===ayahNo ? " active" : "");
@@ -288,15 +286,15 @@ function showAyahContext(surahNo, ayahNo){
     const enText = EN_MAP?.[String(surahNo)]?.[String(i)] || "";
 
     if(mode === "ar"){
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${a.text}`;
+      div.innerHTML = `${numHtml} ${a.text}`;
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     } else if(mode === "en"){
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${enText || "—"}`;
+      div.innerHTML = `${numHtml} ${enText || "—"}`;
       div.style.direction = "ltr";
       div.style.textAlign = "left";
     } else {
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${a.text}<span class="en">${enText || "—"}</span>`;
+      div.innerHTML = `${numHtml} ${a.text}<span class="en">${enText || "—"}</span>`;
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     }
@@ -306,9 +304,11 @@ function showAyahContext(surahNo, ayahNo){
 
     ayahContext.appendChild(div);
   }
-
-  // keep finalUrl updated (بدون زر)
-  finalUrl.textContent = buildUrl(surahNo, ayahNo);
+  const activeEl = ayahContext.querySelector(".ayah-line.active");
+  if(activeEl){
+    activeEl.scrollIntoView({ behavior:"smooth", block:"center" });
+  }
+  ayahContext.classList.add("animate");
 }
 
 function updateTafsirUI(surahNo, ayahNo){
@@ -341,8 +341,8 @@ function renderResults(items){
     // Hover: update panels immediately
     div.onmouseenter = () => setPrimaryAyah(it.s, it.a);
 
-    // Click: optional open Quran7m (تركته كما هو)
-    div.onclick = () => window.open(buildUrl(it.s, it.a), "_blank");
+    // Click: make it the primary selection without opening external links
+    div.onclick = () => setPrimaryAyah(it.s, it.a);
 
     results.appendChild(div);
   }
