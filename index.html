@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>القرآن الكريم — بحث + سياق + تفسير + ترجمة (أوفلاين)</title>
+
+<style>
+:root{
+  --bg:#0b1220;
+  --panel:#111b2d;
+  --field:#0d1628;
+  --border:rgba(255,255,255,.12);
+  --text:#e7eeff;
+  --muted:#9fb0d0;
+  --accent:#6aa9ff;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family: system-ui,"Segoe UI",Tahoma,Arial;
+  background:linear-gradient(180deg,#070c18,#0b1220);
+  color:var(--text);
+}
+
+header{
+  padding:20px 16px;
+  border-bottom:1px solid var(--border);
+  background:rgba(0,0,0,.25);
+}
+
+header h1{
+  margin:0;
+  font-size:18px;
+  font-weight:800;
+}
+
+.wrap{
+  max-width:1500px;
+  margin:auto;
+  padding:18px;
+}
+
+/* (RTL) ترتيب الأعمدة: بحث (يمين) | سياق (وسط) | تفسير (يسار) */
+.grid{
+  display:grid;
+  grid-template-columns: .9fr 1.05fr 1.1fr;
+  gap:16px;
+}
+@media(max-width:1100px){
+  .grid{grid-template-columns:1fr}
+}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:18px;
+  position:relative;
+  overflow:hidden;
+}
+
+.card::before{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  background:radial-gradient(1000px 400px at 15% 0%, rgba(106,169,255,.08), transparent 60%);
+  pointer-events:none;
+}
+
+.card h2{
+  position:relative;
+  margin:0 0 12px;
+  font-size:15px;
+  font-weight:900;
+  color:var(--accent);
+}
+
+/* ===== إدخال ===== */
+input, select{
+  width:100%;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:var(--field);
+  color:var(--text);
+  font-size:14px;
+}
+input::placeholder{color:#64748b}
+select{ cursor:pointer; }
+
+/* ===== البحث ===== */
+.results{
+  margin-top:12px;
+  max-height:520px;
+  overflow:auto;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(0,0,0,.12);
+}
+
+.item{
+  padding:14px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  transition: background .12s ease, transform .12s ease;
+}
+.item:last-child{border-bottom:none}
+.item:hover{
+  background:rgba(255,255,255,.05);
+  transform: translateY(-1px);
+}
+
+.item .line1{ font-weight:900; margin-bottom:6px; }
+.item .line2{ font-size:14px; color:var(--muted); line-height:1.7; }
+
+/* ===== السياق ===== */
+.context-header{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:12px;
+  position:relative;
+}
+
+.ayah-context{
+  direction:rtl;
+  text-align:right;
+  position:relative;
+}
+
+.ayah-line{
+  padding:12px 10px;
+  margin-bottom:8px;
+  line-height:2;
+  font-size:18px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:14px;
+  background:rgba(0,0,0,.10);
+  cursor:pointer;
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+.ayah-line:hover{
+  transform: translateY(-1px);
+  background:rgba(255,255,255,.06);
+  border-color: rgba(106,169,255,.25);
+}
+
+.ayah-line .num{
+  color:var(--muted);
+  font-size:12px;
+  margin-left:8px;
+  font-weight:800;
+}
+
+.ayah-line.active{
+  background:linear-gradient(90deg, rgba(106,169,255,.22), rgba(106,169,255,.04));
+  border:1px solid rgba(106,169,255,.35);
+  box-shadow: 0 0 0 1px rgba(106,169,255,.08) inset;
+  font-weight:900;
+}
+
+.en{
+  display:block;
+  margin-top:6px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.7;
+  direction:ltr;
+  text-align:left;
+}
+
+.mono{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:#0a1020;
+  border:1px dashed var(--border);
+  font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:13px;
+  color:#cfe0ff;
+  word-break:break-all;
+}
+
+/* ===== التفسير ===== */
+.tafsir-header{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:12px;
+}
+
+.tafsir-section{
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(0,0,0,.18);
+  padding:14px;
+}
+
+.tafsir-title{
+  font-weight:900;
+  color:var(--accent);
+  margin:0 0 10px;
+  font-size:14px;
+}
+
+.tafsir-box{
+  max-height:560px;
+  overflow:auto;
+  line-height:2;
+  font-size:14px;
+  color:var(--text);
+  white-space:pre-wrap;
+}
+
+.smallRow{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  margin-bottom:12px;
+}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>📖 القرآن الكريم — بحث + سياق + تفسير + ترجمة (أوفلاين)</h1>
+</header>
+
+<div class="wrap grid">
+
+  <!-- يمين: البحث -->
+  <div class="card">
+    <h2>البحث بجزء من الآية</h2>
+    <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب">
+    <div class="results" id="results"></div>
+  </div>
+
+  <!-- وسط: السياق -->
+  <div class="card">
+    <h2>سياق الآيات</h2>
+
+    <div class="smallRow">
+      <select id="langSelect">
+        <option value="ar">العربية</option>
+        <option value="en">English (Sahih)</option>
+        <option value="both">العربية + English</option>
+      </select>
+    </div>
+
+    <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
+    <div id="ayahContext" class="ayah-context"></div>
+
+    <div class="mono" id="finalUrl">—</div>
+  </div>
+
+  <!-- يسار: التفسير -->
+  <div class="card">
+    <h2>التفسير</h2>
+    <div id="tafsirHeader" class="tafsir-header">اختر آية من نتائج البحث</div>
+
+    <select id="tafsirSelect" style="margin-bottom:12px;">
+      <option value="muyassar">التفسير الميسّر</option>
+      <option value="saadi">تفسير السعدي</option>
+      <option value="tabari">تفسير الطبري</option>
+      <option value="ibn_kathir">تفسير ابن كثير</option>
+      <option value="qurtubi">تفسير القرطبي</option>
+      <option value="baghawi">تفسير البغوي</option>
+      <option value="ibn_ashur">تفسير ابن عاشور</option>
+    </select>
+
+    <div class="tafsir-section">
+      <div id="tafsirTitle" class="tafsir-title">—</div>
+      <div id="tafsirBox" class="tafsir-box">—</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
