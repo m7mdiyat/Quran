@@ -413,11 +413,17 @@ function formatTafsirText(text, surahNo, ayahNo){
     html = html.replace(regex, `<span class="ayah-quote">${escapedAyah}</span>`);
   }
 
-  const paragraphs = html.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
-  if(paragraphs.length > 1){
-    return paragraphs.map(p=>`<p class="tafsir-paragraph">${p.replace(/\n/g,"<br>")}</p>`).join("");
+  const sentences = html
+    .replace(/\n+/g, " ")
+    .split(/(?<=\.)/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if(sentences.length){
+    return sentences.map(s => `<p class="tafsir-paragraph">${s}</p>`).join("");
   }
-  return html.replace(/\n/g,"<br>");
+
+  return `<p class="tafsir-paragraph">${html.replace(/\n/g,"<br>")}</p>`;
 }
 
 function updateTafsirUI(surahNo, ayahNo){
