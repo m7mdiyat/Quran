@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>القرآن الكريم — بحث + سياق + تفسير + ترجمة (أوفلاين)</title>
+<title>مٌحمديات</title>
 
 <style>
 :root{
@@ -43,15 +43,13 @@ header h1{
   padding:18px;
 }
 
-/* (RTL) ترتيب الأعمدة: بحث (يمين) | سياق (وسط) | تفسير (يسار) */
 .grid{
   display:grid;
-  grid-template-columns: .9fr 1.05fr 1.1fr;
+  grid-template-columns: 1.05fr 1fr;
   gap:16px;
+  align-items:start;
 }
-@media(max-width:1100px){
-  .grid{grid-template-columns:1fr}
-}
+@media(max-width:1100px){ .grid{grid-template-columns:1fr} }
 
 .card{
   background:var(--panel);
@@ -77,6 +75,30 @@ header h1{
   font-weight:900;
   color:var(--accent);
 }
+
+.section-note{
+  color:var(--muted);
+  font-size:13px;
+  margin:0 0 14px;
+  line-height:1.6;
+}
+
+.block{
+  padding:14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(61,169,252,.05);
+  margin-bottom:16px;
+}
+
+.block-title{
+  font-size:13px;
+  font-weight:800;
+  margin:0 0 10px;
+  color:var(--accent);
+}
+
+.muted{ color:var(--muted); }
 
 /* ===== إدخال ===== */
 input, select{
@@ -176,18 +198,14 @@ select{ cursor:pointer; }
   text-align:left;
 }
 
-/* ===== التفسير ===== */
-.tafsir-header{
-  font-size:13px;
-  color:var(--muted);
-  margin-bottom:12px;
-}
-
 .tafsir-section{
   border:1px solid var(--border);
   border-radius:14px;
   background:rgba(61,169,252,.07);
   padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
 }
 
 .tafsir-title{
@@ -197,13 +215,41 @@ select{ cursor:pointer; }
   font-size:14px;
 }
 
+.tafsir-meta{
+  font-size:13px;
+  color:var(--muted);
+  font-weight:700;
+  letter-spacing:0.1px;
+}
+
 .tafsir-box{
   max-height:560px;
   overflow:auto;
-  line-height:2;
+  line-height:1.95;
   font-size:14px;
   color:var(--text);
-  white-space:pre-wrap;
+  background:rgba(61,169,252,.05);
+  border:1px solid rgba(61,169,252,.18);
+  border-radius:12px;
+  padding:12px 14px;
+}
+
+.tafsir-box::-webkit-scrollbar{ width:10px; }
+.tafsir-box::-webkit-scrollbar-thumb{
+  background:rgba(61,169,252,.3);
+  border-radius:10px;
+}
+.tafsir-box::-webkit-scrollbar-track{ background:rgba(61,169,252,.05); }
+
+.tafsir-paragraph{
+  margin:0 0 12px;
+  line-height:2;
+}
+.tafsir-paragraph:last-child{ margin-bottom:0; }
+
+.ayah-quote{
+  color:#7be27b;
+  font-weight:800;
 }
 
 .smallRow{
@@ -218,50 +264,56 @@ select{ cursor:pointer; }
 
 <body>
 <header>
-  <h1>📖 القرآن الكريم — بحث + سياق + تفسير + ترجمة (أوفلاين)</h1>
+  <h1>مٌحمديات</h1>
 </header>
 
 <div class="wrap grid">
 
-  <!-- يمين: البحث -->
+  <!-- البحث عن الآية -->
   <div class="card">
-    <h2>البحث بجزء من الآية</h2>
-    <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب">
-    <div class="results" id="results"></div>
+    <h2>البحث عن الآية</h2>
+    <p class="section-note">اعثر على الآية بسرعة، ثم راجع الآيات المعروضة بنفس الشاشة عبر اختيار اللغة المناسبة.</p>
+
+    <div class="block">
+      <div class="block-title">محرك البحث</div>
+      <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب">
+      <div class="results" id="results"></div>
+    </div>
+
+    <div class="block">
+      <div class="block-title">عرض الآيات الحالية</div>
+      <div class="smallRow">
+        <select id="langSelect">
+          <option value="ar">العربية</option>
+          <option value="en">English (Sahih)</option>
+          <option value="both">العربية + English</option>
+        </select>
+      </div>
+      <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
+      <div id="ayahContext" class="ayah-context"></div>
+    </div>
   </div>
 
-  <!-- وسط: السياق -->
+  <!-- التفسير -->
   <div class="card">
-    <h2>سياق الآيات</h2>
+    <h2>التفسير</h2>
+    <p class="section-note">تظهر الآية باللون الأخضر داخل نص التفسير لتوضيح الفرق بين كلام الله وتوضيحات المفسّر.</p>
 
-    <div class="smallRow">
-      <select id="langSelect">
-        <option value="ar">العربية</option>
-        <option value="en">English (Sahih)</option>
-        <option value="both">العربية + English</option>
+    <div class="block">
+      <div class="block-title">اختيار المفسّر</div>
+      <select id="tafsirSelect">
+        <option value="muyassar">التفسير الميسّر</option>
+        <option value="saadi">تفسير السعدي</option>
+        <option value="tabari">تفسير الطبري</option>
+        <option value="ibn_kathir">تفسير ابن كثير</option>
+        <option value="qurtubi">تفسير القرطبي</option>
+        <option value="baghawi">تفسير البغوي</option>
+        <option value="ibn_ashur">تفسير ابن عاشور</option>
       </select>
     </div>
 
-    <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
-    <div id="ayahContext" class="ayah-context"></div>
-  </div>
-
-  <!-- يسار: التفسير -->
-  <div class="card">
-    <h2>التفسير</h2>
-    <div id="tafsirHeader" class="tafsir-header">اختر آية من نتائج البحث</div>
-
-    <select id="tafsirSelect" style="margin-bottom:12px;">
-      <option value="muyassar">التفسير الميسّر</option>
-      <option value="saadi">تفسير السعدي</option>
-      <option value="tabari">تفسير الطبري</option>
-      <option value="ibn_kathir">تفسير ابن كثير</option>
-      <option value="qurtubi">تفسير القرطبي</option>
-      <option value="baghawi">تفسير البغوي</option>
-      <option value="ibn_ashur">تفسير ابن عاشور</option>
-    </select>
-
     <div class="tafsir-section">
+      <div id="tafsirHeader" class="tafsir-meta">اختر آية من نتائج البحث</div>
       <div id="tafsirTitle" class="tafsir-title">—</div>
       <div id="tafsirBox" class="tafsir-box">—</div>
     </div>

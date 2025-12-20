@@ -37,6 +37,19 @@ let TAFSIRS = {};
 // English map: { "s": { "a": "text" } }
 let EN_MAP = null;
 
+function escapeHtml(str=""){
+  return str
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
+
+function escapeRegex(str=""){
+  return str.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+}
+
 function normArabic(s){
   return (s||"")
     .replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED]/g,"")
@@ -345,6 +358,32 @@ function showAyahContext(surahNo, ayahNo){
   ayahContext.classList.add("animate");
 }
 
+function getAyahTextFromQuran(surahNo, ayahNo){
+  const surah = QURAN?.surahs?.find(s=>s.number === surahNo);
+  if(!surah) return "";
+  const ayah = surah.ayahs.find(a=>a.numberInSurah === ayahNo);
+  return ayah?.text || "";
+}
+
+function formatTafsirText(text, surahNo, ayahNo){
+  if(!text) return "";
+  const ayahText = getAyahTextFromQuran(surahNo, ayahNo);
+
+  let html = escapeHtml(text);
+  if(ayahText){
+    const escapedAyah = escapeHtml(ayahText);
+    const regex = new RegExp(escapeRegex(escapedAyah), "g");
+    html = html.replace(regex, `<span class="ayah-quote">${escapedAyah}</span>`);
+  }
+
+  const paragraphs = html.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+  if(paragraphs.length > 1){
+    return paragraphs.map(p=>`<p class="tafsir-paragraph">${p.replace(/\n/g,"<br>")}</p>`).join("");
+  }
+
+  return html.replace(/\n/g,"<br>");
+}
+
 function updateTafsirUI(surahNo, ayahNo){
   const surahName = SURAH_META.find(x=>x.number===surahNo)?.name_ar || `سورة ${surahNo}`;
   tafsirHeader.textContent = `${surahName} — الآية ${ayahNo}`;
@@ -356,7 +395,11 @@ function updateTafsirUI(surahNo, ayahNo){
   tafsirTitle.textContent = label;
 
   const text = getTafsir(pack?.data, surahNo, ayahNo);
-  tafsirBox.textContent = text ? text : `— (لم يتم العثور على ${label} لهذه الآية داخل الملف)`;
+  if(text){
+    tafsirBox.innerHTML = formatTafsirText(text, surahNo, ayahNo);
+  } else {
+    tafsirBox.innerHTML = `<span class=\"muted\">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</span>`;
+  }
 }
 
 /* ---- Render results ---- */
