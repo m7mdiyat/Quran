@@ -608,6 +608,7 @@ function renderResults(items, query){
 
     // Click: primary selection + collapse to chip
     div.onclick = () => {
+      trackAyahSelect(it.s, it.a);
       setPrimaryAyah(it.s, it.a);
       collapseResultsToChip(it);
     };
@@ -695,6 +696,7 @@ async function init(){
     if(e.key === "Enter"){
       if(LAST_RESULTS?.length){
         const it = LAST_RESULTS[0];
+        trackAyahSelect(it.s, it.a);
         setPrimaryAyah(it.s, it.a);
         collapseResultsToChip(it);
       }
