@@ -277,6 +277,8 @@ function showAyahContext(surahNo, ayahNo){
     const a = surah.ayahs.find(x=>x.numberInSurah===i);
     if(!a) continue;
 
+    const numHtml = `<span class="num" dir="ltr">(${i})</span>`;
+
     const div = document.createElement("div");
     div.className = "ayah-line" + (i===ayahNo ? " active" : "");
     div.title = "اضغط لجعل هذه الآية هي الرئيسية";
@@ -284,15 +286,15 @@ function showAyahContext(surahNo, ayahNo){
     const enText = EN_MAP?.[String(surahNo)]?.[String(i)] || "";
 
     if(mode === "ar"){
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${a.text}`;
+      div.innerHTML = `${numHtml} ${a.text}`;
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     } else if(mode === "en"){
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${enText || "—"}`;
+      div.innerHTML = `${numHtml} ${enText || "—"}`;
       div.style.direction = "ltr";
       div.style.textAlign = "left";
     } else {
-      div.innerHTML = `<span class="num">﴿${i}﴾</span> ${a.text}<span class="en">${enText || "—"}</span>`;
+      div.innerHTML = `${numHtml} ${a.text}<span class="en">${enText || "—"}</span>`;
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     }
@@ -302,6 +304,13 @@ function showAyahContext(surahNo, ayahNo){
 
     ayahContext.appendChild(div);
   }
+codex/change-website-color-theme-to-blue-wa15zm
+  const activeEl = ayahContext.querySelector(".ayah-line.active");
+  if(activeEl){
+    activeEl.scrollIntoView({ behavior:"smooth", block:"center" });
+  }
+=======
+main
   ayahContext.classList.add("animate");
 }
 
