@@ -7,13 +7,13 @@
 
 <style>
 :root{
-  --bg:#0b1220;
-  --panel:#111b2d;
-  --field:#0d1628;
+  --bg:#0c1a12;
+  --panel:#112518;
+  --field:#0e2015;
   --border:rgba(255,255,255,.12);
-  --text:#e7eeff;
-  --muted:#9fb0d0;
-  --accent:#6aa9ff;
+  --text:#e7ffef;
+  --muted:#a3c7ae;
+  --accent:#7ae28a;
 }
 
 *{box-sizing:border-box}
@@ -21,7 +21,7 @@
 body{
   margin:0;
   font-family: system-ui,"Segoe UI",Tahoma,Arial;
-  background:linear-gradient(180deg,#070c18,#0b1220);
+  background:linear-gradient(180deg,#08160d,#0c1a12);
   color:var(--text);
 }
 
@@ -66,7 +66,7 @@ header h1{
   content:"";
   position:absolute;
   inset:-1px;
-  background:radial-gradient(1000px 400px at 15% 0%, rgba(106,169,255,.08), transparent 60%);
+  background:radial-gradient(1000px 400px at 15% 0%, rgba(122,226,138,.12), transparent 60%);
   pointer-events:none;
 }
 
@@ -88,7 +88,7 @@ input, select{
   color:var(--text);
   font-size:14px;
 }
-input::placeholder{color:#64748b}
+input::placeholder{color:#6e8b74}
 select{ cursor:pointer; }
 
 /* ===== البحث ===== */
@@ -145,7 +145,7 @@ select{ cursor:pointer; }
 .ayah-line:hover{
   transform: translateY(-1px);
   background:rgba(255,255,255,.06);
-  border-color: rgba(106,169,255,.25);
+  border-color: rgba(122,226,138,.35);
 }
 
 .ayah-line .num{
@@ -156,9 +156,9 @@ select{ cursor:pointer; }
 }
 
 .ayah-line.active{
-  background:linear-gradient(90deg, rgba(106,169,255,.22), rgba(106,169,255,.04));
-  border:1px solid rgba(106,169,255,.35);
-  box-shadow: 0 0 0 1px rgba(106,169,255,.08) inset;
+  background:linear-gradient(90deg, rgba(122,226,138,.22), rgba(122,226,138,.05));
+  border:1px solid rgba(122,226,138,.45);
+  box-shadow: 0 0 0 1px rgba(122,226,138,.12) inset;
   font-weight:900;
 }
 
@@ -176,11 +176,11 @@ select{ cursor:pointer; }
   margin-top:12px;
   padding:10px 12px;
   border-radius:12px;
-  background:#0a1020;
+  background:#0d2316;
   border:1px dashed var(--border);
   font-family:ui-monospace,Menlo,Consolas,monospace;
   font-size:13px;
-  color:#cfe0ff;
+  color:var(--text);
   word-break:break-all;
 }
 
