@@ -18,7 +18,6 @@ const clearBtn = el("clearBtn");
 
 const ayahContext   = el("ayahContext");
 const contextHeader = el("contextHeader");
-const contextBlock  = el("contextBlock");
 const langSelect    = el("langSelect");
 
 const tafsirHeader = el("tafsirHeader");
@@ -29,6 +28,10 @@ const tafsirMetaAyah = el("tafsirMetaAyah");
 const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
 const tafsirAyahTag = el("tafsirAyahTag");
 const tafsirSection = el("tafsirSection");
+const versePanel = el("versePanel");
+const toggleVersesBtn = el("toggleVersesBtn");
+const prevAyahBtn = el("prevAyahBtn");
+const nextAyahBtn = el("nextAyahBtn");
 const themeToggle  = el("themeToggle");
 const themeLabel   = el("themeLabel");
 
@@ -37,6 +40,7 @@ let QURAN = null;
 let INDEX = [];
 let CURRENT = null;
 let LAST_RESULTS = [];
+let VERSES_OPEN = false;
 
 // Context window state: keep list static until hitting edges
 let CONTEXT_STATE = {
@@ -317,6 +321,7 @@ function setPrimaryAyah(surahNo, ayahNo){
   CURRENT = { s: surahNo, a: ayahNo };
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
+  updateNavButtons(surahNo, ayahNo);
   updateVisibilityState();
 }
 
@@ -501,9 +506,6 @@ function expandResultsList(){
 }
 
 function updateVisibilityState(){
-  if(contextBlock){
-    contextBlock.classList.remove("is-hidden");
-  }
   if(tafsirSection){
     tafsirSection.classList.remove("is-hidden");
   }
@@ -521,6 +523,7 @@ function resetPrimaryPanels(){
   if(tafsirMetaInterpreter){
     tafsirMetaInterpreter.innerHTML = `<span class="dot"></span> نص التفسير`;
   }
+  updateNavButtons(null, null);
 }
 
 /* ---- Highlight matches (visual niceness) ---- */
@@ -597,6 +600,16 @@ tafsirSelect.onchange = () => {
 langSelect.onchange = () => {
   if(CURRENT) showAyahContext(CURRENT.s, CURRENT.a);
 };
+
+toggleVersesBtn?.addEventListener("click", () => {
+  setVersePanelOpen(!VERSES_OPEN);
+  if(VERSES_OPEN && CURRENT){
+    showAyahContext(CURRENT.s, CURRENT.a);
+  }
+});
+
+prevAyahBtn?.addEventListener("click", () => stepAyah(-1));
+nextAyahBtn?.addEventListener("click", () => stepAyah(1));
 
 /* ---- Tiny debounce ---- */
 function debounce(fn, ms=120){
@@ -681,6 +694,7 @@ async function init(){
     setTafsirVisibility(false);
     ayahContext.innerHTML = "";
     contextHeader.textContent = "اختر آية من نتائج البحث";
+    setVersePanelOpen(false);
     CURRENT = null;
     textSearch.focus();
     updateVisibilityState();
@@ -697,6 +711,33 @@ async function init(){
   updateVisibilityState();
 }
 
+function setVersePanelOpen(open){
+  VERSES_OPEN = open;
+  versePanel?.classList.toggle("open", open);
+  versePanel?.setAttribute("aria-hidden", open ? "false" : "true");
+  toggleVersesBtn?.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function updateNavButtons(surahNo, ayahNo){
+  const surah = QURAN?.surahs?.find(s=>s.number===surahNo);
+  const len = surah?.ayahs?.length || 0;
+  const disablePrev = !surah || !ayahNo || ayahNo <= 1;
+  const disableNext = !surah || !ayahNo || ayahNo >= len;
+  if(prevAyahBtn) prevAyahBtn.disabled = disablePrev;
+  if(nextAyahBtn) nextAyahBtn.disabled = disableNext;
+}
+
+function stepAyah(delta){
+  if(!CURRENT || !QURAN) return;
+  const surah = QURAN.surahs.find(s=>s.number === CURRENT.s);
+  if(!surah) return;
+  const target = CURRENT.a + delta;
+  if(target < 1 || target > surah.ayahs.length) return;
+  setPrimaryAyah(CURRENT.s, target);
+}
+
 initTheme();
 setTafsirVisibility(false);
+setVersePanelOpen(false);
+updateNavButtons(null, null);
 init().catch(err => console.error(err));

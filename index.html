@@ -294,6 +294,14 @@ input:focus, select:focus{
 .btn:focus-visible{ outline:2px solid rgba(var(--accent-rgb),.7); outline-offset:3px; }
 .btn-ghost{ background: rgba(255,255,255,.04); box-shadow:none; }
 .btn-ghost:hover{ background: rgba(255,255,255,.07); }
+.btn-primary{
+  background: linear-gradient(135deg, rgba(var(--primary-rgb),.75), rgba(var(--accent-rgb),.55));
+  border-color: color-mix(in srgb, var(--border) 35%, rgba(var(--primary-rgb),.55));
+  color: #04100a;
+  text-shadow: 0 1px 0 rgba(255,255,255,.35);
+  box-shadow: 0 16px 40px rgba(var(--primary-rgb),.22);
+}
+.btn-primary:hover{ background: linear-gradient(135deg, rgba(var(--primary-rgb),.85), rgba(var(--accent-rgb),.65)); }
 
 .badge{
   display:inline-flex;
@@ -436,6 +444,51 @@ mark{
 .ayah-context{
   direction:rtl;
   text-align:right;
+}
+
+.verse-expander{
+  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.verse-expander-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.verse-nav{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.verse-panel{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  background: rgba(255,255,255,.02);
+  padding:0 12px;
+  max-height:0;
+  opacity:0;
+  overflow:hidden;
+  pointer-events:none;
+  transform: translateY(-4px);
+  transition: max-height .45s ease, opacity .35s ease, padding .35s ease, transform .35s ease, border-color .35s ease, background .35s ease;
+}
+
+.verse-panel.open{
+  max-height:820px;
+  opacity:1;
+  padding:12px;
+  pointer-events:auto;
+  transform: translateY(0);
+  background: rgba(255,255,255,.04);
+  border-color: rgba(var(--primary-rgb),.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
 
 .ayah-line{
@@ -733,21 +786,6 @@ mark{
         </div>
       </div>
     </div>
-
-    <div class="block" id="contextBlock">
-      <div class="block-title">عرض الآيات الحالية</div>
-
-      <div class="smallRow">
-        <select id="langSelect">
-          <option value="ar">العربية</option>
-          <option value="en">English (Sahih)</option>
-          <option value="both">العربية + English</option>
-        </select>
-      </div>
-
-      <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
-      <div id="ayahContext" class="ayah-context quran-font"></div>
-    </div>
   </div>
 
   <!-- التفسير -->
@@ -783,6 +821,29 @@ mark{
       <div class="tafsir-paper">
         <div id="tafsirAyahTag" class="tafsir-ayah-tag quran-font">—</div>
         <div id="tafsirBox" class="tafsir-box quran-font">—</div>
+      </div>
+    </div>
+
+    <div class="verse-expander" id="verseExpander">
+      <div class="verse-expander-bar">
+        <button type="button" class="btn btn-primary" id="toggleVersesBtn" aria-expanded="false">عرض الآيات</button>
+        <div class="verse-nav">
+          <button type="button" class="btn btn-ghost" id="prevAyahBtn">الآية السابقة</button>
+          <button type="button" class="btn btn-ghost" id="nextAyahBtn">الآية القادمة</button>
+        </div>
+      </div>
+
+      <div class="verse-panel" id="versePanel" aria-hidden="true">
+        <div class="smallRow">
+          <select id="langSelect">
+            <option value="ar">العربية</option>
+            <option value="en">English (Sahih)</option>
+            <option value="both">العربية + English</option>
+          </select>
+        </div>
+
+        <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
+        <div id="ayahContext" class="ayah-context quran-font"></div>
       </div>
     </div>
   </div>
