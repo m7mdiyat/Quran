@@ -24,6 +24,8 @@ const tafsirHeader = el("tafsirHeader");
 const tafsirSelect = el("tafsirSelect");
 const tafsirTitle  = el("tafsirTitle");
 const tafsirBox    = el("tafsirBox");
+const themeToggle  = el("themeToggle");
+const themeLabel   = el("themeLabel");
 
 let SURAH_META = [];
 let QURAN = null;
@@ -43,6 +45,39 @@ let TAFSIRS = {};
 
 // English map: { "s": { "a": "text" } }
 let EN_MAP = null;
+
+// Themes
+const THEMES = [
+  { id: "emerald", label: "Emerald • Gold" },
+  { id: "aqua",    label: "Aqua Blue" }
+];
+let CURRENT_THEME = THEMES[0].id;
+
+function applyTheme(themeId){
+  const theme = THEMES.find(t => t.id === themeId) || THEMES[0];
+  CURRENT_THEME = theme.id;
+  document.body.dataset.theme = theme.id;
+  if(themeLabel) themeLabel.textContent = theme.label;
+  themeToggle?.setAttribute("aria-label", `تغيير الثيم (الحالي: ${theme.label})`);
+  try{
+    localStorage.setItem("theme", theme.id);
+  }catch{}
+}
+
+function cycleTheme(){
+  const idx = THEMES.findIndex(t => t.id === CURRENT_THEME);
+  const next = THEMES[(idx + 1) % THEMES.length];
+  applyTheme(next.id);
+}
+
+function initTheme(){
+  let saved = null;
+  try{
+    saved = localStorage.getItem("theme");
+  }catch{}
+  applyTheme(saved || CURRENT_THEME);
+  themeToggle?.addEventListener("click", cycleTheme);
+}
 
 function escapeHtml(str=""){
   return str
@@ -413,36 +448,16 @@ function updateSelectedChip(it){
 function collapseResultsToChip(it){
   if(!resultsShell || !results) return;
   updateSelectedChip(it);
-  const currentHeight = results.scrollHeight;
-  results.style.maxHeight = `${currentHeight}px`;
-  requestAnimationFrame(()=>{
-    results.classList.add("collapsed");
-    resultsShell.classList.add("collapsed");
-    results.style.maxHeight = "0px";
-  });
+  results.classList.add("collapsed");
+  resultsShell.classList.add("collapsed");
+  results.style.maxHeight = "";
 }
 
 function expandResultsList(){
   if(!resultsShell || !results) return;
   resultsShell.classList.remove("collapsed");
   results.classList.remove("collapsed");
-  const contentHeight = results.scrollHeight;
-  const target = contentHeight || (LAST_RESULTS.length ? 520 : 0);
-  if(target === 0){
-    results.style.maxHeight = "";
-    return;
-  }
-  results.style.maxHeight = "0px";
-  requestAnimationFrame(()=>{
-    results.style.maxHeight = `${target}px`;
-  });
-  const tidy = (ev) => {
-    if(ev.propertyName === "max-height"){
-      results.style.maxHeight = "";
-      results.removeEventListener("transitionend", tidy);
-    }
-  };
-  results.addEventListener("transitionend", tidy);
+  results.style.maxHeight = "";
 }
 
 /* ---- Highlight matches (visual niceness) ---- */
@@ -610,4 +625,5 @@ async function init(){
   `;
 }
 
+initTheme();
 init().catch(err => console.error(err));

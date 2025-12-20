@@ -26,14 +26,41 @@
   --muted: rgba(236,255,245,.72);
 
   --primary:#4fe39a;    /* emerald */
+  --primary-rgb: 79, 227, 154;
   --accent:#f3c969;     /* gold */
+  --accent-rgb: 243, 201, 105;
   --danger:#ff6b6b;
+  --danger-rgb: 255, 107, 107;
 
   --shadow: 0 18px 55px rgba(0,0,0,.35);
   --shadow2: 0 10px 30px rgba(0,0,0,.22);
 
   --radius: 18px;
   --radius2: 14px;
+}
+
+body[data-theme="aqua"]{
+  --bg0:#051421;
+  --bg1:#03101b;
+  --panel: rgba(8, 24, 36, .74);
+  --panel2: rgba(8, 24, 36, .55);
+  --field: rgba(7, 22, 34, .62);
+
+  --border: rgba(95, 199, 255, .16);
+  --border2: rgba(122, 227, 207, .16);
+
+  --text:#eaf6ff;
+  --muted: rgba(234,246,255,.76);
+
+  --primary:#5fc7ff;    /* aqua blue */
+  --primary-rgb: 95, 199, 255;
+  --accent:#7ae3cf;     /* minty aqua */
+  --accent-rgb: 122, 227, 207;
+  --danger:#ff6b6b;
+  --danger-rgb: 255, 107, 107;
+
+  --shadow: 0 18px 55px rgba(0,20,40,.35);
+  --shadow2: 0 10px 30px rgba(0,20,40,.22);
 }
 
 *{box-sizing:border-box}
@@ -44,11 +71,12 @@ body{
   color:var(--text);
   font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Tahoma, Arial;
   background:
-    radial-gradient(1100px 600px at 10% -10%, rgba(79,227,154,.25), transparent 60%),
-    radial-gradient(900px 520px at 95% 0%, rgba(243,201,105,.22), transparent 55%),
-    radial-gradient(900px 700px at 65% 115%, rgba(79,227,154,.14), transparent 60%),
+    radial-gradient(1100px 600px at 10% -10%, rgba(var(--primary-rgb),.25), transparent 60%),
+    radial-gradient(900px 520px at 95% 0%, rgba(var(--accent-rgb),.22), transparent 55%),
+    radial-gradient(900px 700px at 65% 115%, rgba(var(--primary-rgb),.14), transparent 60%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
   overflow-x:hidden;
+  transition: background .45s ease, color .25s ease;
 }
 
 /* Subtle noise (no external assets) */
@@ -73,9 +101,10 @@ header{
   top:0;
   z-index:5;
   padding:16px 14px;
-  background: linear-gradient(180deg, rgba(6,20,14,.78), rgba(6,20,14,.35));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 80%, transparent), color-mix(in srgb, var(--bg1) 45%, transparent));
   backdrop-filter: blur(10px);
-  border-bottom:1px solid rgba(120,255,180,.10);
+  border-bottom:1px solid var(--border);
+  transition: background .35s ease, border-color .35s ease;
 }
 
 .topbar{
@@ -99,7 +128,7 @@ header{
   border-radius:14px;
   background:
     radial-gradient(16px 16px at 30% 25%, rgba(255,255,255,.35), transparent 60%),
-    linear-gradient(135deg, rgba(79,227,154,.35), rgba(243,201,105,.25));
+    linear-gradient(135deg, rgba(var(--primary-rgb),.35), rgba(var(--accent-rgb),.25));
   border:1px solid rgba(255,255,255,.12);
   box-shadow: var(--shadow2);
   display:grid;
@@ -137,11 +166,16 @@ header{
   color: var(--muted);
   font-size:12px;
   box-shadow: 0 10px 26px rgba(0,0,0,.18);
+  cursor:pointer;
+  transition: background .2s ease, border-color .2s ease, transform .15s ease;
+  font: inherit;
 }
 .pill b{
   color:var(--accent);
   font-weight:800;
 }
+.pill:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.16); transform: translateY(-1px); }
+.pill:focus-visible{ outline:2px solid rgba(var(--accent-rgb),.7); outline-offset:3px; }
 
 /* Layout */
 .wrap{
@@ -162,11 +196,12 @@ header{
   position:relative;
   border-radius: var(--radius);
   padding:18px;
-  background: linear-gradient(180deg, rgba(10,26,18,.74), rgba(10,26,18,.55));
-  border:1px solid rgba(120,255,180,.14);
+  background: linear-gradient(180deg, var(--panel), var(--panel2));
+  border:1px solid var(--border);
   box-shadow: var(--shadow);
   overflow:hidden;
   backdrop-filter: blur(10px);
+  transition: background .35s ease, border-color .35s ease, color .25s ease, box-shadow .35s ease;
 }
 
 .card::before{
@@ -174,8 +209,8 @@ header{
   position:absolute;
   inset:-1px;
   background:
-    radial-gradient(900px 420px at 12% 0%, rgba(79,227,154,.22), transparent 62%),
-    radial-gradient(800px 420px at 95% 10%, rgba(243,201,105,.18), transparent 60%);
+    radial-gradient(900px 420px at 12% 0%, rgba(var(--primary-rgb),.22), transparent 62%),
+    radial-gradient(800px 420px at 95% 10%, rgba(var(--accent-rgb),.18), transparent 60%);
   pointer-events:none;
 }
 
@@ -228,18 +263,18 @@ input, select{
   padding:12px 14px;
   border-radius: 14px;
   border:1px solid rgba(255,255,255,.12);
-  background: rgba(6,18,12,.55);
+  background: var(--field);
   color:var(--text);
   font-size:14px;
   outline:none;
-  transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
+  transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease, background-color .3s ease, color .3s ease;
 }
 input::placeholder{ color: rgba(236,255,245,.45); }
 select{ cursor:pointer; }
 
 input:focus, select:focus{
-  border-color: rgba(79,227,154,.40);
-  box-shadow: 0 0 0 4px rgba(79,227,154,.12);
+  border-color: rgba(var(--primary-rgb),.40);
+  box-shadow: 0 0 0 4px rgba(var(--primary-rgb),.12);
 }
 
 .btn{
@@ -256,7 +291,7 @@ input:focus, select:focus{
 }
 .btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.085); }
 .btn:active{ transform: translateY(0px); }
-.btn:focus-visible{ outline:2px solid rgba(243,201,105,.7); outline-offset:3px; }
+.btn:focus-visible{ outline:2px solid rgba(var(--accent-rgb),.7); outline-offset:3px; }
 .btn-ghost{ background: rgba(255,255,255,.04); box-shadow:none; }
 .btn-ghost:hover{ background: rgba(255,255,255,.07); }
 
@@ -275,7 +310,7 @@ input:focus, select:focus{
 .badge .dot{
   width:8px; height:8px; border-radius:999px;
   background: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79,227,154,.14);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb),.14);
 }
 
 /* Search results shell */
@@ -284,7 +319,6 @@ input:focus, select:focus{
   display:flex;
   flex-direction:column;
   gap:10px;
-  transition: padding .3s ease, background .3s ease, border-color .3s ease;
 }
 
 .results-shell.collapsed{
@@ -301,7 +335,7 @@ input:focus, select:focus{
   width:100%;
   padding:12px 14px;
   background:
-    radial-gradient(400px 120px at 20% 0%, rgba(79,227,154,.20), transparent 60%),
+    radial-gradient(400px 120px at 20% 0%, rgba(var(--primary-rgb),.20), transparent 60%),
     linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
   border:1px solid rgba(255,255,255,.16);
   border-radius:14px;
@@ -324,8 +358,8 @@ input:focus, select:focus{
   width:38px;
   height:38px;
   border-radius:14px;
-  background: rgba(79,227,154,.14);
-  border: 1px solid rgba(79,227,154,.22);
+  background: rgba(var(--primary-rgb),.14);
+  border: 1px solid rgba(var(--primary-rgb),.22);
   display:grid;
   place-items:center;
   font-weight:900;
@@ -348,8 +382,8 @@ input:focus, select:focus{
   font-weight:900;
   padding:8px 10px;
   border-radius:12px;
-  background: rgba(243,201,105,.14);
-  border:1px solid rgba(243,201,105,.22);
+  background: rgba(var(--accent-rgb),.14);
+  border:1px solid rgba(var(--accent-rgb),.22);
 }
 
 /* Results list */
@@ -360,7 +394,7 @@ input:focus, select:focus{
   border-radius:14px;
   background: rgba(255,255,255,.03);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
-  transition: max-height .45s cubic-bezier(0.4, 0.0, 0.2, 1), opacity .35s ease, transform .35s ease;
+  transition: opacity .25s ease, transform .25s ease;
 }
 
 .results.collapsed{
@@ -386,7 +420,7 @@ input:focus, select:focus{
 .item .line2{ font-size:14px; color:var(--muted); line-height:1.75; }
 
 mark{
-  background: rgba(243,201,105,.22);
+  background: rgba(var(--accent-rgb),.22);
   color: rgba(255,255,255,.96);
   padding:0 4px;
   border-radius:8px;
@@ -418,7 +452,7 @@ mark{
 
 .ayah-line:hover{
   background: rgba(255,255,255,.06);
-  border-color: rgba(79,227,154,.22);
+  border-color: rgba(var(--primary-rgb),.22);
 }
 
 .ayah-line .num{
@@ -435,10 +469,10 @@ mark{
 
 .ayah-line.active{
   background:
-    radial-gradient(420px 120px at 10% 0%, rgba(79,227,154,.22), transparent 60%),
-    linear-gradient(90deg, rgba(79,227,154,.18), rgba(255,255,255,.03));
-  border:1px solid rgba(79,227,154,.35);
-  box-shadow: 0 0 0 1px rgba(79,227,154,.14) inset;
+    radial-gradient(420px 120px at 10% 0%, rgba(var(--primary-rgb),.22), transparent 60%),
+    linear-gradient(90deg, rgba(var(--primary-rgb),.18), rgba(255,255,255,.03));
+  border:1px solid rgba(var(--primary-rgb),.35);
+  box-shadow: 0 0 0 1px rgba(var(--primary-rgb),.14) inset;
   font-weight:900;
 }
 
@@ -483,10 +517,11 @@ mark{
   line-height:2.05;
   font-size:14px;
   color:var(--text);
-  background: rgba(6,18,12,.35);
+  background: color-mix(in srgb, var(--field) 80%, transparent);
   border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
   padding:12px 14px;
+  transition: background .35s ease, border-color .35s ease, color .25s ease;
 }
 
 .tafsir-paragraph{ margin:0 0 12px; line-height:2.1; }
@@ -496,7 +531,7 @@ mark{
 .ayah-quote{
   color: var(--primary);
   font-weight:900;
-  text-shadow: 0 0 18px rgba(79,227,154,.20);
+  text-shadow: 0 0 18px rgba(var(--primary-rgb),.20);
 }
 
 .smallRow{
@@ -550,9 +585,9 @@ mark{
         <small>بحث + سياق + تفسير (أوفلاين)</small>
       </div>
     </div>
-    <div class="pill" title="ستايل مستوحى من Replit">
-      <span>Theme:</span> <b>Emerald • Gold</b>
-    </div>
+    <button type="button" class="pill" id="themeToggle" title="بدّل بين الثيمات">
+      <span>Theme:</span> <b id="themeLabel">Emerald • Gold</b>
+    </button>
   </div>
 </header>
 
@@ -632,12 +667,6 @@ mark{
       <div id="tafsirHeader" class="tafsir-meta">اختر آية من نتائج البحث</div>
       <div id="tafsirTitle" class="tafsir-title">—</div>
       <div id="tafsirBox" class="tafsir-box">—</div>
-    </div>
-
-    <div class="hr"></div>
-    <div class="footerHint">
-      <span>ملاحظة:</span>
-      <span>إذا لم يظهر تفسير لآية، تأكد أن ملفات <code>tafseer_*.json</code> موجودة في نفس المجلد.</span>
     </div>
   </div>
 
