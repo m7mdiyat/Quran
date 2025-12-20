@@ -71,10 +71,11 @@ body{
   color:var(--text);
   font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Tahoma, Arial;
   background:
-    radial-gradient(1100px 600px at 10% -10%, rgba(var(--primary-rgb),.25), transparent 60%),
-    radial-gradient(900px 520px at 95% 0%, rgba(var(--accent-rgb),.22), transparent 55%),
-    radial-gradient(900px 700px at 65% 115%, rgba(var(--primary-rgb),.14), transparent 60%),
-    linear-gradient(180deg, var(--bg0), var(--bg1));
+    linear-gradient(165deg, color-mix(in srgb, var(--bg0) 90%, transparent), color-mix(in srgb, var(--bg1) 96%, transparent)),
+    conic-gradient(from 210deg at 78% 32%, rgba(var(--accent-rgb),.12), transparent 42%, rgba(var(--primary-rgb),.10), transparent 82%, rgba(var(--accent-rgb),.10)),
+    radial-gradient(1400px 900px at 18% 86%, rgba(var(--primary-rgb),.16), transparent 55%),
+    radial-gradient(1200px 800px at 92% 18%, rgba(var(--accent-rgb),.15), transparent 50%),
+    linear-gradient(115deg, color-mix(in srgb, var(--bg1) 94%, rgba(var(--primary-rgb),.06)) 18%, color-mix(in srgb, var(--bg0) 92%, rgba(var(--accent-rgb),.03)) 80%);
   overflow-x:hidden;
   transition: background .45s ease, color .25s ease;
 }
@@ -86,12 +87,33 @@ body::before{
   inset:0;
   pointer-events:none;
   background-image:
-    radial-gradient(circle at 20% 20%, rgba(255,255,255,.04) 0 1px, transparent 1px),
-    radial-gradient(circle at 80% 30%, rgba(255,255,255,.03) 0 1px, transparent 1px),
-    radial-gradient(circle at 40% 70%, rgba(255,255,255,.03) 0 1px, transparent 1px);
-  background-size: 120px 120px, 160px 160px, 200px 200px;
-  opacity:.55;
-  mix-blend-mode: overlay;
+    linear-gradient(115deg, rgba(255,255,255,.04) 1px, transparent 0),
+    linear-gradient(245deg, rgba(255,255,255,.035) 1px, transparent 0),
+    radial-gradient(680px 420px at 15% 24%, rgba(var(--primary-rgb),.10), transparent 60%),
+    radial-gradient(620px 380px at 82% 68%, rgba(var(--accent-rgb),.09), transparent 58%);
+  background-size:
+    22px 22px,
+    26px 26px,
+    100% 100%,
+    100% 100%;
+  opacity:.48;
+  mix-blend-mode: soft-light;
+  mask-image: radial-gradient(140% 140% at 50% 50%, rgba(255,255,255,.9), transparent);
+  backdrop-filter: blur(4px);
+}
+
+body::after{
+  content:"";
+  position:fixed;
+  inset:-12% -8%;
+  pointer-events:none;
+  background:
+    linear-gradient(145deg, rgba(var(--primary-rgb),.10), transparent 40%),
+    linear-gradient(325deg, rgba(var(--accent-rgb),.09), transparent 42%),
+    conic-gradient(from 120deg at 32% 55%, transparent 10%, rgba(var(--primary-rgb),.08) 30%, transparent 60%, rgba(var(--accent-rgb),.10) 78%, transparent 92%);
+  filter: blur(34px);
+  opacity:.68;
+  mix-blend-mode: screen;
 }
 
 a{color:inherit}
@@ -128,17 +150,21 @@ header{
   padding:0 14px;
   border-radius:14px;
   background:
-    radial-gradient(16px 16px at 30% 25%, rgba(255,255,255,.35), transparent 60%),
-    linear-gradient(135deg, rgba(var(--primary-rgb),.35), rgba(var(--accent-rgb),.25));
-  border:1px solid rgba(255,255,255,.12);
-  box-shadow: var(--shadow2);
+    linear-gradient(145deg, color-mix(in srgb, var(--bg1) 72%, rgba(var(--primary-rgb),.45)), color-mix(in srgb, var(--bg0) 75%, rgba(var(--accent-rgb),.40))),
+    radial-gradient(140% 120% at 18% 20%, rgba(255,255,255,.18), transparent 50%),
+    radial-gradient(160% 160% at 80% 80%, rgba(var(--primary-rgb),.18), transparent 55%);
+  border:1px solid color-mix(in srgb, var(--border) 60%, rgba(var(--primary-rgb),.35));
+  box-shadow:
+    0 18px 28px rgba(0,0,0,.38),
+    0 0 0 1px rgba(255,255,255,.04),
+    inset 0 1px 0 rgba(255,255,255,.08);
   display:flex;
   align-items:center;
   justify-content:center;
   text-align:center;
   font-weight:900;
   font-size:14px;
-  color: rgba(255,255,255,.92);
+  color: color-mix(in srgb, #f8fff5 90%, var(--accent) 10%);
   line-height:1.1;
 }
 
