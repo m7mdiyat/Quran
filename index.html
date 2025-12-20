@@ -686,6 +686,19 @@ mark{
   padding:24px 6px;
 }
 
+.tafsir-description{
+  margin-top:4px;
+  margin-bottom:6px;
+  padding:12px 14px;
+  border-radius:12px;
+  background: color-mix(in srgb, rgba(var(--primary-rgb),.18), rgba(255,255,255,.06));
+  border:1px solid color-mix(in srgb, var(--border) 70%, rgba(var(--primary-rgb),.34));
+  color: var(--text);
+  font-weight:800;
+  line-height:1.7;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 10px 28px rgba(0,0,0,.22);
+}
+
 .smallRow{
   display:grid;
   grid-template-columns:1fr;
@@ -821,6 +834,7 @@ mark{
       </div>
 
       <div class="tafsir-paper">
+        <div id="tafsirDescription" class="tafsir-description">—</div>
         <div id="tafsirAyahTag" class="tafsir-ayah-tag quran-font">—</div>
         <div id="tafsirBox" class="tafsir-box quran-font">—</div>
       </div>
