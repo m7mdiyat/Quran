@@ -497,14 +497,12 @@ function expandResultsList(){
 }
 
 function updateVisibilityState(){
-  const hasQuery = (textSearch?.value || "").trim().length >= 2;
-  const hasSelection = !!CURRENT;
-  const active = hasQuery || hasSelection;
-
-  [contextBlock, tafsirSection].forEach(elm => {
-    if(!elm) return;
-    elm.classList.toggle("is-hidden", !active);
-  });
+  if(contextBlock){
+    contextBlock.classList.remove("is-hidden");
+  }
+  if(tafsirSection){
+    tafsirSection.classList.remove("is-hidden");
+  }
 }
 
 function resetPrimaryPanels(){
