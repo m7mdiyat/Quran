@@ -53,8 +53,8 @@ let EN_MAP = null;
 
 // Themes
 const THEMES = [
-  { id: "emerald", label: "Emerald • Gold" },
-  { id: "aqua",    label: "Aqua Blue" }
+  { id: "emerald", label: "اخضر انسايزي" },
+  { id: "aqua",    label: "ازرق سماوي" }
 ];
 let CURRENT_THEME = THEMES[0].id;
 
