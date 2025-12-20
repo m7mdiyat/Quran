@@ -485,6 +485,8 @@ mark{
   opacity:1;
   padding:12px;
   pointer-events:auto;
+  overflow-y:auto;
+  overscroll-behavior:contain;
   transform: translateY(0);
   background: rgba(255,255,255,.04);
   border-color: rgba(var(--primary-rgb),.18);
@@ -812,9 +814,9 @@ mark{
           <div id="tafsirHeader" class="tafsir-meta">اختر آية من نتائج البحث</div>
           <div id="tafsirTitle" class="tafsir-title quran-font">—</div>
         </div>
-        <div class="meta-chips">
-          <span class="meta-chip" id="tafsirMetaInterpreter"><span class="dot"></span> نص التفسير</span>
-          <span class="meta-chip soft" id="tafsirMetaAyah">—</span>
+        <div class="verse-nav">
+          <button type="button" class="btn btn-ghost" id="prevAyahBtn">الآية السابقة</button>
+          <button type="button" class="btn btn-ghost" id="nextAyahBtn">الآية القادمة</button>
         </div>
       </div>
 
@@ -826,11 +828,11 @@ mark{
 
     <div class="verse-expander" id="verseExpander">
       <div class="verse-expander-bar">
-        <button type="button" class="btn btn-primary" id="toggleVersesBtn" aria-expanded="false">عرض الآيات</button>
-        <div class="verse-nav">
-          <button type="button" class="btn btn-ghost" id="prevAyahBtn">الآية السابقة</button>
-          <button type="button" class="btn btn-ghost" id="nextAyahBtn">الآية القادمة</button>
+        <div class="meta-chips">
+          <span class="meta-chip" id="tafsirMetaInterpreter"><span class="dot"></span> نص التفسير</span>
+          <span class="meta-chip soft" id="tafsirMetaAyah">—</span>
         </div>
+        <button type="button" class="btn btn-primary" id="toggleVersesBtn" aria-expanded="false">عرض الآيات</button>
       </div>
 
       <div class="verse-panel" id="versePanel" aria-hidden="true">
