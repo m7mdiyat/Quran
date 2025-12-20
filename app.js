@@ -18,6 +18,7 @@ const clearBtn = el("clearBtn");
 
 const ayahContext   = el("ayahContext");
 const contextHeader = el("contextHeader");
+const contextBlock  = el("contextBlock");
 const langSelect    = el("langSelect");
 
 const tafsirHeader = el("tafsirHeader");
@@ -27,6 +28,7 @@ const tafsirBox    = el("tafsirBox");
 const tafsirMetaAyah = el("tafsirMetaAyah");
 const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
 const tafsirAyahTag = el("tafsirAyahTag");
+const tafsirSection = el("tafsirSection");
 const themeToggle  = el("themeToggle");
 const themeLabel   = el("themeLabel");
 
@@ -315,6 +317,7 @@ function setPrimaryAyah(surahNo, ayahNo){
   CURRENT = { s: surahNo, a: ayahNo };
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
+  updateVisibilityState();
 }
 
 /* ---- Context window ---- */
@@ -403,17 +406,25 @@ function formatTafsirText(text, surahNo, ayahNo){
   const ayahText = getAyahTextFromQuran(surahNo, ayahNo);
 
   let html = escapeHtml(text);
+  html = html.replace(/\{([^{}]+)\}/g, `<span class="tafsir-brace">{$1}</span>`);
+  html = html.replace(/\(([^()]+)\)/g, `<span class="tafsir-brace">($1)</span>`);
   if(ayahText){
     const escapedAyah = escapeHtml(ayahText);
     const regex = new RegExp(escapeRegex(escapedAyah), "g");
     html = html.replace(regex, `<span class="ayah-quote">${escapedAyah}</span>`);
   }
 
-  const paragraphs = html.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
-  if(paragraphs.length > 1){
-    return paragraphs.map(p=>`<p class="tafsir-paragraph">${p.replace(/\n/g,"<br>")}</p>`).join("");
+  const sentences = html
+    .replace(/\n+/g, " ")
+    .split(/(?<=\.)/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if(sentences.length){
+    return sentences.map(s => `<p class="tafsir-paragraph">${s}</p>`).join("");
   }
-  return html.replace(/\n/g,"<br>");
+
+  return `<p class="tafsir-paragraph">${html.replace(/\n/g,"<br>")}</p>`;
 }
 
 function updateTafsirUI(surahNo, ayahNo){
@@ -470,6 +481,31 @@ function expandResultsList(){
   resultsShell.classList.remove("collapsed");
   results.classList.remove("collapsed");
   results.style.maxHeight = "";
+}
+
+function updateVisibilityState(){
+  const hasQuery = (textSearch?.value || "").trim().length >= 2;
+  const hasSelection = !!CURRENT;
+  const active = hasQuery || hasSelection;
+
+  [contextBlock, tafsirSection].forEach(elm => {
+    if(!elm) return;
+    elm.classList.toggle("is-hidden", !active);
+  });
+}
+
+function resetPrimaryPanels(){
+  CURRENT = null;
+  contextHeader.textContent = "اختر آية من نتائج البحث";
+  ayahContext.innerHTML = "";
+  tafsirHeader.textContent = "اختر آية من نتائج البحث";
+  tafsirTitle.textContent = "—";
+  tafsirBox.textContent = "—";
+  tafsirMetaAyah.textContent = "—";
+  tafsirAyahTag.textContent = "—";
+  if(tafsirMetaInterpreter){
+    tafsirMetaInterpreter.innerHTML = `<span class="dot"></span> نص التفسير`;
+  }
 }
 
 /* ---- Highlight matches (visual niceness) ---- */
@@ -596,6 +632,7 @@ async function init(){
     const found = searchText(q);
     renderResults(found, q);
     expandResultsList();
+    updateVisibilityState();
   };
 
   textSearch.oninput = debounce(runSearch, 120);
@@ -623,9 +660,11 @@ async function init(){
   clearBtn?.addEventListener("click", () => {
     textSearch.value = "";
     LAST_RESULTS = [];
+    resetPrimaryPanels();
     results.innerHTML = "";
     expandResultsList();
     textSearch.focus();
+    updateVisibilityState();
   });
 
   // First nice empty state
@@ -635,6 +674,8 @@ async function init(){
       <div class="line2">اكتب حرفين فأكثر لعرض النتائج هنا.</div>
     </div>
   `;
+
+  updateVisibilityState();
 }
 
 initTheme();

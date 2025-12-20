@@ -555,10 +555,11 @@ mark{
   border-radius:16px;
   padding:14px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, #f6f1e3 86%, rgba(var(--primary-rgb),.10)), color-mix(in srgb, #efe6d7 85%, rgba(var(--accent-rgb),.07)));
-  color: #1f261d;
-  border:1px solid color-mix(in srgb, #e8ddc6 85%, rgba(var(--accent-rgb),.24));
-  box-shadow: 0 22px 55px rgba(0,0,0,.28);
+    linear-gradient(145deg, rgba(var(--primary-rgb),.08), rgba(var(--accent-rgb),.05)),
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  color: var(--text);
+  border:1px solid color-mix(in srgb, var(--border) 70%, rgba(var(--accent-rgb),.28));
+  box-shadow: var(--shadow);
   overflow:hidden;
 }
 .tafsir-paper::after{
@@ -567,9 +568,9 @@ mark{
   inset:0;
   pointer-events:none;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.08), transparent 30%),
-    radial-gradient(1200px 240px at 10% 0%, rgba(var(--primary-rgb),.10), transparent 60%);
-  mix-blend-mode:overlay;
+    linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%),
+    radial-gradient(1200px 240px at 10% 0%, rgba(var(--primary-rgb),.12), transparent 60%);
+  mix-blend-mode:soft-light;
 }
 
 .tafsir-box{
@@ -577,13 +578,15 @@ mark{
   overflow:auto;
   line-height:2.2;
   font-size:17px;
-  color: #1f261d;
-  background: #fffdf8;
-  border:1px solid color-mix(in srgb, #e2d4ba 80%, rgba(var(--accent-rgb),.18));
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb, var(--border) 60%, rgba(var(--accent-rgb),.22));
   border-radius:12px;
   padding:18px 16px;
   transition: background .35s ease, border-color .35s ease, color .25s ease;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    inset 0 0 0 1px rgba(255,255,255,.02);
   text-align: justify;
   letter-spacing: .1px;
 }
@@ -599,12 +602,12 @@ mark{
   display:inline-block;
   padding:6px 10px;
   margin:6px 0;
-  background: color-mix(in srgb, #e9f5e7 82%, rgba(var(--primary-rgb),.18));
-  color: #10351f;
+  background: color-mix(in srgb, rgba(var(--primary-rgb),.16), rgba(255,255,255,.03));
+  color: var(--text);
   font-weight:900;
-  border:1px solid color-mix(in srgb, #cfe8d2 78%, rgba(var(--primary-rgb),.28));
+  border:1px solid color-mix(in srgb, var(--border) 60%, rgba(var(--primary-rgb),.32));
   border-radius:10px;
-  box-shadow: 0 8px 20px rgba(0,0,0,.08);
+  box-shadow: 0 8px 20px rgba(0,0,0,.18);
 }
 
 .tafsir-ayah-tag{
@@ -612,18 +615,18 @@ mark{
   margin-bottom:10px;
   padding:10px 12px;
   border-radius:12px;
-  background: color-mix(in srgb, #e8f5ec 80%, rgba(var(--primary-rgb),.14));
-  border:1px solid color-mix(in srgb, #cfe8d2 75%, rgba(var(--primary-rgb),.25));
-  color:#0f2f1c;
+  background: color-mix(in srgb, rgba(var(--primary-rgb),.14), rgba(255,255,255,.03));
+  border:1px solid color-mix(in srgb, var(--border) 60%, rgba(var(--primary-rgb),.32));
+  color: var(--text);
   font-weight:800;
   font-size:18px;
   line-height:2;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 
 .tafsir-empty{
   text-align:center;
-  color:#53635b;
+  color:var(--muted);
   font-weight:800;
   padding:24px 6px;
 }
@@ -663,6 +666,13 @@ mark{
 
 .quran-font{
   font-family: "Amiri", serif;
+}
+
+.is-hidden{ display:none !important; }
+
+.tafsir-brace{
+  color:#6db8ff;
+  font-weight:800;
 }
 
 </style>
@@ -723,7 +733,7 @@ mark{
       </div>
     </div>
 
-    <div class="block">
+    <div class="block" id="contextBlock">
       <div class="block-title">عرض الآيات الحالية</div>
 
       <div class="smallRow">
@@ -757,7 +767,7 @@ mark{
       </select>
     </div>
 
-    <div class="tafsir-section">
+    <div class="tafsir-section" id="tafsirSection">
       <div class="tafsir-header-row">
         <div>
           <div id="tafsirHeader" class="tafsir-meta">اختر آية من نتائج البحث</div>
