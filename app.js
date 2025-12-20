@@ -27,7 +27,6 @@ const tafsirBox    = el("tafsirBox");
 const tafsirMetaAyah = el("tafsirMetaAyah");
 const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
 const tafsirAyahTag = el("tafsirAyahTag");
-const tafsirSection = el("tafsirSection");
 const themeToggle  = el("themeToggle");
 const themeLabel   = el("themeLabel");
 
