@@ -7,13 +7,13 @@
 
 <style>
 :root{
-  --bg:#1a0609;
-  --panel:#24080d;
-  --field:#1e060b;
-  --border:rgba(255,119,119,.18);
-  --text:#ffe7e7;
-  --muted:#ffb7b7;
-  --accent:#ff6b6b;
+  --bg:#031226;
+  --panel:#0a1f39;
+  --field:#0f2a4a;
+  --border:rgba(61,169,252,.18);
+  --text:#e8f3ff;
+  --muted:#a8c7e6;
+  --accent:#3da9fc;
 }
 
 *{box-sizing:border-box}
@@ -21,14 +21,14 @@
 body{
   margin:0;
   font-family: system-ui,"Segoe UI",Tahoma,Arial;
-  background:linear-gradient(180deg,#120307,#1a0609);
+  background:linear-gradient(180deg,#020c1b,#031226);
   color:var(--text);
 }
 
 header{
   padding:20px 16px;
   border-bottom:1px solid var(--border);
-  background:rgba(255,107,107,.08);
+  background:rgba(61,169,252,.08);
 }
 
 header h1{
@@ -66,7 +66,7 @@ header h1{
   content:"";
   position:absolute;
   inset:-1px;
-  background:radial-gradient(1000px 400px at 15% 0%, rgba(255,107,107,.16), transparent 60%);
+  background:radial-gradient(1000px 400px at 15% 0%, rgba(61,169,252,.16), transparent 60%);
   pointer-events:none;
 }
 
@@ -98,7 +98,7 @@ select{ cursor:pointer; }
   overflow:auto;
   border:1px solid var(--border);
   border-radius:14px;
-  background:rgba(255,107,107,.05);
+  background:rgba(61,169,252,.05);
 }
 
 .item{
@@ -109,7 +109,7 @@ select{ cursor:pointer; }
 }
 .item:last-child{border-bottom:none}
 .item:hover{
-  background:rgba(255,107,107,.08);
+  background:rgba(61,169,252,.08);
   transform: translateY(-1px);
 }
 
@@ -135,17 +135,17 @@ select{ cursor:pointer; }
   margin-bottom:8px;
   line-height:2;
   font-size:18px;
-  border:1px solid rgba(255,107,107,.16);
+  border:1px solid rgba(61,169,252,.16);
   border-radius:14px;
-  background:rgba(255,107,107,.04);
+  background:rgba(61,169,252,.04);
   cursor:pointer;
   transition: transform .12s ease, background .12s ease, border-color .12s ease;
 }
 
 .ayah-line:hover{
   transform: translateY(-1px);
-  background:rgba(255,107,107,.10);
-  border-color: rgba(255,107,107,.35);
+  background:rgba(61,169,252,.10);
+  border-color: rgba(61,169,252,.35);
 }
 
 .ayah-line .num{
@@ -153,12 +153,17 @@ select{ cursor:pointer; }
   font-size:12px;
   margin-left:8px;
   font-weight:800;
+  direction:ltr;
+  unicode-bidi:isolate;
+  display:inline-block;
+  min-width:36px;
+  text-align:center;
 }
 
 .ayah-line.active{
-  background:linear-gradient(90deg, rgba(255,107,107,.32), rgba(255,107,107,.08));
-  border:1px solid rgba(255,107,107,.55);
-  box-shadow: 0 0 0 1px rgba(255,107,107,.18) inset;
+  background:linear-gradient(90deg, rgba(61,169,252,.32), rgba(61,169,252,.08));
+  border:1px solid rgba(61,169,252,.55);
+  box-shadow: 0 0 0 1px rgba(61,169,252,.18) inset;
   font-weight:900;
 }
 
@@ -172,18 +177,6 @@ select{ cursor:pointer; }
   text-align:left;
 }
 
-.mono{
-  margin-top:12px;
-  padding:10px 12px;
-  border-radius:12px;
-  background:#20050a;
-  border:1px dashed var(--border);
-  font-family:ui-monospace,Menlo,Consolas,monospace;
-  font-size:13px;
-  color:var(--text);
-  word-break:break-all;
-}
-
 /* ===== التفسير ===== */
 .tafsir-header{
   font-size:13px;
@@ -194,7 +187,7 @@ select{ cursor:pointer; }
 .tafsir-section{
   border:1px solid var(--border);
   border-radius:14px;
-  background:rgba(255,107,107,.07);
+  background:rgba(61,169,252,.07);
   padding:14px;
 }
 
@@ -219,6 +212,27 @@ select{ cursor:pointer; }
   grid-template-columns:1fr;
   gap:10px;
   margin-bottom:12px;
+}
+
+.ayah-context{
+  animation-duration:.35s;
+  animation-fill-mode:both;
+}
+
+.ayah-context.animate{
+  animation-name: fadeSlide;
+  animation-timing-function: ease;
+}
+
+@keyframes fadeSlide{
+  from{
+    opacity:0;
+    transform: translateY(8px);
+  }
+  to{
+    opacity:1;
+    transform: translateY(0);
+  }
 }
 </style>
 </head>
@@ -251,8 +265,6 @@ select{ cursor:pointer; }
 
     <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
     <div id="ayahContext" class="ayah-context"></div>
-
-    <div class="mono" id="finalUrl">—</div>
   </div>
 
   <!-- يسار: التفسير -->
