@@ -8,7 +8,12 @@
 const el = id => document.getElementById(id);
 
 const textSearch = el("textSearch");
+const resultsShell = el("resultsShell");
 const results    = el("results");
+const selectedChip = el("selectedChip");
+const chipTitle = el("chipTitle");
+const chipSnippet = el("chipSnippet");
+const chipIcon = el("chipIcon");
 
 const ayahContext   = el("ayahContext");
 const contextHeader = el("contextHeader");
@@ -23,6 +28,7 @@ let SURAH_META = [];
 let QURAN = null;
 let INDEX = [];
 let CURRENT = null;
+let LAST_RESULTS = [];
 
 // Context window state: keep list static until hitting edges
 let CONTEXT_STATE = {
@@ -402,8 +408,61 @@ function updateTafsirUI(surahNo, ayahNo){
   }
 }
 
+function makeSnippet(text=""){
+  const clean = (text || "").replace(/\s+/g," ").trim();
+  return clean.length > 140 ? `${clean.slice(0, 140)}…` : clean;
+}
+
+function updateSelectedChip(it){
+  if(!selectedChip || !chipTitle || !chipSnippet || !chipIcon) return;
+  const surahName = SURAH_META.find(s=>s.number===it.s)?.name_ar || `سورة ${it.s}`;
+  chipTitle.textContent = `${surahName} — الآية ${it.a}`;
+  chipSnippet.textContent = makeSnippet(it.textRaw);
+  chipIcon.textContent = String(it.a).padStart(3,"0");
+  selectedChip.setAttribute("aria-label", `تم اختيار ${surahName} الآية ${it.a}. اضغط لتغيير الاختيار`);
+}
+
+function collapseResultsToChip(it){
+  if(!resultsShell || !results) return;
+  updateSelectedChip(it);
+  const currentHeight = results.scrollHeight;
+  results.style.maxHeight = `${currentHeight}px`;
+  requestAnimationFrame(()=>{
+    results.classList.add("collapsed");
+    resultsShell.classList.add("collapsed");
+    results.style.maxHeight = "0px";
+  });
+}
+
+function expandResultsList(){
+  if(!resultsShell || !results) return;
+  resultsShell.classList.remove("collapsed");
+  results.classList.remove("collapsed");
+  const contentHeight = results.scrollHeight;
+  const target = contentHeight || (LAST_RESULTS.length ? 520 : 0);
+  if(target === 0){
+    results.style.maxHeight = "";
+    return;
+  }
+  results.style.maxHeight = "0px";
+  requestAnimationFrame(()=>{
+    results.style.maxHeight = `${target}px`;
+  });
+  const tidy = (ev) => {
+    if(ev.propertyName === "max-height"){
+      results.style.maxHeight = "";
+      results.removeEventListener("transitionend", tidy);
+    }
+  };
+  results.addEventListener("transitionend", tidy);
+}
+
 /* ---- Render results ---- */
 function renderResults(items){
+  LAST_RESULTS = items;
+  results.classList.remove("collapsed");
+  resultsShell?.classList.remove("collapsed");
+  results.style.maxHeight = "";
   results.innerHTML = "";
   for(const it of items){
     const surahName = SURAH_META.find(s=>s.number===it.s)?.name_ar || `سورة ${it.s}`;
@@ -419,7 +478,10 @@ function renderResults(items){
     div.onmouseenter = () => setPrimaryAyah(it.s, it.a);
 
     // Click: make it the primary selection without opening external links
-    div.onclick = () => setPrimaryAyah(it.s, it.a);
+    div.onclick = () => {
+      setPrimaryAyah(it.s, it.a);
+      collapseResultsToChip(it);
+    };
 
     results.appendChild(div);
   }
@@ -469,7 +531,16 @@ async function init(){
   await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي");
   await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور");
 
-  textSearch.oninput = () => renderResults(searchText(textSearch.value));
+  textSearch.oninput = () => {
+    const found = searchText(textSearch.value);
+    renderResults(found);
+    expandResultsList();
+  };
+
+  selectedChip.onclick = () => {
+    expandResultsList();
+    textSearch?.focus();
+  };
 }
 
 init().catch(err => {
