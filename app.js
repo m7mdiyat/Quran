@@ -24,6 +24,13 @@ let QURAN = null;
 let INDEX = [];
 let CURRENT = null;
 
+// Context window state: keep list static until hitting edges
+let CONTEXT_STATE = {
+  surah: null,
+  start: 1,
+  end: 0
+};
+
 // Tafsir packs: { key: {label, data:{s:{a:text}} } }
 let TAFSIRS = {};
 
@@ -253,16 +260,46 @@ function setPrimaryAyah(surahNo, ayahNo){
 }
 
 /* ---- Context (2 before + 7 after) ---- */
+function computeContextWindow(surah, ayahNo){
+  const before = 2;
+  const after = 7;
+  const windowSize = before + after + 1;
+  const len = surah.ayahs.length;
+
+  let start = Math.max(1, ayahNo - before);
+  let end   = start + windowSize - 1;
+
+  if(end > len){
+    end = len;
+    start = Math.max(1, end - windowSize + 1);
+  }
+
+  return { start, end, before, after };
+}
+
 function showAyahContext(surahNo, ayahNo){
   const surah = QURAN.surahs.find(s=>s.number===surahNo);
   if(!surah) return;
 
   const surahName = SURAH_META.find(x=>x.number===surahNo)?.name_ar || surah.name_ar;
-  const before = 2;
-  const after  = 7;
+  const len = surah.ayahs.length;
 
-  const start = Math.max(1, ayahNo - before);
-  const end   = Math.min(surah.ayahs.length, ayahNo + after);
+  // Maintain a static window unless the selection hits the first/last item
+  // or a new surah/out-of-range ayah is chosen.
+  const sameSurah = CONTEXT_STATE.surah === surahNo;
+  const withinWindow = sameSurah && ayahNo >= CONTEXT_STATE.start && ayahNo <= CONTEXT_STATE.end;
+  const isFirst = withinWindow && ayahNo === CONTEXT_STATE.start && CONTEXT_STATE.start > 1;
+  const isLast = withinWindow && ayahNo === CONTEXT_STATE.end && CONTEXT_STATE.end < len;
+
+  let start, end;
+  if(!withinWindow || !sameSurah || isFirst || isLast){
+    ({ start, end } = computeContextWindow(surah, ayahNo));
+  } else {
+    start = CONTEXT_STATE.start;
+    end = CONTEXT_STATE.end;
+  }
+
+  CONTEXT_STATE = { surah: surahNo, start, end };
 
   const mode = langSelect?.value || "ar";
 
