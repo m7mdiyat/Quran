@@ -42,6 +42,17 @@ let CURRENT = null;
 let LAST_RESULTS = [];
 let VERSES_OPEN = false;
 
+function trackSearch(query) {
+  if (!query || query.length < 2) return;
+  if (window.plausible) {
+    plausible("search_ayah", {
+      props: {
+        query: query.slice(0, 60)
+      }
+    });
+  }
+}
+
 // Context window state: keep list static until hitting edges
 let CONTEXT_STATE = {
   surah: null,
@@ -325,6 +336,17 @@ function setPrimaryAyah(surahNo, ayahNo){
   updateVisibilityState();
 }
 
+function trackAyahSelect(surah, ayah) {
+  if (window.plausible) {
+    plausible("select_ayah", {
+      props: {
+        surah,
+        ayah
+      }
+    });
+  }
+}
+
 /* ---- Context window ---- */
 function computeContextWindow(surah, ayahNo){
   const before = 2;
@@ -585,6 +607,7 @@ function renderResults(items, query){
 
     // Click: primary selection + collapse to chip
     div.onclick = () => {
+      trackAyahSelect(it.s, it.a);
       setPrimaryAyah(it.s, it.a);
       collapseResultsToChip(it);
     };
@@ -658,6 +681,7 @@ async function init(){
 
   const runSearch = () => {
     const q = textSearch.value;
+    trackSearch(q);
     const found = searchText(q);
     renderResults(found, q);
     expandResultsList();
@@ -671,6 +695,7 @@ async function init(){
     if(e.key === "Enter"){
       if(LAST_RESULTS?.length){
         const it = LAST_RESULTS[0];
+        trackAyahSelect(it.s, it.a);
         setPrimaryAyah(it.s, it.a);
         collapseResultsToChip(it);
       }
