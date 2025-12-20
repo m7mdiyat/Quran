@@ -647,13 +647,13 @@ async function init(){
   }
 
   // Load tafsir packs (silent)
-  await loadOne("muyassar",   "tafseer_muyassar.json",   "التفسير الميسّر");
-  await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي — يركّز على المعنى العام بلا إطالة او تعقيد");
-  await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري — أثري موسوعي - ينقل أقوال السلف بالأسانيد ويرجّح بينها، وفيه عمق");
-  await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير — ومتوازن وشائع - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء");
-  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي — فقهي بحت - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع عناية باللغة والقراءات");
-  await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي — أثري مختصر - يقدّم اقوال السلف بأسلوب مختصر ومنظّم");
-  await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور — تحليلي وبلاغي - يبرز الجوانب البلاغية والمقاصد العامة، وأسلوبه أدبي عميق");
+  await loadOne("muyassar",   "tafseer_muyassar.json",   "التفسير الميسّر - شرح مبسط ومختصر");
+  await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي - يركّز على المعنى العام بلا إطالة او تعقيد");
+  await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري - ينقل أقوال السلف بالأسانيد ويرجّح بينها");
+  await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء");
+  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع عناية باللغة والقراءات");
+  await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم");
+  await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق");
 
   const runSearch = () => {
     const q = textSearch.value;
