@@ -248,49 +248,6 @@ header{
   padding:18px 18px 32px;
 }
 
-.hero{
-  position:relative;
-  margin-bottom:18px;
-  padding:20px 18px;
-  border-radius: var(--radius);
-  background:
-    linear-gradient(150deg, color-mix(in srgb, var(--panel) 78%, rgba(var(--primary-rgb),.18)), color-mix(in srgb, var(--panel2) 85%, rgba(var(--accent-rgb),.12))),
-    radial-gradient(1000px 360px at 12% 0%, rgba(var(--primary-rgb),.22), transparent 60%);
-  border:1px solid var(--border);
-  box-shadow: var(--shadow);
-  overflow:hidden;
-}
-.hero::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background: radial-gradient(900px 320px at 88% 0%, rgba(var(--accent-rgb),.18), transparent 62%);
-  opacity:.7;
-}
-.hero h1{
-  position:relative;
-  margin:0 0 10px;
-  font-size:26px;
-  font-weight:900;
-  letter-spacing:.2px;
-  color: var(--text);
-}
-.hero h2{
-  position:relative;
-  margin:0 0 8px;
-  font-size:16px;
-  font-weight:800;
-  color: var(--muted);
-}
-.hero p{
-  position:relative;
-  margin:0;
-  color: var(--muted);
-  line-height:1.8;
-  font-weight:600;
-}
-
 .grid{
   display:grid;
   grid-template-columns: 1.05fr 1fr;
@@ -855,12 +812,6 @@ mark{
 </header>
 
 <main class="wrap">
-  <section class="hero" aria-labelledby="hero-title">
-    <h1 id="hero-title">مُحمديات: الباحث القرآني الشامل للتفسير والسياق</h1>
-    <h2>محرك بحث عربي للقرآن الكريم مع تفاسير الطبري وابن كثير والبغوي والسعدي وابن عاشور والقرطبي والميسّر.</h2>
-    <p>استكشف الآيات بسرعة، واطلع على سياقها وتفاسير العلماء، مع تجربة استخدام متوافقة مع اللغة العربية واتجاه RTL.</p>
-  </section>
-
   <div class="grid">
 
   <!-- البحث عن الآية -->
