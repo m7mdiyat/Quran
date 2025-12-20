@@ -42,6 +42,17 @@ let CURRENT = null;
 let LAST_RESULTS = [];
 let VERSES_OPEN = false;
 
+function trackSearch(query) {
+  if (!query || query.length < 2) return;
+  if (window.plausible) {
+    plausible("search_ayah", {
+      props: {
+        query: query.slice(0, 60)
+      }
+    });
+  }
+}
+
 // Context window state: keep list static until hitting edges
 let CONTEXT_STATE = {
   surah: null,
@@ -318,11 +329,23 @@ function searchText(q){
 
 /* ---- Primary selection ---- */
 function setPrimaryAyah(surahNo, ayahNo){
+  trackAyahSelect(surahNo, ayahNo);
   CURRENT = { s: surahNo, a: ayahNo };
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
   updateNavButtons(surahNo, ayahNo);
   updateVisibilityState();
+}
+
+function trackAyahSelect(surah, ayah) {
+  if (window.plausible) {
+    plausible("select_ayah", {
+      props: {
+        surah,
+        ayah
+      }
+    });
+  }
 }
 
 /* ---- Context window ---- */
@@ -658,6 +681,7 @@ async function init(){
 
   const runSearch = () => {
     const q = textSearch.value;
+    trackSearch(q);
     const found = searchText(q);
     renderResults(found, q);
     expandResultsList();
