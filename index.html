@@ -114,13 +114,93 @@ input::placeholder{color:#6e8b74}
 select{ cursor:pointer; }
 
 /* ===== البحث ===== */
-.results{
+.results-shell{
   margin-top:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  transition: padding .3s ease, background .3s ease, border-color .3s ease;
+}
+
+.results-shell.collapsed{
+  padding:8px 10px;
+  background:rgba(61,169,252,.04);
+  border:1px solid rgba(61,169,252,.12);
+  border-radius:12px;
+  box-shadow: 0 12px 38px rgba(0,0,0,.16);
+}
+
+.selected-chip{
+  display:none;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  padding:12px 14px;
+  background:linear-gradient(135deg, rgba(61,169,252,.14), rgba(61,169,252,.05));
+  border:1px solid rgba(61,169,252,.28);
+  border-radius:12px;
+  color:var(--text);
+  cursor:pointer;
+  box-shadow: 0 10px 28px rgba(0,0,0,.25);
+  backdrop-filter: blur(2px);
+  transition: transform .25s ease, box-shadow .25s ease, opacity .28s ease;
+  text-align:right;
+}
+
+.results-shell.collapsed .selected-chip{ display:flex; opacity:1; }
+
+.selected-chip:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
+
+.selected-chip:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(0,0,0,.3);
+}
+
+.selected-chip .chip-icon{
+  width:34px;
+  height:34px;
+  border-radius:12px;
+  background:rgba(61,169,252,.14);
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  color:var(--accent);
+}
+
+.selected-chip .chip-body{ flex:1; min-width:0; }
+.selected-chip .chip-title{ font-weight:900; font-size:14px; margin-bottom:4px; }
+.selected-chip .chip-snippet{
+  font-size:13px;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.selected-chip .chip-action{
+  font-size:12px;
+  color:var(--accent);
+  font-weight:800;
+  padding:8px 10px;
+  border-radius:10px;
+  background:rgba(61,169,252,.12);
+  border:1px solid rgba(61,169,252,.16);
+}
+
+.results{
   max-height:520px;
   overflow:auto;
   border:1px solid var(--border);
   border-radius:14px;
   background:rgba(61,169,252,.05);
+  transition: max-height .45s cubic-bezier(0.4, 0.0, 0.2, 1), opacity .35s ease, transform .35s ease;
+}
+
+.results.collapsed{
+  max-height:0;
+  opacity:0;
+  transform: translateY(-2px) scale(.99);
+  pointer-events:none;
 }
 
 .item{
@@ -277,7 +357,17 @@ select{ cursor:pointer; }
     <div class="block">
       <div class="block-title">محرك البحث</div>
       <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب">
-      <div class="results" id="results"></div>
+      <div class="results-shell" id="resultsShell">
+        <button type="button" class="selected-chip" id="selectedChip" aria-live="polite">
+          <div class="chip-icon" id="chipIcon">✓</div>
+          <div class="chip-body">
+            <div class="chip-title" id="chipTitle">تم اختيار آية</div>
+            <div class="chip-snippet" id="chipSnippet">—</div>
+          </div>
+          <div class="chip-action" id="chipAction">تغيير الاختيار</div>
+        </button>
+        <div class="results" id="results"></div>
+      </div>
     </div>
 
     <div class="block">
