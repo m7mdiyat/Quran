@@ -24,6 +24,9 @@ const tafsirHeader = el("tafsirHeader");
 const tafsirSelect = el("tafsirSelect");
 const tafsirTitle  = el("tafsirTitle");
 const tafsirBox    = el("tafsirBox");
+const tafsirMetaAyah = el("tafsirMetaAyah");
+const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
+const tafsirAyahTag = el("tafsirAyahTag");
 const themeToggle  = el("themeToggle");
 const themeLabel   = el("themeLabel");
 
@@ -422,12 +425,21 @@ function updateTafsirUI(surahNo, ayahNo){
 
   const label = pack?.label || "التفسير";
   tafsirTitle.textContent = label;
+  if(tafsirMetaInterpreter){
+    tafsirMetaInterpreter.innerHTML = `<span class="dot"></span>${label}`;
+  }
+  if(tafsirMetaAyah){
+    tafsirMetaAyah.textContent = `${surahName} • الآية ${ayahNo}`;
+  }
+  if(tafsirAyahTag){
+    tafsirAyahTag.textContent = getAyahTextFromQuran(surahNo, ayahNo) || "—";
+  }
 
   const text = getTafsir(pack?.data, surahNo, ayahNo);
   if(text){
     tafsirBox.innerHTML = formatTafsirText(text, surahNo, ayahNo);
   } else {
-    tafsirBox.innerHTML = `<span class="muted">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</span>`;
+    tafsirBox.innerHTML = `<div class="tafsir-empty">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</div>`;
   }
 }
 
