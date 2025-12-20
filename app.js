@@ -304,13 +304,12 @@ function showAyahContext(surahNo, ayahNo){
 
     ayahContext.appendChild(div);
   }
-codex/change-website-color-theme-to-blue-wa15zm
+
   const activeEl = ayahContext.querySelector(".ayah-line.active");
   if(activeEl){
     activeEl.scrollIntoView({ behavior:"smooth", block:"center" });
   }
-=======
-main
+
   ayahContext.classList.add("animate");
 }
 
