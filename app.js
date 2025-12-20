@@ -27,6 +27,7 @@ const tafsirBox    = el("tafsirBox");
 const tafsirMetaAyah = el("tafsirMetaAyah");
 const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
 const tafsirAyahTag = el("tafsirAyahTag");
+const tafsirDescription = el("tafsirDescription");
 const tafsirSection = el("tafsirSection");
 const versePanel = el("versePanel");
 const toggleVersesBtn = el("toggleVersesBtn");
@@ -51,6 +52,16 @@ let CONTEXT_STATE = {
 
 // Tafsir packs: { key: {label, data:{s:{a:text}} } }
 let TAFSIRS = {};
+
+// Tafsir descriptions
+const TAFSIR_DETAILS = {
+  saadi: "يركّز على المعنى العام بلا إطالة او تعقيد",
+  tabari: "أثري موسوعي - ينقل أقوال السلف بالأسانيد ويرجّح بينها، وفيه عمق",
+  ibn_kathir: "ومتوازن وشائع - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء",
+  qurtubi: "فقهي بحت - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع عناية باللغة والقراءات",
+  baghawi: "أثري مختصر - يقدّم اقوال السلف بأسلوب مختصر ومنظّم",
+  ibn_ashur: "تحليلي وبلاغي - يبرز الجوانب البلاغية والمقاصد العامة، وأسلوبه أدبي عميق"
+};
 
 // English map: { "s": { "a": "text" } }
 let EN_MAP = null;
@@ -445,6 +456,7 @@ function setTafsirVisibility(visible){
     tafsirMetaAyah && (tafsirMetaAyah.textContent = "—");
     tafsirAyahTag && (tafsirAyahTag.textContent = "—");
     tafsirBox.innerHTML = "—";
+    if(tafsirDescription) tafsirDescription.textContent = "—";
   }
 }
 
@@ -466,6 +478,9 @@ function updateTafsirUI(surahNo, ayahNo){
   }
   if(tafsirAyahTag){
     tafsirAyahTag.textContent = getAyahTextFromQuran(surahNo, ayahNo) || "—";
+  }
+  if(tafsirDescription){
+    tafsirDescription.textContent = TAFSIR_DETAILS[key] || "—";
   }
 
   const text = getTafsir(pack?.data, surahNo, ayahNo);
