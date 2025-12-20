@@ -12,7 +12,31 @@
 </script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>مٌحمديات</title>
+<title>مُحمديات | الباحث القرآني الذكي لتفسير الآيات</title>
+<meta name="description" content="مُحمديات هو الباحث القرآني الذكي الذي يجمع بين البحث السريع عن الآيات وتصفح التفاسير الموثوقة مثل الطبري وابن كثير والسعدي والبغوي وابن عاشور، مع واجهة عربية سهلة وRTL." />
+<meta name="keywords" content="القرآن,القرآن الكريم,تفسير القرآن,بحث الآيات,الباحث القرآني,محمديات,مٌحمديات,انسايز,مُحمديات,تفسير الطبري,تفسير ابن كثير,تفسير البغوي,تفسير السعدي,تفسير ابن عاشور,تفسير القرطبي,تفسير الميسر,تلاوة,تدبر القرآن,معاني القرآن,سياق الآيات,محرك بحث القرآن" />
+<link rel="canonical" href="https://www.m7mdiyat.com/" />
+<link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="ar_AR" />
+<meta property="og:site_name" content="مُحمديات | الباحث القرآني" />
+<meta property="og:title" content="مُحمديات | الباحث القرآني الذكي لتفسير الآيات" />
+<meta property="og:description" content="ابحث في القرآن الكريم، اعرض سياق الآيات، وتصفح التفاسير المعتمدة مثل الطبري وابن كثير والسعدي والبغوي وابن عاشور بواجهة عربية سلسة." />
+<meta property="og:url" content="https://www.m7mdiyat.com/" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="مُحمديات | الباحث القرآني الذكي لتفسير الآيات" />
+<meta name="twitter:description" content="منصة بحث قرآني عربية تجمع بين التفسير والسياق وتقدم تفاسير الطبري وابن كثير والسعدي والبغوي وابن عاشور." />
+<meta name="author" content="مُحمديات" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "مُحمديات | الباحث القرآني",
+  "url": "https://www.m7mdiyat.com/",
+  "inLanguage": "ar",
+  "description": "منصة عربية للبحث في القرآن الكريم وعرض التفاسير الموثوقة مع تجربة استخدام محسّنة للغة العربية."
+}
+</script>
 
 <!-- Replit-ish fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -222,6 +246,49 @@ header{
   max-width:1500px;
   margin:auto;
   padding:18px 18px 32px;
+}
+
+.hero{
+  position:relative;
+  margin-bottom:18px;
+  padding:20px 18px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--panel) 78%, rgba(var(--primary-rgb),.18)), color-mix(in srgb, var(--panel2) 85%, rgba(var(--accent-rgb),.12))),
+    radial-gradient(1000px 360px at 12% 0%, rgba(var(--primary-rgb),.22), transparent 60%);
+  border:1px solid var(--border);
+  box-shadow: var(--shadow);
+  overflow:hidden;
+}
+.hero::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background: radial-gradient(900px 320px at 88% 0%, rgba(var(--accent-rgb),.18), transparent 62%);
+  opacity:.7;
+}
+.hero h1{
+  position:relative;
+  margin:0 0 10px;
+  font-size:26px;
+  font-weight:900;
+  letter-spacing:.2px;
+  color: var(--text);
+}
+.hero h2{
+  position:relative;
+  margin:0 0 8px;
+  font-size:16px;
+  font-weight:800;
+  color: var(--muted);
+}
+.hero p{
+  position:relative;
+  margin:0;
+  color: var(--muted);
+  line-height:1.8;
+  font-weight:600;
 }
 
 .grid{
@@ -787,7 +854,14 @@ mark{
   </div>
 </header>
 
-<div class="wrap grid">
+<main class="wrap">
+  <section class="hero" aria-labelledby="hero-title">
+    <h1 id="hero-title">مُحمديات: الباحث القرآني الشامل للتفسير والسياق</h1>
+    <h2>محرك بحث عربي للقرآن الكريم مع تفاسير الطبري وابن كثير والبغوي والسعدي وابن عاشور والقرطبي والميسّر.</h2>
+    <p>استكشف الآيات بسرعة، واطلع على سياقها وتفاسير العلماء، مع تجربة استخدام متوافقة مع اللغة العربية واتجاه RTL.</p>
+  </section>
+
+  <div class="grid">
 
   <!-- البحث عن الآية -->
   <div class="card">
@@ -881,6 +955,8 @@ mark{
   </div>
 
 </div>
+
+</main>
 
 <script src="app.js"></script>
 </body>
