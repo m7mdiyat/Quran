@@ -426,7 +426,21 @@ function formatTafsirText(text, surahNo, ayahNo){
   return `<p class="tafsir-paragraph">${html.replace(/\n/g,"<br>")}</p>`;
 }
 
+function setTafsirVisibility(visible){
+  if(!tafsirSection) return;
+  tafsirSection.classList.toggle("empty", !visible);
+  if(!visible){
+    tafsirHeader.textContent = "اختر آية من نتائج البحث";
+    tafsirTitle.textContent = "—";
+    tafsirMetaInterpreter && (tafsirMetaInterpreter.innerHTML = `<span class=\"dot\"></span>نص التفسير`);
+    tafsirMetaAyah && (tafsirMetaAyah.textContent = "—");
+    tafsirAyahTag && (tafsirAyahTag.textContent = "—");
+    tafsirBox.innerHTML = "—";
+  }
+}
+
 function updateTafsirUI(surahNo, ayahNo){
+  setTafsirVisibility(true);
   const surahName = SURAH_META.find(x=>x.number===surahNo)?.name_ar || `سورة ${surahNo}`;
   tafsirHeader.textContent = `${surahName} — الآية ${ayahNo}`;
 
@@ -662,6 +676,10 @@ async function init(){
     resetPrimaryPanels();
     results.innerHTML = "";
     expandResultsList();
+    setTafsirVisibility(false);
+    ayahContext.innerHTML = "";
+    contextHeader.textContent = "اختر آية من نتائج البحث";
+    CURRENT = null;
     textSearch.focus();
     updateVisibilityState();
   });
@@ -678,4 +696,5 @@ async function init(){
 }
 
 initTheme();
+setTafsirVisibility(false);
 init().catch(err => console.error(err));
