@@ -24,6 +24,10 @@ const tafsirHeader = el("tafsirHeader");
 const tafsirSelect = el("tafsirSelect");
 const tafsirTitle  = el("tafsirTitle");
 const tafsirBox    = el("tafsirBox");
+const tafsirMetaAyah = el("tafsirMetaAyah");
+const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
+const tafsirAyahTag = el("tafsirAyahTag");
+const tafsirSection = el("tafsirSection");
 const themeToggle  = el("themeToggle");
 const themeLabel   = el("themeLabel");
 
@@ -413,7 +417,21 @@ function formatTafsirText(text, surahNo, ayahNo){
   return html.replace(/\n/g,"<br>");
 }
 
+function setTafsirVisibility(visible){
+  if(!tafsirSection) return;
+  tafsirSection.classList.toggle("empty", !visible);
+  if(!visible){
+    tafsirHeader.textContent = "اختر آية من نتائج البحث";
+    tafsirTitle.textContent = "—";
+    tafsirMetaInterpreter && (tafsirMetaInterpreter.innerHTML = `<span class=\"dot\"></span>نص التفسير`);
+    tafsirMetaAyah && (tafsirMetaAyah.textContent = "—");
+    tafsirAyahTag && (tafsirAyahTag.textContent = "—");
+    tafsirBox.innerHTML = "—";
+  }
+}
+
 function updateTafsirUI(surahNo, ayahNo){
+  setTafsirVisibility(true);
   const surahName = SURAH_META.find(x=>x.number===surahNo)?.name_ar || `سورة ${surahNo}`;
   tafsirHeader.textContent = `${surahName} — الآية ${ayahNo}`;
 
@@ -422,12 +440,21 @@ function updateTafsirUI(surahNo, ayahNo){
 
   const label = pack?.label || "التفسير";
   tafsirTitle.textContent = label;
+  if(tafsirMetaInterpreter){
+    tafsirMetaInterpreter.innerHTML = `<span class="dot"></span>${label}`;
+  }
+  if(tafsirMetaAyah){
+    tafsirMetaAyah.textContent = `${surahName} • الآية ${ayahNo}`;
+  }
+  if(tafsirAyahTag){
+    tafsirAyahTag.textContent = getAyahTextFromQuran(surahNo, ayahNo) || "—";
+  }
 
   const text = getTafsir(pack?.data, surahNo, ayahNo);
   if(text){
     tafsirBox.innerHTML = formatTafsirText(text, surahNo, ayahNo);
   } else {
-    tafsirBox.innerHTML = `<span class="muted">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</span>`;
+    tafsirBox.innerHTML = `<div class="tafsir-empty">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</div>`;
   }
 }
 
@@ -613,6 +640,10 @@ async function init(){
     LAST_RESULTS = [];
     results.innerHTML = "";
     expandResultsList();
+    setTafsirVisibility(false);
+    ayahContext.innerHTML = "";
+    contextHeader.textContent = "اختر آية من نتائج البحث";
+    CURRENT = null;
     textSearch.focus();
   });
 
@@ -626,4 +657,5 @@ async function init(){
 }
 
 initTheme();
+setTafsirVisibility(false);
 init().catch(err => console.error(err));
