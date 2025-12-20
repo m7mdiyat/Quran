@@ -1,46 +1,153 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>مٌحمديات</title>
+
+<!-- Replit-ish fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
 
 <style>
 :root{
-  --bg:#031226;
-  --panel:#0a1f39;
-  --field:#0f2a4a;
-  --border:rgba(61,169,252,.18);
-  --text:#e8f3ff;
-  --muted:#a8c7e6;
-  --accent:#3da9fc;
+  /* Emerald + Gold (Replit-ish) */
+  --bg0:#07140f;
+  --bg1:#061a12;
+  --panel: rgba(10, 26, 18, .72);
+  --panel2: rgba(10, 26, 18, .52);
+  --field: rgba(9, 24, 16, .65);
+
+  --border: rgba(120, 255, 180, .14);
+  --border2: rgba(255, 215, 110, .14);
+
+  --text:#ecfff5;
+  --muted: rgba(236,255,245,.72);
+
+  --primary:#4fe39a;    /* emerald */
+  --accent:#f3c969;     /* gold */
+  --danger:#ff6b6b;
+
+  --shadow: 0 18px 55px rgba(0,0,0,.35);
+  --shadow2: 0 10px 30px rgba(0,0,0,.22);
+
+  --radius: 18px;
+  --radius2: 14px;
 }
 
 *{box-sizing:border-box}
+html,body{height:100%}
 
 body{
   margin:0;
-  font-family: system-ui,"Segoe UI",Tahoma,Arial;
-  background:linear-gradient(180deg,#020c1b,#031226);
   color:var(--text);
+  font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Tahoma, Arial;
+  background:
+    radial-gradient(1100px 600px at 10% -10%, rgba(79,227,154,.25), transparent 60%),
+    radial-gradient(900px 520px at 95% 0%, rgba(243,201,105,.22), transparent 55%),
+    radial-gradient(900px 700px at 65% 115%, rgba(79,227,154,.14), transparent 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  overflow-x:hidden;
 }
+
+/* Subtle noise (no external assets) */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,.04) 0 1px, transparent 1px),
+    radial-gradient(circle at 80% 30%, rgba(255,255,255,.03) 0 1px, transparent 1px),
+    radial-gradient(circle at 40% 70%, rgba(255,255,255,.03) 0 1px, transparent 1px);
+  background-size: 120px 120px, 160px 160px, 200px 200px;
+  opacity:.55;
+  mix-blend-mode: overlay;
+}
+
+a{color:inherit}
 
 header{
-  padding:20px 16px;
-  border-bottom:1px solid var(--border);
-  background:rgba(61,169,252,.08);
+  position:sticky;
+  top:0;
+  z-index:5;
+  padding:16px 14px;
+  background: linear-gradient(180deg, rgba(6,20,14,.78), rgba(6,20,14,.35));
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid rgba(120,255,180,.10);
 }
 
-header h1{
+.topbar{
+  max-width:1500px;
+  margin:auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.logo{
+  width:42px; height:42px;
+  border-radius:14px;
+  background:
+    radial-gradient(16px 16px at 30% 25%, rgba(255,255,255,.35), transparent 60%),
+    linear-gradient(135deg, rgba(79,227,154,.35), rgba(243,201,105,.25));
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow: var(--shadow2);
+  display:grid;
+  place-items:center;
+  font-weight:900;
+  color: rgba(255,255,255,.92);
+}
+
+.brand h1{
   margin:0;
-  font-size:18px;
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.2px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.brand small{
+  display:block;
+  margin-top:2px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:600;
+}
+
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+  color: var(--muted);
+  font-size:12px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.18);
+}
+.pill b{
+  color:var(--accent);
   font-weight:800;
 }
 
+/* Layout */
 .wrap{
   max-width:1500px;
   margin:auto;
-  padding:18px;
+  padding:18px 18px 32px;
 }
 
 .grid{
@@ -52,68 +159,126 @@ header h1{
 @media(max-width:1100px){ .grid{grid-template-columns:1fr} }
 
 .card{
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:18px;
   position:relative;
+  border-radius: var(--radius);
+  padding:18px;
+  background: linear-gradient(180deg, rgba(10,26,18,.74), rgba(10,26,18,.55));
+  border:1px solid rgba(120,255,180,.14);
+  box-shadow: var(--shadow);
   overflow:hidden;
+  backdrop-filter: blur(10px);
 }
 
 .card::before{
   content:"";
   position:absolute;
   inset:-1px;
-  background:radial-gradient(1000px 400px at 15% 0%, rgba(61,169,252,.16), transparent 60%);
+  background:
+    radial-gradient(900px 420px at 12% 0%, rgba(79,227,154,.22), transparent 62%),
+    radial-gradient(800px 420px at 95% 10%, rgba(243,201,105,.18), transparent 60%);
   pointer-events:none;
 }
 
 .card h2{
   position:relative;
-  margin:0 0 12px;
-  font-size:15px;
+  margin:0 0 10px;
+  font-size:14px;
   font-weight:900;
-  color:var(--accent);
+  color: var(--primary);
+  letter-spacing:.2px;
 }
 
 .section-note{
+  position:relative;
+  margin:0 0 14px;
   color:var(--muted);
   font-size:13px;
-  margin:0 0 14px;
-  line-height:1.6;
+  line-height:1.65;
 }
 
 .block{
+  position:relative;
   padding:14px;
-  border:1px solid var(--border);
-  border-radius:14px;
-  background:rgba(61,169,252,.05);
+  border-radius: var(--radius2);
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
   margin-bottom:16px;
 }
 
 .block-title{
-  font-size:13px;
-  font-weight:800;
   margin:0 0 10px;
-  color:var(--accent);
+  font-size:13px;
+  font-weight:900;
+  color: var(--accent);
+  letter-spacing:.2px;
 }
 
 .muted{ color:var(--muted); }
 
-/* ===== إدخال ===== */
+/* Inputs */
+.inputRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.inputRow > *{ flex:1; }
+
 input, select{
   width:100%;
   padding:12px 14px;
-  border-radius:12px;
-  border:1px solid var(--border);
-  background:var(--field);
+  border-radius: 14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(6,18,12,.55);
   color:var(--text);
   font-size:14px;
+  outline:none;
+  transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
 }
-input::placeholder{color:#6e8b74}
+input::placeholder{ color: rgba(236,255,245,.45); }
 select{ cursor:pointer; }
 
-/* ===== البحث ===== */
+input:focus, select:focus{
+  border-color: rgba(79,227,154,.40);
+  box-shadow: 0 0 0 4px rgba(79,227,154,.12);
+}
+
+.btn{
+  flex:0 0 auto;
+  padding:12px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  cursor:pointer;
+  font-weight:800;
+  transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease, opacity .2s ease;
+  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+}
+.btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.085); }
+.btn:active{ transform: translateY(0px); }
+.btn:focus-visible{ outline:2px solid rgba(243,201,105,.7); outline-offset:3px; }
+.btn-ghost{ background: rgba(255,255,255,.04); box-shadow:none; }
+.btn-ghost:hover{ background: rgba(255,255,255,.07); }
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius: 999px;
+  font-size:12px;
+  font-weight:800;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.05);
+  color: var(--muted);
+}
+.badge .dot{
+  width:8px; height:8px; border-radius:999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79,227,154,.14);
+}
+
+/* Search results shell */
 .results-shell{
   margin-top:12px;
   display:flex;
@@ -124,10 +289,9 @@ select{ cursor:pointer; }
 
 .results-shell.collapsed{
   padding:8px 10px;
-  background:rgba(61,169,252,.04);
-  border:1px solid rgba(61,169,252,.12);
-  border-radius:12px;
-  box-shadow: 0 12px 38px rgba(0,0,0,.16);
+  background: rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
 }
 
 .selected-chip{
@@ -136,35 +300,37 @@ select{ cursor:pointer; }
   gap:10px;
   width:100%;
   padding:12px 14px;
-  background:linear-gradient(135deg, rgba(61,169,252,.14), rgba(61,169,252,.05));
-  border:1px solid rgba(61,169,252,.28);
-  border-radius:12px;
+  background:
+    radial-gradient(400px 120px at 20% 0%, rgba(79,227,154,.20), transparent 60%),
+    linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:14px;
   color:var(--text);
   cursor:pointer;
-  box-shadow: 0 10px 28px rgba(0,0,0,.25);
-  backdrop-filter: blur(2px);
+  box-shadow: 0 16px 45px rgba(0,0,0,.28);
+  backdrop-filter: blur(8px);
   transition: transform .25s ease, box-shadow .25s ease, opacity .28s ease;
   text-align:right;
 }
 
 .results-shell.collapsed .selected-chip{ display:flex; opacity:1; }
 
-.selected-chip:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; }
-
 .selected-chip:hover{
   transform: translateY(-1px);
-  box-shadow: 0 14px 34px rgba(0,0,0,.3);
+  box-shadow: 0 20px 55px rgba(0,0,0,.33);
 }
 
 .selected-chip .chip-icon{
-  width:34px;
-  height:34px;
-  border-radius:12px;
-  background:rgba(61,169,252,.14);
+  width:38px;
+  height:38px;
+  border-radius:14px;
+  background: rgba(79,227,154,.14);
+  border: 1px solid rgba(79,227,154,.22);
   display:grid;
   place-items:center;
   font-weight:900;
-  color:var(--accent);
+  color: var(--primary);
+  direction:ltr;
 }
 
 .selected-chip .chip-body{ flex:1; min-width:0; }
@@ -176,23 +342,24 @@ select{ cursor:pointer; }
   overflow:hidden;
   text-overflow:ellipsis;
 }
-
 .selected-chip .chip-action{
   font-size:12px;
-  color:var(--accent);
-  font-weight:800;
+  color: rgba(255,255,255,.92);
+  font-weight:900;
   padding:8px 10px;
-  border-radius:10px;
-  background:rgba(61,169,252,.12);
-  border:1px solid rgba(61,169,252,.16);
+  border-radius:12px;
+  background: rgba(243,201,105,.14);
+  border:1px solid rgba(243,201,105,.22);
 }
 
+/* Results list */
 .results{
   max-height:520px;
   overflow:auto;
-  border:1px solid var(--border);
+  border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
-  background:rgba(61,169,252,.05);
+  background: rgba(255,255,255,.03);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
   transition: max-height .45s cubic-bezier(0.4, 0.0, 0.2, 1), opacity .35s ease, transform .35s ease;
 }
 
@@ -205,31 +372,36 @@ select{ cursor:pointer; }
 
 .item{
   padding:14px;
-  border-bottom:1px solid var(--border);
+  border-bottom:1px solid rgba(255,255,255,.08);
   cursor:pointer;
   transition: background .12s ease, transform .12s ease;
 }
 .item:last-child{border-bottom:none}
 .item:hover{
-  background:rgba(61,169,252,.08);
+  background: rgba(255,255,255,.06);
   transform: translateY(-1px);
 }
 
-.item .line1{ font-weight:900; margin-bottom:6px; }
-.item .line2{ font-size:14px; color:var(--muted); line-height:1.7; }
+.item .line1{ font-weight:900; margin-bottom:6px; color: rgba(236,255,245,.95); }
+.item .line2{ font-size:14px; color:var(--muted); line-height:1.75; }
 
-/* ===== السياق ===== */
+mark{
+  background: rgba(243,201,105,.22);
+  color: rgba(255,255,255,.96);
+  padding:0 4px;
+  border-radius:8px;
+}
+
+/* Context */
 .context-header{
   font-size:13px;
   color:var(--muted);
   margin-bottom:12px;
-  position:relative;
 }
 
 .ayah-context{
   direction:rtl;
   text-align:right;
-  position:relative;
 }
 
 .ayah-line{
@@ -237,23 +409,23 @@ select{ cursor:pointer; }
   margin-bottom:8px;
   line-height:2;
   font-size:18px;
-  border:1px solid rgba(61,169,252,.16);
+  border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
-  background:rgba(61,169,252,.04);
+  background: rgba(255,255,255,.03);
   cursor:pointer;
-  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
 
 .ayah-line:hover{
-  background:rgba(61,169,252,.10);
-  border-color: rgba(61,169,252,.35);
+  background: rgba(255,255,255,.06);
+  border-color: rgba(79,227,154,.22);
 }
 
 .ayah-line .num{
-  color:var(--muted);
+  color: rgba(236,255,245,.55);
   font-size:12px;
   margin-left:8px;
-  font-weight:800;
+  font-weight:900;
   direction:ltr;
   unicode-bidi:isolate;
   display:inline-block;
@@ -262,9 +434,11 @@ select{ cursor:pointer; }
 }
 
 .ayah-line.active{
-  background:linear-gradient(90deg, rgba(61,169,252,.32), rgba(61,169,252,.08));
-  border:1px solid rgba(61,169,252,.55);
-  box-shadow: 0 0 0 1px rgba(61,169,252,.18) inset;
+  background:
+    radial-gradient(420px 120px at 10% 0%, rgba(79,227,154,.22), transparent 60%),
+    linear-gradient(90deg, rgba(79,227,154,.18), rgba(255,255,255,.03));
+  border:1px solid rgba(79,227,154,.35);
+  box-shadow: 0 0 0 1px rgba(79,227,154,.14) inset;
   font-weight:900;
 }
 
@@ -278,10 +452,11 @@ select{ cursor:pointer; }
   text-align:left;
 }
 
+/* Tafsir */
 .tafsir-section{
-  border:1px solid var(--border);
+  border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
-  background:rgba(61,169,252,.07);
+  background: rgba(255,255,255,.03);
   padding:14px;
   display:flex;
   flex-direction:column;
@@ -290,7 +465,7 @@ select{ cursor:pointer; }
 
 .tafsir-title{
   font-weight:900;
-  color:var(--accent);
+  color: var(--accent);
   margin:0 0 10px;
   font-size:14px;
 }
@@ -305,31 +480,23 @@ select{ cursor:pointer; }
 .tafsir-box{
   max-height:560px;
   overflow:auto;
-  line-height:1.95;
+  line-height:2.05;
   font-size:14px;
   color:var(--text);
-  background:rgba(61,169,252,.05);
-  border:1px solid rgba(61,169,252,.18);
-  border-radius:12px;
+  background: rgba(6,18,12,.35);
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;
   padding:12px 14px;
 }
 
-.tafsir-box::-webkit-scrollbar{ width:10px; }
-.tafsir-box::-webkit-scrollbar-thumb{
-  background:rgba(61,169,252,.3);
-  border-radius:10px;
-}
-.tafsir-box::-webkit-scrollbar-track{ background:rgba(61,169,252,.05); }
-
-.tafsir-paragraph{
-  margin:0 0 12px;
-  line-height:2;
-}
+.tafsir-paragraph{ margin:0 0 12px; line-height:2.1; }
 .tafsir-paragraph:last-child{ margin-bottom:0; }
 
+/* Ayah inside Tafsir = green */
 .ayah-quote{
-  color:#7be27b;
-  font-weight:800;
+  color: var(--primary);
+  font-weight:900;
+  text-shadow: 0 0 18px rgba(79,227,154,.20);
 }
 
 .smallRow{
@@ -339,12 +506,54 @@ select{ cursor:pointer; }
   margin-bottom:12px;
 }
 
+.hr{
+  height:1px;
+  background: rgba(255,255,255,.10);
+  margin:12px 0;
+  border-radius:999px;
+}
+
+.footerHint{
+  margin-top:10px;
+  color: rgba(236,255,245,.62);
+  font-size:12px;
+  line-height:1.6;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.footerHint code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New";
+  font-size:12px;
+  padding:2px 8px;
+  border-radius:10px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: rgba(236,255,245,.9);
+}
+
+.quran-font{
+  font-family: "Amiri", serif;
+}
+
 </style>
 </head>
 
 <body>
+
 <header>
-  <h1>مٌحمديات</h1>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">ق</div>
+      <div style="min-width:0">
+        <h1>مٌحمديات</h1>
+        <small>بحث + سياق + تفسير (أوفلاين)</small>
+      </div>
+    </div>
+    <div class="pill" title="ستايل مستوحى من Replit">
+      <span>Theme:</span> <b>Emerald • Gold</b>
+    </div>
+  </div>
 </header>
 
 <div class="wrap grid">
@@ -352,11 +561,19 @@ select{ cursor:pointer; }
   <!-- البحث عن الآية -->
   <div class="card">
     <h2>البحث عن الآية</h2>
-    <p class="section-note">اعثر على الآية بسرعة، ثم راجع الآيات المعروضة بنفس الشاشة عبر اختيار اللغة المناسبة.</p>
+    <p class="section-note">اكتب جزءًا من الآية، اختر النتيجة، ثم راجع <b>السياق</b> و <b>التفسير</b> بنفس السلاسة.</p>
 
     <div class="block">
-      <div class="block-title">محرك البحث</div>
-      <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <div class="block-title" style="margin:0">محرك البحث</div>
+        <span class="badge"><span class="dot"></span> اكتب حرفين فأكثر</span>
+      </div>
+
+      <div class="inputRow">
+        <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب" />
+        <button type="button" class="btn btn-ghost" id="clearBtn" title="مسح البحث">مسح</button>
+      </div>
+
       <div class="results-shell" id="resultsShell">
         <button type="button" class="selected-chip" id="selectedChip" aria-live="polite">
           <div class="chip-icon" id="chipIcon">✓</div>
@@ -364,14 +581,22 @@ select{ cursor:pointer; }
             <div class="chip-title" id="chipTitle">تم اختيار آية</div>
             <div class="chip-snippet" id="chipSnippet">—</div>
           </div>
-          <div class="chip-action" id="chipAction">تغيير الاختيار</div>
+          <div class="chip-action" id="chipAction">تغيير</div>
         </button>
+
         <div class="results" id="results"></div>
+
+        <div class="footerHint">
+          <span>اختصارات:</span>
+          <code>Esc</code> لإظهار النتائج
+          <code>Enter</code> لاختيار أول نتيجة
+        </div>
       </div>
     </div>
 
     <div class="block">
       <div class="block-title">عرض الآيات الحالية</div>
+
       <div class="smallRow">
         <select id="langSelect">
           <option value="ar">العربية</option>
@@ -379,15 +604,16 @@ select{ cursor:pointer; }
           <option value="both">العربية + English</option>
         </select>
       </div>
+
       <div id="contextHeader" class="context-header">اختر آية من نتائج البحث</div>
-      <div id="ayahContext" class="ayah-context"></div>
+      <div id="ayahContext" class="ayah-context quran-font"></div>
     </div>
   </div>
 
   <!-- التفسير -->
   <div class="card">
     <h2>التفسير</h2>
-    <p class="section-note">تظهر الآية باللون الأخضر داخل نص التفسير لتوضيح الفرق بين كلام الله وتوضيحات المفسّر.</p>
+    <p class="section-note">تظهر الآية باللون الأخضر داخل نص التفسير لتمييز كلام الله عن شرح المفسّر.</p>
 
     <div class="block">
       <div class="block-title">اختيار المفسّر</div>
@@ -406,6 +632,12 @@ select{ cursor:pointer; }
       <div id="tafsirHeader" class="tafsir-meta">اختر آية من نتائج البحث</div>
       <div id="tafsirTitle" class="tafsir-title">—</div>
       <div id="tafsirBox" class="tafsir-box">—</div>
+    </div>
+
+    <div class="hr"></div>
+    <div class="footerHint">
+      <span>ملاحظة:</span>
+      <span>إذا لم يظهر تفسير لآية، تأكد أن ملفات <code>tafseer_*.json</code> موجودة في نفس المجلد.</span>
     </div>
   </div>
 

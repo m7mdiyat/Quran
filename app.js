@@ -14,6 +14,7 @@ const selectedChip = el("selectedChip");
 const chipTitle = el("chipTitle");
 const chipSnippet = el("chipSnippet");
 const chipIcon = el("chipIcon");
+const clearBtn = el("clearBtn");
 
 const ayahContext   = el("ayahContext");
 const contextHeader = el("contextHeader");
@@ -271,14 +272,14 @@ function searchText(q){
   return scored.slice(0, 60);
 }
 
-/* ---- Primary selection (used by results hover AND context click) ---- */
+/* ---- Primary selection ---- */
 function setPrimaryAyah(surahNo, ayahNo){
   CURRENT = { s: surahNo, a: ayahNo };
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
 }
 
-/* ---- Context (2 before + 7 after) ---- */
+/* ---- Context window ---- */
 function computeContextWindow(surah, ayahNo){
   const before = 2;
   const after = 7;
@@ -292,8 +293,7 @@ function computeContextWindow(surah, ayahNo){
     end = len;
     start = Math.max(1, end - windowSize + 1);
   }
-
-  return { start, end, before, after };
+  return { start, end };
 }
 
 function showAyahContext(surahNo, ayahNo){
@@ -303,8 +303,6 @@ function showAyahContext(surahNo, ayahNo){
   const surahName = SURAH_META.find(x=>x.number===surahNo)?.name_ar || surah.name_ar;
   const len = surah.ayahs.length;
 
-  // Maintain a static window unless the selection hits the first/last item
-  // or a new surah/out-of-range ayah is chosen.
   const sameSurah = CONTEXT_STATE.surah === surahNo;
   const withinWindow = sameSurah && ayahNo >= CONTEXT_STATE.start && ayahNo <= CONTEXT_STATE.end;
   const isFirst = withinWindow && ayahNo === CONTEXT_STATE.start && CONTEXT_STATE.start > 1;
@@ -322,10 +320,6 @@ function showAyahContext(surahNo, ayahNo){
 
   const mode = langSelect?.value || "ar";
 
-  ayahContext.classList.remove("animate");
-  // force reflow for animation restart
-  void ayahContext.offsetWidth;
-
   ayahContext.innerHTML = "";
   contextHeader.textContent = `${surahName} — الآيات ${start} إلى ${end}`;
 
@@ -334,7 +328,6 @@ function showAyahContext(surahNo, ayahNo){
     if(!a) continue;
 
     const numHtml = `<span class="num" dir="ltr">(${i})</span>`;
-
     const div = document.createElement("div");
     div.className = "ayah-line" + (i===ayahNo ? " active" : "");
     div.title = "اضغط لجعل هذه الآية هي الرئيسية";
@@ -346,22 +339,18 @@ function showAyahContext(surahNo, ayahNo){
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     } else if(mode === "en"){
-      div.innerHTML = `${numHtml} ${enText || "—"}`;
+      div.innerHTML = `${numHtml} ${escapeHtml(enText || "—")}`;
       div.style.direction = "ltr";
       div.style.textAlign = "left";
     } else {
-      div.innerHTML = `${numHtml} ${a.text}<span class="en">${enText || "—"}</span>`;
+      div.innerHTML = `${numHtml} ${a.text}<span class="en">${escapeHtml(enText || "—")}</span>`;
       div.style.direction = "rtl";
       div.style.textAlign = "right";
     }
 
-    // ✅ Click in context: make it the primary ayah + update everything
     div.onclick = () => setPrimaryAyah(surahNo, i);
-
     ayahContext.appendChild(div);
   }
-
-  ayahContext.classList.add("animate");
 }
 
 function getAyahTextFromQuran(surahNo, ayahNo){
@@ -386,7 +375,6 @@ function formatTafsirText(text, surahNo, ayahNo){
   if(paragraphs.length > 1){
     return paragraphs.map(p=>`<p class="tafsir-paragraph">${p.replace(/\n/g,"<br>")}</p>`).join("");
   }
-
   return html.replace(/\n/g,"<br>");
 }
 
@@ -404,7 +392,7 @@ function updateTafsirUI(surahNo, ayahNo){
   if(text){
     tafsirBox.innerHTML = formatTafsirText(text, surahNo, ayahNo);
   } else {
-    tafsirBox.innerHTML = `<span class=\"muted\">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</span>`;
+    tafsirBox.innerHTML = `<span class="muted">— (لم يتم العثور على ${label} لهذه الآية داخل الملف)</span>`;
   }
 }
 
@@ -457,27 +445,63 @@ function expandResultsList(){
   results.addEventListener("transitionend", tidy);
 }
 
+/* ---- Highlight matches (visual niceness) ---- */
+function highlightText(rawText, query){
+  const nq = normArabic(query);
+  if(nq.length < 2) return escapeHtml(rawText);
+
+  // highlight each term (>=2 chars)
+  const terms = [...new Set(nq.split(" ").map(t=>t.trim()).filter(t=>t.length>=2))];
+  if(!terms.length) return escapeHtml(rawText);
+
+  // naive highlight on ORIGINAL rawText by trying exact terms (best effort)
+  let html = escapeHtml(rawText);
+
+  // Sort by length to avoid partial overlaps
+  terms.sort((a,b)=>b.length-a.length);
+
+  for(const t of terms){
+    // We can’t perfectly map normalized term to original with harakat,
+    // so we highlight only if the plain term exists in html.
+    const safe = escapeRegex(escapeHtml(t));
+    const re = new RegExp(safe, "g");
+    html = html.replace(re, `<mark>${escapeHtml(t)}</mark>`);
+  }
+  return html;
+}
+
 /* ---- Render results ---- */
-function renderResults(items){
+function renderResults(items, query){
   LAST_RESULTS = items;
   results.classList.remove("collapsed");
   resultsShell?.classList.remove("collapsed");
   results.style.maxHeight = "";
   results.innerHTML = "";
+
+  if(!items.length){
+    results.innerHTML = `
+      <div class="item" style="cursor:default;">
+        <div class="line1">لا توجد نتائج</div>
+        <div class="line2">جرّب كلمة أخرى أو اكتب جزءًا أطول من الآية.</div>
+      </div>
+    `;
+    return;
+  }
+
   for(const it of items){
     const surahName = SURAH_META.find(s=>s.number===it.s)?.name_ar || `سورة ${it.s}`;
 
     const div = document.createElement("div");
     div.className = "item";
     div.innerHTML = `
-      <div class="line1">${surahName} — الآية ${it.a}</div>
-      <div class="line2">${it.textRaw}</div>
+      <div class="line1">${escapeHtml(surahName)} — الآية ${it.a}</div>
+      <div class="line2">${highlightText(it.textRaw, query)}</div>
     `;
 
     // Hover: update panels immediately
     div.onmouseenter = () => setPrimaryAyah(it.s, it.a);
 
-    // Click: make it the primary selection without opening external links
+    // Click: primary selection + collapse to chip
     div.onclick = () => {
       setPrimaryAyah(it.s, it.a);
       collapseResultsToChip(it);
@@ -495,6 +519,15 @@ tafsirSelect.onchange = () => {
 langSelect.onchange = () => {
   if(CURRENT) showAyahContext(CURRENT.s, CURRENT.a);
 };
+
+/* ---- Tiny debounce ---- */
+function debounce(fn, ms=120){
+  let t = null;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(()=>fn(...args), ms);
+  };
+}
 
 /* ---- Init ---- */
 async function loadOne(key, file, label){
@@ -531,19 +564,50 @@ async function init(){
   await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي");
   await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور");
 
-  textSearch.oninput = () => {
-    const found = searchText(textSearch.value);
-    renderResults(found);
+  const runSearch = () => {
+    const q = textSearch.value;
+    const found = searchText(q);
+    renderResults(found, q);
     expandResultsList();
   };
+
+  textSearch.oninput = debounce(runSearch, 120);
+
+  // Enter selects first result
+  textSearch.addEventListener("keydown", (e) => {
+    if(e.key === "Enter"){
+      if(LAST_RESULTS?.length){
+        const it = LAST_RESULTS[0];
+        setPrimaryAyah(it.s, it.a);
+        collapseResultsToChip(it);
+      }
+    }
+    if(e.key === "Escape"){
+      expandResultsList();
+      textSearch.blur();
+    }
+  });
 
   selectedChip.onclick = () => {
     expandResultsList();
     textSearch?.focus();
   };
+
+  clearBtn?.addEventListener("click", () => {
+    textSearch.value = "";
+    LAST_RESULTS = [];
+    results.innerHTML = "";
+    expandResultsList();
+    textSearch.focus();
+  });
+
+  // First nice empty state
+  results.innerHTML = `
+    <div class="item" style="cursor:default;">
+      <div class="line1">ابدأ بالبحث</div>
+      <div class="line2">اكتب حرفين فأكثر لعرض النتائج هنا.</div>
+    </div>
+  `;
 }
 
-init().catch(err => {
-  // صامت قدر الإمكان (ممكن تطبع بالكونسول لو تبغى)
-  console.error(err);
-});
+init().catch(err => console.error(err));
