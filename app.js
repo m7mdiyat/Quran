@@ -67,7 +67,7 @@ function applyTheme(themeId){
   CURRENT_THEME = theme.id;
   document.body.dataset.theme = theme.id;
   if(themeLabel) themeLabel.textContent = theme.label;
-  themeToggle?.setAttribute("aria-label", `تغيير الثيم (الحالي: ${theme.label})`);
+  themeToggle?.setAttribute("aria-label", `تغيير جو الصفحة (الحالي: ${theme.label})`);
   try{
     localStorage.setItem("theme", theme.id);
   }catch{}
@@ -648,12 +648,12 @@ async function init(){
 
   // Load tafsir packs (silent)
   await loadOne("muyassar",   "tafseer_muyassar.json",   "التفسير الميسّر");
-  await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي");
-  await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري");
-  await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير");
-  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي");
-  await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي");
-  await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور");
+  await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي — يركّز على المعنى العام بلا إطالة او تعقيد");
+  await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري — أثري موسوعي - ينقل أقوال السلف بالأسانيد ويرجّح بينها، وفيه عمق");
+  await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير — ومتوازن وشائع - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء");
+  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي — فقهي بحت - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع عناية باللغة والقراءات");
+  await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي — أثري مختصر - يقدّم اقوال السلف بأسلوب مختصر ومنظّم");
+  await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور — تحليلي وبلاغي - يبرز الجوانب البلاغية والمقاصد العامة، وأسلوبه أدبي عميق");
 
   const runSearch = () => {
     const q = textSearch.value;
