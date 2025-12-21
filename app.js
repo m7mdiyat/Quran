@@ -127,7 +127,7 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}){
     u.searchParams.delete("v");
     u.searchParams.delete("ayah");
     cleanUrl = u.origin + u.pathname;
-    history.replaceState({}, "", u.toString());
+    history.replaceState({}, "", cleanUrl);
   }
 
   const canonical = cleanUrl || DEFAULT_SEO.canonical || (new URL(window.location.href).origin + new URL(window.location.href).pathname);
@@ -434,7 +434,7 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true } = 
 
 function trackAyahSelect(surah, ayah) {
   if (!window.plausible) return;
-  const ref = `${Number(surah)}:${Number(ayah)}`;
+  const ref = `${Number(surah)}-${Number(ayah)}`;
   plausible("select_ayah", { props: { ref } });
 }
 
