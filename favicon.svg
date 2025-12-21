@@ -1,19 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Quran icon">
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="cover" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#0f3c24" />
-      <stop offset="100%" stop-color="#0b2c1a" />
+    <linearGradient id="cover" x1="14" y1="10" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E3A2A"/>
+      <stop offset="1" stop-color="#1F6A4A"/>
     </linearGradient>
-    <linearGradient id="ribbon" x1="0%" x2="0%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#f4d37b" />
-      <stop offset="100%" stop-color="#d7a736" />
+    <linearGradient id="spine" x1="8" y1="12" x2="24" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#124B34"/>
+      <stop offset="1" stop-color="#0C3324"/>
+    </linearGradient>
+    <linearGradient id="page" x1="20" y1="18" x2="44" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F5E8" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#E8E3CE" stop-opacity="0.92"/>
     </linearGradient>
   </defs>
-  <rect width="58" height="52" x="3" y="6" rx="8" fill="url(#cover)" stroke="#e7c86b" stroke-width="2.6"/>
-  <path d="M21 10v44" stroke="#f4d37b" stroke-width="2.4" stroke-linecap="round" opacity="0.8" />
-  <path d="M43 10v44" stroke="#f4d37b" stroke-width="2.4" stroke-linecap="round" opacity="0.8" />
-  <rect x="12" y="16" width="40" height="32" rx="5" fill="#103824" stroke="#f4d37b" stroke-width="2" opacity="0.95"/>
-  <path d="M32 20.5c-5.5 0-10 4.1-10 9 0 4.3 2.9 7.9 7 8.9v4.6l3-2.6 3 2.6v-4.6c4.1-1 7-4.6 7-8.9 0-4.9-4.5-9-10-9z" fill="#0f2719" stroke="#f4d37b" stroke-width="1.8" stroke-linejoin="round" />
-  <path d="M32 24.5l1.7 3.4 3.7.5-2.7 2.7.7 3.8-3.4-1.8-3.4 1.8.7-3.8-2.7-2.7 3.7-.5z" fill="#f4d37b" />
-  <path d="M32 8c2.2 0 4 1.8 4 4v5h-8v-5c0-2.2 1.8-4 4-4z" fill="url(#ribbon)" stroke="#b98219" stroke-width="1.4" />
+  <rect x="6" y="10" width="52" height="44" rx="11" fill="url(#cover)" stroke="#D5C28F" stroke-width="1.6"/>
+  <rect x="8" y="12" width="16" height="40" rx="8" fill="url(#spine)"/>
+  <rect x="18" y="14" width="38" height="36" rx="8" fill="url(#page)" stroke="#C5B17D" stroke-width="1.4"/>
+  <path d="M18 24h18c3.3 0 6 2.7 6 6v10c-1.8-1.2-3.8-2-6-2H18V24Z" fill="#DAD3B6" opacity=".9"/>
+  <path d="M18 42h18c2.2 0 4.2.8 6 2v2.4c-1.8-1.2-3.8-1.8-6-1.8H18V42Z" fill="#B9AF89" opacity=".65"/>
+  <path d="M26 20v24m8-24v24" stroke="#B38F40" stroke-width="2" stroke-linecap="round"/>
+  <path d="M36 32c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9Z" fill="#145F42" stroke="#D5C28F" stroke-width="1.6"/>
+  <path d="M27 26.6c0-.6.6-.98 1.15-.74l6.3 2.8c.52.24.6.94.14 1.26l-1.56 1.1a.8.8 0 0 0-.32.64v3.48c0 .58-.6.96-1.12.74l-6.32-2.76a.8.8 0 0 1-.48-.74V30a.8.8 0 0 1 .4-.7l1.81-1.06a.8.8 0 0 0 .4-.7v-.94Z" fill="#F5E9BF"/>
+  <circle cx="27.6" cy="32" r="1" fill="#F5E9BF"/>
+  <circle cx="32" cy="32" r="1" fill="#F5E9BF"/>
 </svg>
