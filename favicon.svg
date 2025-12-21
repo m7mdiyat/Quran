@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">مُحمديات — مصحف</title>
+  <desc id="desc">أيقونة مصحف بغطاء أخضر وحواف ذهبية وزخرفة هندسية</desc>
+  <defs>
+    <linearGradient id="cover" x1="12%" y1="8%" x2="88%" y2="92%">
+      <stop offset="0%" stop-color="#1e8052" />
+      <stop offset="50%" stop-color="#0f5137" />
+      <stop offset="100%" stop-color="#0a2d22" />
+    </linearGradient>
+    <linearGradient id="trim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe8a3" />
+      <stop offset="100%" stop-color="#d6a33c" />
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.22)" />
+      <stop offset="100%" stop-color="rgba(255,255,255,0)" />
+    </radialGradient>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="136%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#04160e" flood-opacity="0.5" />
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="24" y="16" width="80" height="96" rx="12" fill="url(#cover)" stroke="#48ef9a" stroke-width="3.2" />
+    <rect x="20" y="22" width="10" height="88" rx="4" fill="url(#trim)" />
+    <rect x="30" y="30" width="60" height="68" rx="10" fill="rgba(0,0,0,0.14)" stroke="rgba(255,255,255,0.22)" stroke-width="2" />
+    <rect x="30" y="30" width="60" height="68" rx="10" fill="url(#glow)" opacity="0.6" />
+    <path d="M42 64c6.5-11 16.5-17 23-17s16.5 6 23 17c-6.5 11-16.5 17-23 17s-16.5-6-23-17zm23-8.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z" fill="#f7dd8a" stroke="#fff2c4" stroke-width="1.6" />
+    <path d="M40 48h48M40 80h48" stroke="#6ff7b2" stroke-width="3.2" stroke-linecap="round" opacity="0.82" />
+    <path d="M55 61l6 8 12-18" fill="none" stroke="#ffe8a3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>
