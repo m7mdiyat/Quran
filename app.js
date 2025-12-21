@@ -41,6 +41,7 @@ let INDEX = [];
 let CURRENT = null;
 let LAST_RESULTS = [];
 let VERSES_OPEN = false;
+let SEARCH_READY = false;
 
 /* -----------------------------
    Ayah URL routing + SEO meta
@@ -152,6 +153,7 @@ let CONTEXT_STATE = {
 
 // Tafsir packs: { key: {label, data:{s:{a:text}} } }
 let TAFSIRS = {};
+let TAFSIR_LOADING = false;
 
 // English map: { "s": { "a": "text" } }
 let EN_MAP = null;
@@ -215,8 +217,11 @@ function normArabic(s){
     .trim();
 }
 
+const ASSET_VER = "2025-12-21"; // bump when json files change
+
 async function loadJson(path){
-  const r = await fetch(path,{cache:"no-store"});
+  const url = path.includes("?") ? `${path}&v=${ASSET_VER}` : `${path}?v=${ASSET_VER}`;
+  const r = await fetch(url, { cache: "force-cache" });
   if(!r.ok) throw new Error(path);
   return r.json();
 }
@@ -582,6 +587,11 @@ function updateTafsirUI(surahNo, ayahNo){
     tafsirAyahTag.textContent = getAyahTextFromQuran(surahNo, ayahNo) || "—";
   }
 
+  if(!pack && TAFSIR_LOADING){
+    tafsirBox.innerHTML = `<div class="tafsir-empty">جاري تحميل التفسير…</div>`;
+    return;
+  }
+
   const text = getTafsir(pack?.data, surahNo, ayahNo);
   if(text){
     tafsirBox.innerHTML = formatTafsirText(text, surahNo, ayahNo);
@@ -748,26 +758,48 @@ async function loadOne(key, file, label, shortLabel){
 }
 
 async function init(){
+  textSearch.disabled = true;
+  textSearch.placeholder = "جاري التحميل...";
+
   SURAH_META = await loadJson("surahs.json");
   QURAN = normalizeQuran(await loadJson("quran.json"));
   buildIndex();
 
-  // Load english translation (optional)
-  try{
-    const enRaw = await loadJson("en.sahih.json");
-    EN_MAP = buildEnglishMap(enRaw);
-  }catch{
-    EN_MAP = null;
-  }
+  SEARCH_READY = true;
+  textSearch.disabled = false;
+  textSearch.placeholder = "اكتب حرفين فأكثر...";
 
-  // Load tafsir packs (silent)
-  await loadOne("muyassar",   "tafseer_muyassar.json",   "التفسير الميسّر - شرح مبسط ومختصر", "التفسير الميسّر");
-  await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي - يركّز على المعنى العام بلا إطالة او تعقيد", "تفسير السعدي");
-  await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري - ينقل أقوال السلف بالأسانيد ويرجّح بينها", "تفسير الطبري");
-  await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء", "تفسير ابن كثير");
-  await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع العناية باللغة والقراءات", "تفسير القرطبي");
-  await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم", "تفسير البغوي");
-  await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق", "تفسير ابن عاشور");
+  const runSearch = () => {
+    const q = textSearch.value;
+    const found = searchText(q);
+    renderResults(found, q);
+    expandResultsList();
+    updateVisibilityState();
+  };
+
+  textSearch.oninput = debounce(runSearch, 120);
+
+  // Start background loads (English + tafsir) without blocking search
+  TAFSIR_LOADING = true;
+  (async () => {
+    try{
+      const enRaw = await loadJson("en.sahih.json");
+      EN_MAP = buildEnglishMap(enRaw);
+    }catch{
+      EN_MAP = null;
+    }
+
+    await loadOne("muyassar",   "tafseer_muyassar.json",   "التفسير الميسّر - شرح مبسط ومختصر", "التفسير الميسّر");
+    await loadOne("saadi",      "tafseer_saadi.json",      "تفسير السعدي - يركّز على المعنى العام بلا إطالة او تعقيد", "تفسير السعدي");
+    await loadOne("tabari",     "tafseer_tabari.json",     "تفسير الطبري - ينقل أقوال السلف بالأسانيد ويرجّح بينها", "تفسير الطبري");
+    await loadOne("ibn_kathir", "tafseer_ibn_kathir.json", "تفسير ابن كثير - يتميز بتفسير القرآن بالقرآن والحديث، واضح ومناسب لعامة القراء", "تفسير ابن كثير");
+    await loadOne("qurtubi",    "tafseer_qurtubi.json",    "تفسير القرطبي - يهتم بالأحكام الفقهية المستنبطة من الآيات، مع العناية باللغة والقراءات", "تفسير القرطبي");
+    await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم", "تفسير البغوي");
+    await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق", "تفسير ابن عاشور");
+  })().catch(()=>{}).finally(() => {
+    TAFSIR_LOADING = false;
+    if(CURRENT) updateTafsirUI(CURRENT.s, CURRENT.a);
+  });
 
   // ✅ If user opened a direct ayah URL like ?v=54-15
   const p = getAyahParamFromUrl();
@@ -781,16 +813,6 @@ async function init(){
       resetSeoMetaToHome({ removeAyahParam: true });
     }
   }
-
-  const runSearch = () => {
-    const q = textSearch.value;
-    const found = searchText(q);
-    renderResults(found, q);
-    expandResultsList();
-    updateVisibilityState();
-  };
-
-  textSearch.oninput = debounce(runSearch, 120);
 
   // Enter selects first result
   textSearch.addEventListener("keydown", (e) => {
