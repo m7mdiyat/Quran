@@ -68,7 +68,7 @@ const DEFAULT_SEO = {
 
 function getAyahParamFromUrl(){
   const u = new URL(window.location.href);
-  // supports ?v=54:15 or ?ayah=54:15
+  // supports ?v=54:15, ?v=54-15 or ?ayah=54:15
   const raw = (u.searchParams.get("v") || u.searchParams.get("ayah") || "").trim();
   if(!raw) return null;
 
@@ -82,11 +82,11 @@ function getAyahParamFromUrl(){
 }
 
 function setUrlForAyah(surahNo, ayahNo, { replace = false } = {}){
-  const u = new URL(window.location.href);
-  u.searchParams.set("v", `${surahNo}:${ayahNo}`);
+  const base = window.location.origin + window.location.pathname;
+  const url = `${base}?v=${surahNo}-${ayahNo}`;
 
-  if(replace) history.replaceState({ s: surahNo, a: ayahNo }, "", u.toString());
-  else history.pushState({ s: surahNo, a: ayahNo }, "", u.toString());
+  if(replace) history.replaceState({ s: surahNo, a: ayahNo }, "", url);
+  else history.pushState({ s: surahNo, a: ayahNo }, "", url);
 
   updateSeoMetaForAyah(surahNo, ayahNo);
 }
@@ -108,10 +108,11 @@ function updateSeoMetaForAyah(surahNo, ayahNo){
   if(pageTitle) pageTitle.textContent = title;
   if(metaDescription) metaDescription.setAttribute("content", desc);
 
-  const u = new URL(window.location.href);
-  if(canonicalLink) canonicalLink.setAttribute("href", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+  const base = window.location.origin + window.location.pathname;
+  const ayahUrl = `${base}?v=${surahNo}-${ayahNo}`;
+  if(canonicalLink) canonicalLink.setAttribute("href", ayahUrl);
 
-  if(ogUrl) ogUrl.setAttribute("content", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+  if(ogUrl) ogUrl.setAttribute("content", ayahUrl);
   if(ogTitle) ogTitle.setAttribute("content", title);
   if(ogDesc) ogDesc.setAttribute("content", desc);
 
@@ -142,25 +143,6 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}){
   if(twDesc) twDesc.setAttribute("content", DEFAULT_SEO.twDesc || DEFAULT_SEO.desc);
 }
 
-function trackSearch(query) {
-  if (!query || query.length < 2) return;
-  if (window.plausible) {
-    plausible("search_ayah", {
-      props: {
-        query: query.slice(0, 60)
-      }
-    });
-  }
-
-  const qs = pairs.length ? `?${pairs.join("&")}` : "";
-  const url = `${u.origin}${u.pathname}${qs}`;
-
-  if(replace) history.replaceState({ s: surahNo, a: ayahNo }, "", url);
-  else history.pushState({ s: surahNo, a: ayahNo }, "", url);
-
-  updateSeoMetaForAyah(surahNo, ayahNo);
-}
-
 function updateSeoMetaForAyah(surahNo, ayahNo){
   if(!QURAN) return;
 
@@ -178,10 +160,11 @@ function updateSeoMetaForAyah(surahNo, ayahNo){
   if(pageTitle) pageTitle.textContent = title;
   if(metaDescription) metaDescription.setAttribute("content", desc);
 
-  const u = new URL(window.location.href);
-  if(canonicalLink) canonicalLink.setAttribute("href", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+  const base = window.location.origin + window.location.pathname;
+  const ayahUrl = `${base}?v=${surahNo}-${ayahNo}`;
+  if(canonicalLink) canonicalLink.setAttribute("href", ayahUrl);
 
-  if(ogUrl) ogUrl.setAttribute("content", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+  if(ogUrl) ogUrl.setAttribute("content", ayahUrl);
   if(ogTitle) ogTitle.setAttribute("content", title);
   if(ogDesc) ogDesc.setAttribute("content", desc);
 
@@ -210,10 +193,6 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}){
   if(ogDesc) ogDesc.setAttribute("content", DEFAULT_SEO.ogDesc || DEFAULT_SEO.desc);
   if(twTitle) twTitle.setAttribute("content", DEFAULT_SEO.twTitle || DEFAULT_SEO.title);
   if(twDesc) twDesc.setAttribute("content", DEFAULT_SEO.twDesc || DEFAULT_SEO.desc);
-}
-
-function trackSearch() {
-  // search tracking disabled intentionally
 }
 
 // Context window state: keep list static until hitting edges
@@ -771,7 +750,6 @@ function renderResults(items, query){
 
     // Click: primary selection + collapse to chip
     div.onclick = () => {
-      trackAyahSelect(it.s, it.a);
       setPrimaryAyah(it.s, it.a);
       collapseResultsToChip(it);
     };
@@ -843,7 +821,7 @@ async function init(){
   await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم", "تفسير البغوي");
   await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق", "تفسير ابن عاشور");
 
-  // ✅ If user opened a direct ayah URL like ?v=54:15
+  // ✅ If user opened a direct ayah URL like ?v=54-15
   const p = getAyahParamFromUrl();
   if(p){
     const surah = QURAN.surahs.find(s => s.number === p.s);
@@ -858,7 +836,6 @@ async function init(){
 
   const runSearch = () => {
     const q = textSearch.value;
-    trackSearch(q);
     const found = searchText(q);
     renderResults(found, q);
     expandResultsList();
@@ -872,7 +849,6 @@ async function init(){
     if(e.key === "Enter"){
       if(LAST_RESULTS?.length){
         const it = LAST_RESULTS[0];
-        trackAyahSelect(it.s, it.a);
         setPrimaryAyah(it.s, it.a);
         collapseResultsToChip(it);
       }
