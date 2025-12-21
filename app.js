@@ -42,6 +42,106 @@ let CURRENT = null;
 let LAST_RESULTS = [];
 let VERSES_OPEN = false;
 
+/* -----------------------------
+   Ayah URL routing + SEO meta
+------------------------------ */
+
+const pageTitle = document.getElementById("pageTitle");
+const metaDescription = document.getElementById("metaDescription");
+const canonicalLink = document.getElementById("canonicalLink");
+const ogUrl = document.getElementById("ogUrl");
+const ogTitle = document.getElementById("ogTitle");
+const ogDesc = document.getElementById("ogDesc");
+const twTitle = document.getElementById("twTitle");
+const twDesc = document.getElementById("twDesc");
+
+const DEFAULT_SEO = {
+  title: pageTitle?.textContent || document.title || "",
+  desc: metaDescription?.getAttribute("content") || "",
+  canonical: canonicalLink?.getAttribute("href") || new URL(window.location.href).origin + new URL(window.location.href).pathname,
+  ogUrl: ogUrl?.getAttribute("content") || "",
+  ogTitle: ogTitle?.getAttribute("content") || "",
+  ogDesc: ogDesc?.getAttribute("content") || "",
+  twTitle: twTitle?.getAttribute("content") || "",
+  twDesc: twDesc?.getAttribute("content") || ""
+};
+
+function getAyahParamFromUrl(){
+  const u = new URL(window.location.href);
+  // supports ?v=54:15 or ?ayah=54:15
+  const raw = (u.searchParams.get("v") || u.searchParams.get("ayah") || "").trim();
+  if(!raw) return null;
+
+  const m = raw.match(/^(\d{1,3})\s*[:\-\/]\s*(\d{1,3})$/);
+  if(!m) return null;
+
+  const s = Number(m[1]);
+  const a = Number(m[2]);
+  if(!Number.isFinite(s) || !Number.isFinite(a) || s < 1 || a < 1) return null;
+  return { s, a };
+}
+
+function setUrlForAyah(surahNo, ayahNo, { replace = false } = {}){
+  const u = new URL(window.location.href);
+  u.searchParams.set("v", `${surahNo}:${ayahNo}`);
+
+  if(replace) history.replaceState({ s: surahNo, a: ayahNo }, "", u.toString());
+  else history.pushState({ s: surahNo, a: ayahNo }, "", u.toString());
+
+  updateSeoMetaForAyah(surahNo, ayahNo);
+}
+
+function updateSeoMetaForAyah(surahNo, ayahNo){
+  if(!QURAN) return;
+
+  const surahName =
+    SURAH_META.find(x => x.number === surahNo)?.name_ar ||
+    QURAN.surahs.find(s => s.number === surahNo)?.name_ar ||
+    `سورة ${surahNo}`;
+
+  const ayahText = (getAyahTextFromQuran(surahNo, ayahNo) || "").replace(/\s+/g, " ").trim();
+  const snippet = ayahText.length > 140 ? ayahText.slice(0, 140) + "…" : ayahText;
+
+  const title = `تفسير ${surahName} آية ${ayahNo} | مُحمديات`;
+  const desc = `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`;
+
+  if(pageTitle) pageTitle.textContent = title;
+  if(metaDescription) metaDescription.setAttribute("content", desc);
+
+  const u = new URL(window.location.href);
+  if(canonicalLink) canonicalLink.setAttribute("href", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+
+  if(ogUrl) ogUrl.setAttribute("content", u.origin + u.pathname + `?v=${surahNo}:${ayahNo}`);
+  if(ogTitle) ogTitle.setAttribute("content", title);
+  if(ogDesc) ogDesc.setAttribute("content", desc);
+
+  if(twTitle) twTitle.setAttribute("content", title);
+  if(twDesc) twDesc.setAttribute("content", desc);
+}
+
+function resetSeoMetaToHome({ removeAyahParam = false } = {}){
+  let cleanUrl = null;
+  if(removeAyahParam){
+    const u = new URL(window.location.href);
+    u.searchParams.delete("v");
+    u.searchParams.delete("ayah");
+    cleanUrl = u.origin + u.pathname;
+    history.replaceState({}, "", u.toString());
+  }
+
+  const canonical = cleanUrl || DEFAULT_SEO.canonical || (new URL(window.location.href).origin + new URL(window.location.href).pathname);
+  const ogBase = cleanUrl || DEFAULT_SEO.ogUrl || canonical;
+
+  if(pageTitle) pageTitle.textContent = DEFAULT_SEO.title;
+  if(metaDescription) metaDescription.setAttribute("content", DEFAULT_SEO.desc);
+  if(canonicalLink) canonicalLink.setAttribute("href", canonical);
+  if(ogUrl) ogUrl.setAttribute("content", ogBase);
+  if(ogTitle) ogTitle.setAttribute("content", DEFAULT_SEO.ogTitle || DEFAULT_SEO.title);
+  if(ogDesc) ogDesc.setAttribute("content", DEFAULT_SEO.ogDesc || DEFAULT_SEO.desc);
+  if(twTitle) twTitle.setAttribute("content", DEFAULT_SEO.twTitle || DEFAULT_SEO.title);
+  if(twDesc) twDesc.setAttribute("content", DEFAULT_SEO.twDesc || DEFAULT_SEO.desc);
+}
+
 function trackSearch(query) {
   if (!query || query.length < 2) return;
   if (window.plausible) {
@@ -328,9 +428,14 @@ function searchText(q){
 }
 
 /* ---- Primary selection ---- */
-function setPrimaryAyah(surahNo, ayahNo){
+function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false } = {}){
   trackAyahSelect(surahNo, ayahNo);
+
   CURRENT = { s: surahNo, a: ayahNo };
+
+  // ✅ unique URL per ayah
+  setUrlForAyah(surahNo, ayahNo, { replace: replaceUrl });
+
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
   updateNavButtons(surahNo, ayahNo);
@@ -680,6 +785,19 @@ async function init(){
   await loadOne("baghawi",    "tafseer_baghawi.json",    "تفسير البغوي - يقدّم اقوال السلف بأسلوب مختصر ومنظّم", "تفسير البغوي");
   await loadOne("ibn_ashur",  "tafseer_ibn_ashur.json",  "تفسير ابن عاشور - يبرز الجوانب البلاغية والمقاصد العامة، أسلوبه أدبي عميق", "تفسير ابن عاشور");
 
+  // ✅ If user opened a direct ayah URL like ?v=54:15
+  const p = getAyahParamFromUrl();
+  if(p){
+    const surah = QURAN.surahs.find(s => s.number === p.s);
+    const okAyah = surah && p.a >= 1 && p.a <= surah.ayahs.length;
+    if(okAyah){
+      // replaceState so first load doesn't add extra history
+      setPrimaryAyah(p.s, p.a, { replaceUrl: true });
+    } else {
+      resetSeoMetaToHome({ removeAyahParam: true });
+    }
+  }
+
   const runSearch = () => {
     const q = textSearch.value;
     trackSearch(q);
@@ -768,3 +886,23 @@ setTafsirVisibility(false);
 setVersePanelOpen(false);
 updateNavButtons(null, null);
 init().catch(err => console.error(err));
+
+window.addEventListener("popstate", () => {
+  const p = getAyahParamFromUrl();
+  if(!p || !QURAN) return;
+
+  const surah = QURAN.surahs.find(s => s.number === p.s);
+  const okAyah = surah && p.a >= 1 && p.a <= surah.ayahs.length;
+  if(!okAyah){
+    resetSeoMetaToHome({ removeAyahParam: true });
+    return;
+  }
+
+  // don't create another history entry
+  CURRENT = { s: p.s, a: p.a };
+  updateSeoMetaForAyah(p.s, p.a);
+  showAyahContext(p.s, p.a);
+  updateTafsirUI(p.s, p.a);
+  updateNavButtons(p.s, p.a);
+  updateVisibilityState();
+});
