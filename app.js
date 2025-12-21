@@ -143,58 +143,6 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}){
   if(twDesc) twDesc.setAttribute("content", DEFAULT_SEO.twDesc || DEFAULT_SEO.desc);
 }
 
-function updateSeoMetaForAyah(surahNo, ayahNo){
-  if(!QURAN) return;
-
-  const surahName =
-    SURAH_META.find(x => x.number === surahNo)?.name_ar ||
-    QURAN.surahs.find(s => s.number === surahNo)?.name_ar ||
-    `سورة ${surahNo}`;
-
-  const ayahText = (getAyahTextFromQuran(surahNo, ayahNo) || "").replace(/\s+/g, " ").trim();
-  const snippet = ayahText.length > 140 ? ayahText.slice(0, 140) + "…" : ayahText;
-
-  const title = `تفسير ${surahName} آية ${ayahNo} | مُحمديات`;
-  const desc = `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`;
-
-  if(pageTitle) pageTitle.textContent = title;
-  if(metaDescription) metaDescription.setAttribute("content", desc);
-
-  const base = window.location.origin + window.location.pathname;
-  const ayahUrl = `${base}?v=${surahNo}-${ayahNo}`;
-  if(canonicalLink) canonicalLink.setAttribute("href", ayahUrl);
-
-  if(ogUrl) ogUrl.setAttribute("content", ayahUrl);
-  if(ogTitle) ogTitle.setAttribute("content", title);
-  if(ogDesc) ogDesc.setAttribute("content", desc);
-
-  if(twTitle) twTitle.setAttribute("content", title);
-  if(twDesc) twDesc.setAttribute("content", desc);
-}
-
-function resetSeoMetaToHome({ removeAyahParam = false } = {}){
-  let cleanUrl = null;
-  if(removeAyahParam){
-    const u = new URL(window.location.href);
-    u.searchParams.delete("v");
-    u.searchParams.delete("ayah");
-    cleanUrl = u.origin + u.pathname;
-    history.replaceState({}, "", cleanUrl);
-  }
-
-  const canonical = cleanUrl || DEFAULT_SEO.canonical || (new URL(window.location.href).origin + new URL(window.location.href).pathname);
-  const ogBase = cleanUrl || DEFAULT_SEO.ogUrl || canonical;
-
-  if(pageTitle) pageTitle.textContent = DEFAULT_SEO.title;
-  if(metaDescription) metaDescription.setAttribute("content", DEFAULT_SEO.desc);
-  if(canonicalLink) canonicalLink.setAttribute("href", canonical);
-  if(ogUrl) ogUrl.setAttribute("content", ogBase);
-  if(ogTitle) ogTitle.setAttribute("content", DEFAULT_SEO.ogTitle || DEFAULT_SEO.title);
-  if(ogDesc) ogDesc.setAttribute("content", DEFAULT_SEO.ogDesc || DEFAULT_SEO.desc);
-  if(twTitle) twTitle.setAttribute("content", DEFAULT_SEO.twTitle || DEFAULT_SEO.title);
-  if(twDesc) twDesc.setAttribute("content", DEFAULT_SEO.twDesc || DEFAULT_SEO.desc);
-}
-
 // Context window state: keep list static until hitting edges
 let CONTEXT_STATE = {
   surah: null,
@@ -470,8 +418,8 @@ function searchText(q){
 }
 
 /* ---- Primary selection ---- */
-function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false } = {}){
-  trackAyahSelect(surahNo, ayahNo);
+function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true } = {}){
+  if(track) trackAyahSelect(surahNo, ayahNo);
 
   CURRENT = { s: surahNo, a: ayahNo };
 
@@ -746,7 +694,7 @@ function renderResults(items, query){
     `;
 
     // Hover: update panels immediately
-    div.onmouseenter = () => setPrimaryAyah(it.s, it.a);
+    div.onmouseenter = () => setPrimaryAyah(it.s, it.a, { track: false });
 
     // Click: primary selection + collapse to chip
     div.onclick = () => {
