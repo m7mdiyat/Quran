@@ -111,7 +111,9 @@ function updateSeoMetaForAyah(surahNo, ayahNo){
     const snippet = ayahText.length > 140 ? ayahText.slice(0, 140) + "…" : ayahText;
 
     title = `تفسير ${surahName} آية ${ayahNo} | مُحمديات`;
-    desc = `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`;
+    desc = snippet
+      ? `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`
+      : `شرح وتفسير ${surahName} آية ${ayahNo}.`;
   }
 
   if(pageTitle) pageTitle.textContent = title;
@@ -195,8 +197,19 @@ function initTheme(){
 
 function bootstrapSeoFromUrl(){
   const p = getAyahParamFromUrl();
-  if(p){
-    setUrlForAyah(p.s, p.a, { replace: true });
+  if(!p) return;
+
+  updateSeoMetaForAyah(p.s, p.a);
+
+  const base = window.location.origin + window.location.pathname;
+  const clean = `${base}?v=${p.s}-${p.a}`;
+  const current =
+    window.location.origin +
+    window.location.pathname +
+    window.location.search;
+
+  if(current !== clean){
+    history.replaceState({ s: p.s, a: p.a }, "", clean);
   }
 }
 
