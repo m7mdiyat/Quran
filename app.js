@@ -93,27 +93,29 @@ function setUrlForAyah(surahNo, ayahNo, { replace = false } = {}){
 }
 
 function updateSeoMetaForAyah(surahNo, ayahNo){
-  if(!QURAN) return;
-
-  const surahName =
-    SURAH_META.find(x => x.number === surahNo)?.name_ar ||
-    QURAN.surahs.find(s => s.number === surahNo)?.name_ar ||
-    `سورة ${surahNo}`;
-
-  const ayahText = (getAyahTextFromQuran(surahNo, ayahNo) || "").replace(/\s+/g, " ").trim();
-  const snippet = ayahText.length > 140 ? ayahText.slice(0, 140) + "…" : ayahText;
-
-  const title = `تفسير ${surahName} آية ${ayahNo} | مُحمديات`;
-  const desc = `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`;
-
-  if(pageTitle) pageTitle.textContent = title;
-  if(metaDescription) metaDescription.setAttribute("content", desc);
-
   const base = window.location.origin + window.location.pathname;
   const ayahUrl = `${base}?v=${surahNo}-${ayahNo}`;
   if(canonicalLink) canonicalLink.setAttribute("href", ayahUrl);
-
   if(ogUrl) ogUrl.setAttribute("content", ayahUrl);
+
+  let title = `تفسير سورة ${surahNo} آية ${ayahNo} | مُحمديات`;
+  let desc = `شرح وتفسير سورة ${surahNo} آية ${ayahNo}.`;
+
+  if(QURAN){
+    const surahName =
+      SURAH_META.find(x => x.number === surahNo)?.name_ar ||
+      QURAN.surahs.find(s => s.number === surahNo)?.name_ar ||
+      `سورة ${surahNo}`;
+
+    const ayahText = (getAyahTextFromQuran(surahNo, ayahNo) || "").replace(/\s+/g, " ").trim();
+    const snippet = ayahText.length > 140 ? ayahText.slice(0, 140) + "…" : ayahText;
+
+    title = `تفسير ${surahName} آية ${ayahNo} | مُحمديات`;
+    desc = `شرح وتفسير ${surahName} آية ${ayahNo}. نص الآية: ${snippet}`;
+  }
+
+  if(pageTitle) pageTitle.textContent = title;
+  if(metaDescription) metaDescription.setAttribute("content", desc);
   if(ogTitle) ogTitle.setAttribute("content", title);
   if(ogDesc) ogDesc.setAttribute("content", desc);
 
@@ -189,6 +191,13 @@ function initTheme(){
   }catch{}
   applyTheme(saved || CURRENT_THEME);
   themeToggle?.addEventListener("click", cycleTheme);
+}
+
+function bootstrapSeoFromUrl(){
+  const p = getAyahParamFromUrl();
+  if(p){
+    setUrlForAyah(p.s, p.a, { replace: true });
+  }
 }
 
 function escapeHtml(str=""){
@@ -886,6 +895,7 @@ function stepAyah(delta){
 }
 
 initTheme();
+bootstrapSeoFromUrl();
 setTafsirVisibility(false);
 setVersePanelOpen(false);
 updateNavButtons(null, null);
