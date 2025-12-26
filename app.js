@@ -228,7 +228,7 @@ function escapeRegex(str=""){
 
 function normArabic(s){
   return (s||"")
-    .replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED]/g,"")
+    .replace(/[\u064B-\u065F\u0610-\u061A\u0670\u06D6-\u06ED]/g,"")
     .replace(/[ٱأإآ]/g,"ا")
     .replace(/ى/g,"ي")
     .replace(/ؤ/g,"و")
