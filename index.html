@@ -753,6 +753,26 @@ mark{
   box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 
+.tafsir-basmala{
+  display:none;
+  margin:6px auto 12px;
+  padding:12px 18px;
+  border-radius:14px;
+  text-align:center;
+  font-weight:900;
+  font-size:20px;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--primary-rgb),.12)),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb, var(--border) 55%, rgba(var(--accent-rgb),.35));
+  box-shadow: 0 14px 30px rgba(0,0,0,.22);
+  color: var(--text);
+  letter-spacing: .2px;
+}
+.tafsir-basmala.is-visible{
+  display:block;
+}
+
 .tafsir-empty{
   text-align:center;
   color:var(--muted);
@@ -816,7 +836,7 @@ mark{
       <div class="logo" aria-label="مُحمديات">مُحمديات</div>
     </div>
     <button type="button" class="pill" id="themeToggle" title="بدّل بين الثيمات">
-      <span>جوّ الصفحة:</span> <b id="themeLabel">اخضر انسايزي</b>
+      <span>جوّ الصفحة:</span> <b id="themeLabel">اخضر غامق</b>
     </button>
   </div>
 </header>
@@ -885,6 +905,7 @@ mark{
       </div>
 
       <div class="tafsir-paper">
+        <div id="tafsirBasmala" class="tafsir-basmala quran-font" aria-hidden="true"></div>
         <div id="tafsirAyahTag" class="tafsir-ayah-tag quran-font">—</div>
         <div id="tafsirBox" class="tafsir-box quran-font">—</div>
       </div>
