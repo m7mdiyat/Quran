@@ -755,19 +755,33 @@ mark{
 
 .tafsir-basmala{
   display:none;
-  margin:6px auto 12px;
-  padding:12px 18px;
-  border-radius:14px;
+  position:relative;
+  margin:10px auto 16px;
+  padding:14px 22px;
+  border-radius:16px;
   text-align:center;
-  font-weight:900;
-  font-size:20px;
+  font-weight:800;
+  font-size:21px;
+  line-height:2;
   background:
-    linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--primary-rgb),.12)),
-    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border:1px solid color-mix(in srgb, var(--border) 55%, rgba(var(--accent-rgb),.35));
-  box-shadow: 0 14px 30px rgba(0,0,0,.22);
+    radial-gradient(120% 120% at 10% 0%, rgba(var(--accent-rgb),.18), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  border:1px solid color-mix(in srgb, var(--border) 55%, rgba(var(--accent-rgb),.45));
+  box-shadow:
+    0 12px 24px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.12);
   color: var(--text);
-  letter-spacing: .2px;
+  letter-spacing: .3px;
+}
+.tafsir-basmala::after{
+  content:"";
+  display:block;
+  height:4px;
+  margin:12px auto 0;
+  border-radius:999px;
+  width:min(74%, 260px);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), .9), transparent);
+  box-shadow: 0 0 14px rgba(var(--accent-rgb), .45);
 }
 .tafsir-basmala.is-visible{
   display:block;
