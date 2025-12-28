@@ -27,6 +27,7 @@ const tafsirBox    = el("tafsirBox");
 const tafsirMetaAyah = el("tafsirMetaAyah");
 const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
 const tafsirAyahTag = el("tafsirAyahTag");
+const tafsirBasmala = el("tafsirBasmala");
 const tafsirSection = el("tafsirSection");
 const versePanel = el("versePanel");
 const toggleVersesBtn = el("toggleVersesBtn");
@@ -164,7 +165,7 @@ let EN_MAP = null;
 
 // Themes
 const THEMES = [
-  { id: "emerald", label: "اخضر انسايزي" },
+  { id: "emerald", label: "اخضر غامق" },
   { id: "aqua",    label: "ازرق نيلي" }
 ];
 let CURRENT_THEME = THEMES[0].id;
@@ -226,6 +227,11 @@ function escapeRegex(str=""){
   return str.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 }
 
+const BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
+const BASMALA_PLAIN = "بسم الله الرحمن الرحيم";
+const BASMALA_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_TEXT)}\\s*`);
+const BASMALA_PLAIN_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_PLAIN)}\\s*`);
+
 function normArabic(s){
   return (s||"")
     .replace(/[\u064B-\u065F\u0610-\u061A\u0670\u06D6-\u06ED]/g,"")
@@ -237,6 +243,17 @@ function normArabic(s){
     .replace(/[^\u0600-\u06FF0-9\s]/g," ")
     .replace(/\s+/g," ")
     .trim();
+}
+
+function stripBasmala(text="", ayahNo){
+  if(ayahNo !== 1) return { text: text || "", basmala: "" };
+  if(BASMALA_REGEX.test(text)){
+    return { text: text.replace(BASMALA_REGEX, "").trim(), basmala: BASMALA_TEXT };
+  }
+  if(BASMALA_PLAIN_REGEX.test(text)){
+    return { text: text.replace(BASMALA_PLAIN_REGEX, "").trim(), basmala: BASMALA_TEXT };
+  }
+  return { text: text || "", basmala: "" };
 }
 
 const ASSET_VER = "2025-12-21"; // bump when json files change
@@ -254,10 +271,12 @@ function normalizeQuran(raw){
     surahs: surahs.map(s=>({
       number:Number(s.number),
       name_ar:s.name_ar||s.name,
-      ayahs:(s.ayahs||[]).map(a=>({
-        numberInSurah:Number(a.numberInSurah),
-        text:a.text
-      }))
+      ayahs:(s.ayahs||[]).map(a=>{
+        const numberInSurah = Number(a.numberInSurah);
+        const rawText = a.text || "";
+        const { text, basmala } = stripBasmala(rawText, numberInSurah);
+        return { numberInSurah, text, basmala };
+      })
     }))
   };
 }
@@ -546,6 +565,14 @@ function getAyahTextFromQuran(surahNo, ayahNo){
   return ayah?.text || "";
 }
 
+function getAyahBasmalaFromQuran(surahNo, ayahNo){
+  if(ayahNo !== 1) return "";
+  const surah = QURAN?.surahs?.find(s=>s.number === surahNo);
+  if(!surah) return "";
+  const ayah = surah.ayahs.find(a=>a.numberInSurah === ayahNo);
+  return ayah?.basmala || "";
+}
+
 function formatTafsirText(text, surahNo, ayahNo){
   if(!text) return "";
   const ayahText = getAyahTextFromQuran(surahNo, ayahNo);
@@ -583,8 +610,30 @@ function setTafsirVisibility(visible){
     tafsirTitle.textContent = "—";
     tafsirMetaInterpreter && (tafsirMetaInterpreter.innerHTML = `<span class=\"dot\"></span>نص التفسير`);
     tafsirMetaAyah && (tafsirMetaAyah.textContent = "—");
-    tafsirAyahTag && (tafsirAyahTag.textContent = "—");
+    if(tafsirAyahTag){
+      tafsirAyahTag.textContent = "—";
+      tafsirAyahTag.classList.remove("is-hidden");
+    }
+    if(tafsirBasmala){
+      tafsirBasmala.textContent = "";
+      tafsirBasmala.classList.remove("is-visible");
+      tafsirBasmala.setAttribute("aria-hidden", "true");
+    }
     tafsirBox.innerHTML = "—";
+  }
+}
+
+function updateBasmalaUI(surahNo, ayahNo){
+  if(!tafsirBasmala) return;
+  const basmala = getAyahBasmalaFromQuran(surahNo, ayahNo);
+  if(ayahNo === 1 && basmala){
+    tafsirBasmala.textContent = basmala;
+    tafsirBasmala.classList.add("is-visible");
+    tafsirBasmala.setAttribute("aria-hidden", "false");
+  } else {
+    tafsirBasmala.textContent = "";
+    tafsirBasmala.classList.remove("is-visible");
+    tafsirBasmala.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -606,8 +655,13 @@ function updateTafsirUI(surahNo, ayahNo){
     tafsirMetaAyah.textContent = `${surahName} • الآية ${ayahNo}`;
   }
   if(tafsirAyahTag){
-    tafsirAyahTag.textContent = getAyahTextFromQuran(surahNo, ayahNo) || "—";
+    const ayahText = getAyahTextFromQuran(surahNo, ayahNo);
+    const hasBasmala = !!getAyahBasmalaFromQuran(surahNo, ayahNo);
+    const hideAyahTag = !ayahText && hasBasmala;
+    tafsirAyahTag.textContent = hideAyahTag ? "" : (ayahText || "—");
+    tafsirAyahTag.classList.toggle("is-hidden", hideAyahTag);
   }
+  updateBasmalaUI(surahNo, ayahNo);
 
   if(!pack && TAFSIR_LOADING){
     tafsirBox.innerHTML = `<div class="tafsir-empty">جاري تحميل التفسير…</div>`;
@@ -666,6 +720,12 @@ function resetPrimaryPanels(){
   tafsirBox.textContent = "—";
   tafsirMetaAyah.textContent = "—";
   tafsirAyahTag.textContent = "—";
+  tafsirAyahTag.classList.remove("is-hidden");
+  if(tafsirBasmala){
+    tafsirBasmala.textContent = "";
+    tafsirBasmala.classList.remove("is-visible");
+    tafsirBasmala.setAttribute("aria-hidden", "true");
+  }
   if(tafsirMetaInterpreter){
     tafsirMetaInterpreter.innerHTML = `<span class="dot"></span> نص التفسير`;
   }
