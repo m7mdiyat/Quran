@@ -245,6 +245,14 @@ function normArabic(s){
     .trim();
 }
 
+function isExactAyahMatch(textNorm, queryNorm){
+  if(!textNorm || !queryNorm) return false;
+  if(textNorm === queryNorm) return true;
+  const noSpaceText = textNorm.replace(/\s+/g,"");
+  const noSpaceQuery = queryNorm.replace(/\s+/g,"");
+  return noSpaceText === noSpaceQuery;
+}
+
 function stripBasmala(text="", ayahNo){
   if(ayahNo !== 1) return { text: text || "", basmala: "" };
   if(BASMALA_REGEX.test(text)){
@@ -415,12 +423,22 @@ function searchText(q){
 
   // 2-3 chars: direct includes (limit 25)
   if(nq.length <= 3){
+    const exactMatches = [];
+    const exactSet = new Set();
     const out = [];
+    for(const it of INDEX){
+      if(isExactAyahMatch(it.textNorm, nq)){
+        exactMatches.push(it);
+        exactSet.add(`${it.s}:${it.a}`);
+      }
+    }
     for(const it of INDEX){
       if(it.textNorm.includes(nq)) out.push(it);
       if(out.length >= 25) break;
     }
-    return out;
+    if(!exactMatches.length) return out;
+    const limited = out.filter(it => !exactSet.has(`${it.s}:${it.a}`));
+    return [...exactMatches, ...limited].slice(0, 25);
   }
 
   // 4+: scoring
@@ -456,10 +474,17 @@ function searchText(q){
 
     if(text.includes(anchor)) score += 0.3;
 
-    scored.push({ ...it, score });
+    const exact = isExactAyahMatch(text, nq);
+    if(exact) score += 5;
+
+    scored.push({ ...it, score, exact });
   }
 
-  scored.sort((a,b)=> b.score - a.score);
+  scored.sort((a,b)=> {
+    const exactDiff = Number(b.exact) - Number(a.exact);
+    if(exactDiff) return exactDiff;
+    return b.score - a.score;
+  });
   return scored.slice(0, 60);
 }
 

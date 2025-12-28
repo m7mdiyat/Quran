@@ -755,19 +755,25 @@ mark{
 
 .tafsir-basmala{
   display:none;
-  margin:6px auto 12px;
-  padding:12px 18px;
-  border-radius:14px;
+  position:relative;
+  margin:8px auto 14px;
+  padding:0 8px 10px;
   text-align:center;
-  font-weight:900;
+  font-weight:700;
   font-size:20px;
-  background:
-    linear-gradient(135deg, rgba(var(--accent-rgb),.22), rgba(var(--primary-rgb),.12)),
-    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  border:1px solid color-mix(in srgb, var(--border) 55%, rgba(var(--accent-rgb),.35));
-  box-shadow: 0 14px 30px rgba(0,0,0,.22);
+  line-height:2;
   color: var(--text);
   letter-spacing: .2px;
+}
+.tafsir-basmala::after{
+  content:"";
+  display:block;
+  height:3px;
+  margin:8px auto 0;
+  border-radius:999px;
+  width:min(66%, 220px);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), .8), transparent);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), .35);
 }
 .tafsir-basmala.is-visible{
   display:block;
