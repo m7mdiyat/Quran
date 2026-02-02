@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">مُحمديات — مصحف</title>
+  <desc id="desc">أيقونة كتاب مع صفحات مربعة وخطوط متناظرة</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f8a5a"/>
+      <stop offset="100%" stop-color="#083225"/>
+    </linearGradient>
+
+    <linearGradient id="paper" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f8f5e8" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#e6dfc6" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Cover -->
+  <rect x="26" y="18" width="76" height="92" rx="16" fill="url(#bg)"/>
+
+  <!-- Spine -->
+  <rect x="22" y="24" width="14" height="80" rx="7" fill="rgba(255,232,163,0.9)"/>
+
+  <!-- Page (SQUARED) -->
+  <rect x="46" y="34" width="44" height="60" fill="url(#paper)"/>
+
+  <!-- Symmetrical page lines -->
+  <path d="M54 52h28M54 64h28M54 76h28"
+        stroke="rgba(17,72,52,0.55)"
+        stroke-width="4"
+        stroke-linecap="round"/>
+</svg>

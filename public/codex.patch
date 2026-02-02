@@ -1,0 +1,615 @@
+diff --git a/app.js b/app.js
+index ea43b59508064d01732e57c67f83f5965f253f31..da18d088af625eab9b73cb180dc9f31658315e1b 100644
+--- a/app.js
++++ b/app.js
+@@ -1,43 +1,51 @@
+ /* Offline Quran Search + Context + Tafsir + English (Sahih)
+    Offline files:
+    - quran.json, surahs.json
+    - tafseer_*.json (nested or other supported shapes)
+    - en.sahih.json (array of {index,text} OR array of strings)
+ */
+ 
+ const el = id => document.getElementById(id);
+ 
++const TAFSIR_API_URL = "https://tafsir-api-317751773286.me-central1.run.app/ask";
++
+ const textSearch = el("textSearch");
+ const resultsShell = el("resultsShell");
+ const results    = el("results");
+ const selectedChip = el("selectedChip");
+ const chipTitle = el("chipTitle");
+ const chipSnippet = el("chipSnippet");
+ const chipIcon = el("chipIcon");
+ const clearBtn = el("clearBtn");
+ 
++const aiQuestion = el("aiQuestion");
++const aiAskBtn = el("aiAskBtn");
++const aiClearBtn = el("aiClearBtn");
++const aiStatus = el("aiStatus");
++const aiResults = el("aiResults");
++
+ const ayahContext   = el("ayahContext");
+ const contextHeader = el("contextHeader");
+ const langSelect    = el("langSelect");
+ 
+ const tafsirHeader = el("tafsirHeader");
+ const tafsirSelect = el("tafsirSelect");
+ const tafsirTitle  = el("tafsirTitle");
+ const tafsirBox    = el("tafsirBox");
+ const tafsirMetaAyah = el("tafsirMetaAyah");
+ const tafsirMetaInterpreter = el("tafsirMetaInterpreter");
+ const tafsirAyahTag = el("tafsirAyahTag");
+ const tafsirBasmala = el("tafsirBasmala");
+ const tafsirSection = el("tafsirSection");
+ const versePanel = el("versePanel");
+ const toggleVersesBtn = el("toggleVersesBtn");
+ const prevAyahBtn = el("prevAyahBtn");
+ const nextAyahBtn = el("nextAyahBtn");
+ const themeToggle  = el("themeToggle");
+ const themeLabel   = el("themeLabel");
+ 
+ let SURAH_META = [];
+ let QURAN = null;
+ let INDEX = [];
+ let CURRENT = null;
+ let LAST_RESULTS = [];
+@@ -201,50 +209,124 @@ function bootstrapSeoFromUrl(){
+   if(!p) return;
+ 
+   updateSeoMetaForAyah(p.s, p.a);
+ 
+   const base = window.location.origin + window.location.pathname;
+   const clean = `${base}?v=${p.s}-${p.a}`;
+   const current =
+     window.location.origin +
+     window.location.pathname +
+     window.location.search;
+ 
+   if(current !== clean){
+     history.replaceState({ s: p.s, a: p.a }, "", clean);
+   }
+ }
+ 
+ function escapeHtml(str=""){
+   return str
+     .replace(/&/g,"&amp;")
+     .replace(/</g,"&lt;")
+     .replace(/>/g,"&gt;")
+     .replace(/"/g,"&quot;")
+     .replace(/'/g,"&#039;");
+ }
+ 
++function escapeHtmlSafe(str=""){
++  return escapeHtml(String(str ?? ""));
++}
++
++function setAiStatus(text = "", type = ""){
++  if(!aiStatus) return;
++  aiStatus.textContent = text;
++  aiStatus.className = "ai-status";
++  if(type) aiStatus.classList.add(type);
++}
++
++function clearAiResults(){
++  if(aiResults) aiResults.innerHTML = "";
++}
++
++function getTafsirLabel(key){
++  const labels = {
++    ibn_kathir: "تفسير ابن كثير",
++    ibn_ashur: "تفسير ابن عاشور",
++    muyassar: "التفسير الميسّر",
++    tabari: "تفسير الطبري",
++    qurtubi: "تفسير القرطبي",
++    baghawi: "تفسير البغوي",
++    saadi: "تفسير السعدي"
++  };
++  return labels[key] || key;
++}
++
++function renderAiResults(data){
++  if(!aiResults) return;
++  clearAiResults();
++
++  const surah = Number(data?.surah);
++  const ayah = Number(data?.ayah);
++  const header = Number.isFinite(surah) && Number.isFinite(ayah)
++    ? `تم العثور على: سورة ${surah} — آية ${ayah}`
++    : "تم العثور على نتائج";
++  const quranText = escapeHtmlSafe(data?.quran_text || "");
++  const results = Array.isArray(data?.results) ? data.results : [];
++
++  const resultsHtml = results.map((item) => {
++    const label = escapeHtmlSafe(getTafsirLabel(item?.tafsir));
++    const text = escapeHtmlSafe(item?.text || "");
++    return `
++      <div class="ai-tafsir-item">
++        <div class="label">${label}</div>
++        <div class="quran-font">${text || "—"}</div>
++      </div>
++    `;
++  }).join("");
++
++  const openBtnHtml = Number.isFinite(surah) && Number.isFinite(ayah)
++    ? `
++    <button type="button" class="btn btn-primary ai-open-btn" data-surah="${surah}" data-ayah="${ayah}">
++      افتح الآية في الموقع
++    </button>
++  `
++    : "";
++
++  aiResults.innerHTML = `
++    <div class="ai-result-header">${escapeHtmlSafe(header)}</div>
++    <div class="ai-box quran-font">${quranText || "—"}</div>
++    ${resultsHtml}
++    ${openBtnHtml}
++  `;
++
++  const openBtn = aiResults.querySelector(".ai-open-btn");
++  if(openBtn && Number.isFinite(surah) && Number.isFinite(ayah)){
++    openBtn.addEventListener("click", () => {
++      setPrimaryAyah(surah, ayah);
++    });
++  }
++}
++
+ function escapeRegex(str=""){
+   return str.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+ }
+ 
+ const BASMALA_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
+ const BASMALA_PLAIN = "بسم الله الرحمن الرحيم";
+ const BASMALA_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_TEXT)}\\s*`);
+ const BASMALA_PLAIN_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_PLAIN)}\\s*`);
+ 
+ function normArabic(s){
+   return (s||"")
+     .replace(/[\u064B-\u065F\u0610-\u061A\u0670\u06D6-\u06ED]/g,"")
+     .replace(/[ٱأإآ]/g,"ا")
+     .replace(/ى/g,"ي")
+     .replace(/ؤ/g,"و")
+     .replace(/ئ/g,"ي")
+     .replace(/ة/g,"ه")
+     .replace(/[^\u0600-\u06FF0-9\s]/g," ")
+     .replace(/\s+/g," ")
+     .trim();
+ }
+ 
+ function isExactAyahMatch(textNorm, queryNorm){
+   if(!textNorm || !queryNorm) return false;
+   if(textNorm === queryNorm) return true;
+@@ -829,50 +911,101 @@ tafsirSelect.onchange = () => {
+ };
+ 
+ langSelect.onchange = () => {
+   if(CURRENT) showAyahContext(CURRENT.s, CURRENT.a);
+ };
+ 
+ toggleVersesBtn?.addEventListener("click", () => {
+   setVersePanelOpen(!VERSES_OPEN);
+   if(VERSES_OPEN && CURRENT){
+     showAyahContext(CURRENT.s, CURRENT.a);
+   }
+ });
+ 
+ prevAyahBtn?.addEventListener("click", () => stepAyah(-1));
+ nextAyahBtn?.addEventListener("click", () => stepAyah(1));
+ 
+ /* ---- Tiny debounce ---- */
+ function debounce(fn, ms=120){
+   let t = null;
+   return (...args) => {
+     clearTimeout(t);
+     t = setTimeout(()=>fn(...args), ms);
+   };
+ }
+ 
++async function handleAiAsk(){
++  if(!aiQuestion || !aiAskBtn) return;
++  const question = aiQuestion.value.trim();
++  if(!question){
++    setAiStatus("اكتب سؤالك أولاً", "error");
++    clearAiResults();
++    return;
++  }
++
++  setAiStatus("جاري البحث...", "loading");
++  clearAiResults();
++  aiAskBtn.disabled = true;
++
++  try{
++    const response = await fetch(TAFSIR_API_URL, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ question })
++    });
++
++    if(!response.ok){
++      throw new Error(`Bad response: ${response.status}`);
++    }
++
++    const data = await response.json();
++    const results = Array.isArray(data?.results) ? data.results : [];
++
++    if(data?.status === "not_found" || results.length === 0){
++      setAiStatus("لم يتم العثور على تطابق", "error");
++      clearAiResults();
++      return;
++    }
++
++    setAiStatus("تم العثور على نتائج", "ok");
++    renderAiResults(data);
++  }catch(err){
++    console.error(err);
++    setAiStatus("حدث خطأ أثناء الاتصال بالخدمة", "error");
++    clearAiResults();
++  }finally{
++    aiAskBtn.disabled = false;
++  }
++}
++
++function handleAiClear(){
++  if(aiQuestion) aiQuestion.value = "";
++  setAiStatus("");
++  clearAiResults();
++  aiQuestion?.focus();
++}
++
+ /* ---- Init ---- */
+ async function loadOne(key, file, label, shortLabel){
+   try{
+     const raw = await loadJson(file);
+     const norm = normalizeTafsir(raw);
+     if(Object.keys(norm).length){
+       TAFSIRS[key] = { label, shortLabel: shortLabel || label, data: norm };
+       return true;
+     }
+   }catch{}
+   return false;
+ }
+ 
+ async function init(){
+   textSearch.disabled = true;
+   textSearch.placeholder = "جاري التحميل...";
+ 
+   SURAH_META = await loadJson("surahs.json");
+   QURAN = normalizeQuran(await loadJson("quran.json"));
+   buildIndex();
+ 
+   SEARCH_READY = true;
+   textSearch.disabled = false;
+   textSearch.placeholder = "اكتب حرفين فأكثر...";
+ 
+@@ -934,50 +1067,59 @@ async function init(){
+       expandResultsList();
+       textSearch.blur();
+     }
+   });
+ 
+   selectedChip.onclick = () => {
+     expandResultsList();
+     textSearch?.focus();
+   };
+ 
+   clearBtn?.addEventListener("click", () => {
+     textSearch.value = "";
+     LAST_RESULTS = [];
+     resetPrimaryPanels();
+     results.innerHTML = "";
+     expandResultsList();
+     setTafsirVisibility(false);
+     ayahContext.innerHTML = "";
+     contextHeader.textContent = "اختر آية من نتائج البحث";
+     setVersePanelOpen(false);
+     CURRENT = null;
+     textSearch.focus();
+     updateVisibilityState();
+   });
+ 
++  aiAskBtn?.addEventListener("click", handleAiAsk);
++  aiClearBtn?.addEventListener("click", handleAiClear);
++  aiQuestion?.addEventListener("keydown", (e) => {
++    if(e.key === "Enter" && (e.ctrlKey || e.metaKey)){
++      e.preventDefault();
++      handleAiAsk();
++    }
++  });
++
+   // First nice empty state
+   results.innerHTML = `
+     <div class="item" style="cursor:default;">
+       <div class="line1">ابدأ بالبحث</div>
+       <div class="line2">اكتب حرفين فأكثر لعرض النتائج هنا.</div>
+     </div>
+   `;
+ 
+   updateVisibilityState();
+ }
+ 
+ function setVersePanelOpen(open){
+   VERSES_OPEN = open;
+   versePanel?.classList.toggle("open", open);
+   versePanel?.setAttribute("aria-hidden", open ? "false" : "true");
+   toggleVersesBtn?.setAttribute("aria-expanded", open ? "true" : "false");
+ }
+ 
+ function updateNavButtons(surahNo, ayahNo){
+   const surah = QURAN?.surahs?.find(s=>s.number===surahNo);
+   const len = surah?.ayahs?.length || 0;
+   const disablePrev = !surah || !ayahNo || ayahNo <= 1;
+   const disableNext = !surah || !ayahNo || ayahNo >= len;
+   if(prevAyahBtn) prevAyahBtn.disabled = disablePrev;
+   if(nextAyahBtn) nextAyahBtn.disabled = disableNext;
+diff --git a/index.html b/index.html
+index e99e786a37dbcda36d23ffdc447ca77ae7dcba24..b34f8ea3bbcbdb86de2365500d61a3df4fc2acf0 100644
+--- a/index.html
++++ b/index.html
+@@ -233,51 +233,51 @@ header{
+   display:inline-flex;
+   align-items:center;
+   gap:8px;
+   padding:8px 12px;
+   border-radius:999px;
+   background: rgba(255,255,255,.06);
+   border:1px solid rgba(255,255,255,.12);
+   color: var(--muted);
+   font-size:12px;
+   box-shadow: 0 10px 26px rgba(0,0,0,.18);
+   cursor:pointer;
+   transition: background .2s ease, border-color .2s ease, transform .15s ease;
+   font: inherit;
+ }
+ .pill b{
+   color:var(--accent);
+   font-weight:800;
+ }
+ .pill:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.16); transform: translateY(-1px); }
+ .pill:focus-visible{ outline:2px solid rgba(var(--accent-rgb),.7); outline-offset:3px; }
+ 
+ /* Layout */
+ .wrap{
+   max-width:1500px;
+   margin:auto;
+-  padding:18px 18px 32px;
++  padding:34px 18px 32px;
+ }
+ 
+ .grid{
+   display:grid;
+   grid-template-columns: 1.05fr 1fr;
+   gap:16px;
+   align-items:start;
+ }
+ @media(max-width:1100px){ .grid{grid-template-columns:1fr} }
+ 
+ .card{
+   position:relative;
+   border-radius: var(--radius);
+   padding:18px;
+   background: linear-gradient(180deg, var(--panel), var(--panel2));
+   border:1px solid var(--border);
+   box-shadow: var(--shadow);
+   overflow:hidden;
+   backdrop-filter: blur(10px);
+   transition: background .35s ease, border-color .35s ease, color .25s ease, box-shadow .35s ease;
+ }
+ 
+ .card::before{
+   content:"";
+   position:absolute;
+@@ -310,65 +310,66 @@ header{
+   padding:14px;
+   border-radius: var(--radius2);
+   border:1px solid rgba(255,255,255,.10);
+   background: rgba(255,255,255,.04);
+   margin-bottom:16px;
+ }
+ 
+ .block-title{
+   margin:0 0 10px;
+   font-size:13px;
+   font-weight:900;
+   color: var(--accent);
+   letter-spacing:.2px;
+ }
+ 
+ .muted{ color:var(--muted); }
+ 
+ /* Inputs */
+ .inputRow{
+   display:flex;
+   gap:10px;
+   align-items:center;
+ }
+ .inputRow > *{ flex:1; }
+ 
+-input, select{
++input, select, textarea{
+   width:100%;
+   padding:12px 14px;
+   border-radius: 14px;
+   border:1px solid rgba(255,255,255,.12);
+   background: var(--field);
+   color:var(--text);
+   font-size:14px;
+   outline:none;
+   transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease, background-color .3s ease, color .3s ease;
+ }
+-input::placeholder{ color: rgba(236,255,245,.45); }
++input::placeholder,
++textarea::placeholder{ color: rgba(236,255,245,.45); }
+ select{ cursor:pointer; }
+ 
+-input:focus, select:focus{
++input:focus, select:focus, textarea:focus{
+   border-color: rgba(var(--primary-rgb),.40);
+   box-shadow: 0 0 0 4px rgba(var(--primary-rgb),.12);
+ }
+ 
+ .btn{
+   flex:0 0 auto;
+   padding:12px 12px;
+   border-radius:14px;
+   border:1px solid rgba(255,255,255,.12);
+   background: rgba(255,255,255,.06);
+   color: var(--text);
+   cursor:pointer;
+   font-weight:800;
+   transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease, opacity .2s ease;
+   box-shadow: 0 12px 28px rgba(0,0,0,.22);
+ }
+ .btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.085); }
+ .btn:active{ transform: translateY(0px); }
+ .btn:focus-visible{ outline:2px solid rgba(var(--accent-rgb),.7); outline-offset:3px; }
+ .btn-ghost{ background: rgba(255,255,255,.04); box-shadow:none; }
+ .btn-ghost:hover{ background: rgba(255,255,255,.07); }
+ .btn-primary{
+   background: linear-gradient(135deg, rgba(var(--primary-rgb),.75), rgba(var(--accent-rgb),.55));
+   border-color: color-mix(in srgb, var(--border) 35%, rgba(var(--primary-rgb),.55));
+   color: #04100a;
+@@ -809,69 +810,144 @@ mark{
+   gap:10px;
+   flex-wrap:wrap;
+ }
+ .footerHint code{
+   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New";
+   font-size:12px;
+   padding:2px 8px;
+   border-radius:10px;
+   background: rgba(255,255,255,.06);
+   border: 1px solid rgba(255,255,255,.10);
+   color: rgba(236,255,245,.9);
+ }
+ 
+ .quran-font{
+   font-family: "Amiri", serif;
+ }
+ 
+ .is-hidden{ display:none !important; }
+ 
+ .tafsir-brace,
+ .tafsir-paren{
+   color:#6db8ff;
+   font-weight:800;
+ }
+ 
++.ai-box{
++  border:1px solid rgba(255,255,255,.12);
++  border-radius: var(--radius2);
++  padding:14px;
++  background: rgba(255,255,255,.05);
++  margin-bottom:12px;
++}
++
++.ai-actions{
++  display:flex;
++  gap:10px;
++  flex-wrap:wrap;
++  margin-top:12px;
++}
++
++.ai-status{
++  min-height:18px;
++  margin-top:10px;
++  font-size:12px;
++  color:var(--muted);
++}
++.ai-status.ok{ color: var(--primary); }
++.ai-status.error{ color: var(--danger); }
++.ai-status.loading{ color: var(--accent); }
++
++.ai-result-header{
++  margin:14px 0 10px;
++  font-size:13px;
++  font-weight:800;
++  color: var(--accent);
++}
++
++.ai-tafsir-item{
++  padding:12px;
++  border-radius:12px;
++  border:1px solid var(--border);
++  background: rgba(255,255,255,.04);
++  margin-top:12px;
++}
++.ai-tafsir-item .label{
++  font-size:12px;
++  font-weight:800;
++  color: var(--primary);
++  margin-bottom:6px;
++}
++
++.ai-open-btn{
++  width:100%;
++  margin-top:14px;
++}
++
++.ai-card{
++  grid-column:1 / -1;
++}
++
+ </style>
+ </head>
+ 
+ <body>
+ 
+ <header>
+   <div class="topbar">
+     <div class="brand">
+       <div class="logo" aria-label="مُحمديات">مُحمديات</div>
+     </div>
+     <button type="button" class="pill" id="themeToggle" title="بدّل بين الثيمات">
+       <span>جوّ الصفحة:</span> <b id="themeLabel">اخضر غامق</b>
+     </button>
+   </div>
+ </header>
+ 
+ <main class="wrap">
+   <div class="grid">
+ 
++  <!-- اسأل التفاسير -->
++  <div class="card ai-card">
++    <h2>اسأل التفاسير</h2>
++    <p class="section-note">اكتب رقم الآية مثل 2:255 أو اكتب جزءًا من الآية مثل: لا تأخذه سنة ولا نوم</p>
++
++    <div class="ai-box">
++      <div class="block-title">سؤالك</div>
++      <textarea id="aiQuestion" rows="3" placeholder="مثال: 2:255 أو لا تأخذه سنة ولا نوم"></textarea>
++
++      <div class="ai-actions">
++        <button type="button" class="btn btn-primary" id="aiAskBtn">ابحث</button>
++        <button type="button" class="btn btn-ghost" id="aiClearBtn">مسح</button>
++      </div>
++
++      <div class="ai-status" id="aiStatus" aria-live="polite"></div>
++    </div>
++
++    <div id="aiResults"></div>
++  </div>
++
+   <!-- البحث عن الآية -->
+   <div class="card">
+     <h2>البحث عن الآية</h2>
+     <p class="section-note">ضع جزءًا من الآية، أو اكتبها كاملة، ثم <b>اضغط</b> على <b>الآية المطلوب تفسيرها</b>.</p>
+ 
+     <div class="block">
+       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+         <div class="block-title" style="margin:0">محرك البحث</div>
+         <span class="badge"><span class="dot"></span> اكتب حرفين فأكثر</span>
+       </div>
+ 
+       <div class="inputRow">
+         <input id="textSearch" placeholder="اكتب حرفين فأكثر... مثال: ذلك الكتاب" />
+         <button type="button" class="btn btn-ghost" id="clearBtn" title="مسح البحث">مسح</button>
+       </div>
+ 
+       <div class="results-shell" id="resultsShell">
+         <button type="button" class="selected-chip" id="selectedChip" aria-live="polite">
+           <div class="chip-icon" id="chipIcon">✓</div>
+           <div class="chip-body">
+             <div class="chip-title" id="chipTitle">تم اختيار آية</div>
+             <div class="chip-snippet" id="chipSnippet">—</div>
+           </div>
+           <div class="chip-action" id="chipAction">تغيير</div>
+         </button>

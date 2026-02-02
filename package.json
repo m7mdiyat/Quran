@@ -1,0 +1,18 @@
+{
+  "name": "m7mdiyat-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/prerender.js && node scripts/generate-sitemap.js",
+    "build:vite": "vite build",
+    "prerender": "node scripts/prerender.js",
+    "sitemap": "node scripts/generate-sitemap.js",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0",
+    "vite": "^7.2.4"
+  }
+}

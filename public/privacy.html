@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>M7mdiyat · Privacy Policy</title>
+  <meta name="description" content="M7mdiyat privacy policy for this website/app." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="canonical" href="https://www.m7mdiyat.com/privacy" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg0:#07140f;
+      --bg1:#061a12;
+      --panel: rgba(10, 26, 18, .78);
+      --panel2: rgba(10, 26, 18, .58);
+      --border: rgba(120, 255, 180, .16);
+      --text:#ecfff5;
+      --muted: rgba(236,255,245,.7);
+      --primary:#4fe39a;
+      --primary-rgb: 79, 227, 154;
+      --accent:#f3c969;
+      --accent-rgb: 243, 201, 105;
+      --shadow: 0 18px 55px rgba(0,0,0,.35);
+      --radius: 18px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      color:var(--text);
+      font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Tahoma, Arial;
+      background:
+        linear-gradient(165deg, color-mix(in srgb, var(--bg0) 90%, transparent), color-mix(in srgb, var(--bg1) 96%, transparent)),
+        conic-gradient(from 210deg at 78% 32%, rgba(var(--accent-rgb),.12), transparent 42%, rgba(var(--primary-rgb),.10), transparent 82%, rgba(var(--accent-rgb),.10)),
+        radial-gradient(1400px 900px at 18% 86%, rgba(var(--primary-rgb),.16), transparent 55%),
+        radial-gradient(1200px 800px at 92% 18%, rgba(var(--accent-rgb),.15), transparent 50%),
+        linear-gradient(115deg, color-mix(in srgb, var(--bg1) 94%, rgba(var(--primary-rgb),.06)) 18%, color-mix(in srgb, var(--bg0) 92%, rgba(var(--accent-rgb),.03)) 80%);
+      overflow-x:hidden;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        linear-gradient(115deg, rgba(255,255,255,.04) 1px, transparent 0),
+        linear-gradient(245deg, rgba(255,255,255,.035) 1px, transparent 0),
+        radial-gradient(680px 420px at 15% 24%, rgba(var(--primary-rgb),.10), transparent 60%),
+        radial-gradient(620px 380px at 82% 68%, rgba(var(--accent-rgb),.09), transparent 58%);
+      background-size:
+        22px 22px,
+        26px 26px,
+        100% 100%,
+        100% 100%;
+      opacity:.48;
+      mix-blend-mode: soft-light;
+    }
+
+    body::after{
+      content:"";
+      position:fixed;
+      inset:-12% -8%;
+      pointer-events:none;
+      background:
+        linear-gradient(145deg, rgba(var(--primary-rgb),.10), transparent 40%),
+        linear-gradient(325deg, rgba(var(--accent-rgb),.09), transparent 42%),
+        conic-gradient(from 120deg at 32% 55%, transparent 10%, rgba(var(--primary-rgb),.08) 30%, transparent 60%, rgba(var(--accent-rgb),.10) 78%, transparent 92%);
+      filter: blur(34px);
+      opacity:.68;
+      mix-blend-mode: screen;
+    }
+
+    a{color:inherit}
+
+    header{
+      position:sticky;
+      top:0;
+      z-index:5;
+      padding:18px 16px;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 80%, transparent), color-mix(in srgb, var(--bg1) 45%, transparent));
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+
+    .topbar{
+      max-width:1100px;
+      margin:auto;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .logo{
+      min-width:42px; height:42px;
+      padding:0 14px;
+      border-radius:14px;
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--bg1) 72%, rgba(var(--primary-rgb),.45)), color-mix(in srgb, var(--bg0) 75%, rgba(var(--accent-rgb),.40))),
+        radial-gradient(140% 120% at 18% 20%, rgba(255,255,255,.18), transparent 50%),
+        radial-gradient(160% 160% at 80% 80%, rgba(var(--primary-rgb),.18), transparent 55%);
+      border:1px solid color-mix(in srgb, var(--border) 60%, rgba(var(--primary-rgb),.35));
+      box-shadow: 0 12px 28px rgba(0,0,0,.35);
+      display:grid;
+      place-items:center;
+      font-weight:700;
+      letter-spacing:.2px;
+    }
+
+    .brand h1{
+      margin:0;
+      font-size:1.05rem;
+      font-weight:700;
+    }
+
+    .badge{
+      margin-top:4px;
+      font-size:.85rem;
+      color:var(--muted);
+    }
+
+    .lang-toggle{
+      display:flex;
+      background:var(--panel2);
+      padding:6px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      gap:6px;
+      box-shadow: var(--shadow);
+    }
+
+    .lang-toggle button{
+      border:none;
+      background:transparent;
+      color:var(--text);
+      padding:8px 14px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:600;
+      letter-spacing:.3px;
+      transition: background .2s ease, color .2s ease;
+    }
+
+    .lang-toggle button.active{
+      background: linear-gradient(130deg, rgba(var(--primary-rgb),.24), rgba(var(--accent-rgb),.2));
+      color:var(--text);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+    }
+
+    main{
+      max-width:1100px;
+      margin:40px auto 70px;
+      padding:0 16px;
+    }
+
+    .hero{
+      background:var(--panel);
+      border-radius:24px;
+      padding:32px;
+      border:1px solid var(--border);
+      box-shadow: var(--shadow);
+      position:relative;
+      overflow:hidden;
+    }
+
+    .hero::after{
+      content:"";
+      position:absolute;
+      inset:auto -20% -60% auto;
+      width:420px;
+      height:420px;
+      background: radial-gradient(circle, rgba(var(--accent-rgb),.2), transparent 60%);
+      opacity:.65;
+    }
+
+    .hero h2{
+      margin:0 0 8px;
+      font-size:2rem;
+      font-weight:800;
+    }
+
+    .hero p{
+      margin:6px 0 0;
+      color:var(--muted);
+      font-size:1.05rem;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 14px;
+      border-radius:999px;
+      background: rgba(var(--primary-rgb),.12);
+      border:1px solid rgba(var(--primary-rgb),.28);
+      font-size:.9rem;
+      font-weight:600;
+    }
+
+    .section-grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap:18px;
+      margin-top:24px;
+    }
+
+    .card{
+      background:var(--panel2);
+      border-radius:var(--radius);
+      padding:22px;
+      border:1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .card h3{
+      margin:0 0 10px;
+      font-size:1.1rem;
+      font-weight:700;
+    }
+
+    .card p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.75;
+    }
+
+    .card ul{
+      margin:10px 0 0;
+      padding-left:18px;
+      color:var(--muted);
+      line-height:1.75;
+    }
+
+    .emphasis{
+      font-weight:700;
+      color:var(--text);
+    }
+
+    .footer{
+      text-align:center;
+      color:var(--muted);
+      margin-top:40px;
+      font-size:.95rem;
+    }
+
+    .lang-content{display:none;}
+    .lang-content.active{display:block;}
+
+    .rtl{
+      direction: rtl;
+      text-align: right;
+      font-family: "Amiri", "Outfit", serif;
+    }
+
+    .contact-box{
+      margin-top:18px;
+      padding:16px 18px;
+      border-radius:var(--radius);
+      background:rgba(var(--primary-rgb),.08);
+      border:1px dashed rgba(var(--primary-rgb),.3);
+      font-weight:600;
+    }
+
+    @media (max-width:720px){
+      .hero{padding:24px;}
+      .hero h2{font-size:1.6rem;}
+      .topbar{flex-direction:column; align-items:flex-start;}
+      .lang-toggle{align-self:flex-end;}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">M7</div>
+        <div>
+          <h1>M7mdiyat</h1>
+          <div class="badge">Privacy Center · Crafted with care</div>
+        </div>
+      </div>
+      <div class="lang-toggle" role="tablist" aria-label="Language toggle">
+        <button class="active" type="button" data-lang="en" aria-selected="true">English</button>
+        <button type="button" data-lang="ar" aria-selected="false">العربية</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="lang-content active" data-lang="en">
+        <span class="pill">🔐 Privacy Policy</span>
+        <h2>Privacy matters, simply and transparently.</h2>
+        <p><span class="emphasis">Last updated:</span> January 8, 2026</p>
+        <p>M7mdiyat respects your privacy. This Privacy Policy explains how information is handled when using <span class="emphasis">this website/app</span>.</p>
+      </div>
+      <div class="lang-content rtl" data-lang="ar">
+        <span class="pill">🔐 سياسة الخصوصية</span>
+        <h2>خصوصيتك محل اهتمامنا، ببساطة وشفافية.</h2>
+        <p><span class="emphasis">آخر تحديث:</span> 8 يناير 2026</p>
+        <p>تحترم محمديات خصوصيتك. توضح هذه السياسة كيفية التعامل مع المعلومات عند استخدام <span class="emphasis">هذا الموقع/التطبيق</span>.</p>
+      </div>
+    </section>
+
+    <section class="section-grid">
+      <article class="card lang-content active" data-lang="en">
+        <h3>Information Collection and Use</h3>
+        <p>The website/app does not require users to create an account.</p>
+        <p class="emphasis">The website/app uses Google Analytics to collect anonymous usage statistics, such as:</p>
+        <ul>
+          <li>App interactions and screen views</li>
+          <li>Device and operating system information</li>
+          <li>Approximate location (country-level only)</li>
+        </ul>
+        <p>This data helps improve website/app performance and user experience.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>جمع المعلومات واستخدامها</h3>
+        <p>لا يتطلب الموقع/التطبيق إنشاء حساب.</p>
+        <p class="emphasis">يستخدم الموقع/التطبيق Google Analytics لجمع إحصاءات استخدام مجهولة الهوية، مثل:</p>
+        <ul>
+          <li>تفاعلات التطبيق وعرض الشاشات</li>
+          <li>معلومات الجهاز ونظام التشغيل</li>
+          <li>الموقع التقريبي (على مستوى الدولة فقط)</li>
+        </ul>
+        <p>تساعد هذه البيانات على تحسين أداء الموقع/التطبيق وتجربة الاستخدام.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Online Features</h3>
+        <p>When using optional online features (such as AI-based tafsir comparison), the website/app may send only the user’s query text to external services to generate a response.</p>
+        <p class="emphasis">No personally identifiable information is included in these requests.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>الميزات عبر الإنترنت</h3>
+        <p>عند استخدام الميزات الاختيارية عبر الإنترنت (مثل مقارنة التفسير بالذكاء الاصطناعي)، قد يرسل الموقع/التطبيق نص الاستعلام فقط إلى خدمات خارجية لتوليد الرد.</p>
+        <p class="emphasis">لا تتضمن هذه الطلبات أي معلومات تعريفية شخصية.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Data Storage</h3>
+        <p>The website/app does not store personal user data on its own servers.</p>
+        <p>Analytics data is processed by Google Analytics according to Google’s privacy policies.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>تخزين البيانات</h3>
+        <p>لا يخزن الموقع/التطبيق بيانات شخصية للمستخدمين على خوادمه.</p>
+        <p>تُعالَج بيانات التحليلات بواسطة Google Analytics وفقًا لسياسات الخصوصية لدى Google.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Data Sharing</h3>
+        <p>Analytics data is shared only with Google Analytics and is used solely for website/app performance and improvement purposes.</p>
+        <p class="emphasis">The website/app does not sell or share user data with other third parties.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>مشاركة البيانات</h3>
+        <p>تُشارك بيانات التحليلات فقط مع Google Analytics وتُستخدم حصريًا لتحسين أداء الموقع/التطبيق وتجربته.</p>
+        <p class="emphasis">لا يبيع الموقع/التطبيق بيانات المستخدمين ولا يشاركها مع أي أطراف ثالثة أخرى.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Children’s Privacy</h3>
+        <p>The website/app does not knowingly collect personal information from children.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>خصوصية الأطفال</h3>
+        <p>لا يجمع الموقع/التطبيق عن علم معلومات شخصية من الأطفال.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Changes to This Policy</h3>
+        <p>This Privacy Policy may be updated. Any changes will be posted on this page.</p>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>التغييرات على هذه السياسة</h3>
+        <p>قد يتم تحديث سياسة الخصوصية هذه. سيتم نشر أي تغييرات على هذه الصفحة.</p>
+      </article>
+
+      <article class="card lang-content active" data-lang="en">
+        <h3>Contact</h3>
+        <p>If you have any questions, contact us at:</p>
+        <div class="contact-box">📧 m7mdiyat@gmail.com</div>
+      </article>
+
+      <article class="card lang-content rtl" data-lang="ar">
+        <h3>التواصل</h3>
+        <p>إذا كانت لديك أي أسئلة، تواصل معنا عبر:</p>
+        <div class="contact-box">📧 m7mdiyat@gmail.com</div>
+      </article>
+    </section>
+
+    <div class="footer">
+      <span class="lang-content active" data-lang="en">Back to <a href="/">home</a>.</span>
+      <span class="lang-content rtl" data-lang="ar">العودة إلى <a href="/">الرئيسية</a>.</span>
+    </div>
+  </main>
+
+  <script>
+    const buttons = document.querySelectorAll('.lang-toggle button');
+    const sections = document.querySelectorAll('.lang-content');
+    const html = document.documentElement;
+
+    function setLanguage(lang){
+      buttons.forEach((btn) => {
+        const isActive = btn.dataset.lang === lang;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', String(isActive));
+      });
+
+      sections.forEach((section) => {
+        section.classList.toggle('active', section.dataset.lang === lang);
+      });
+
+      if(lang === 'ar'){
+        html.setAttribute('lang', 'ar');
+        html.setAttribute('dir', 'rtl');
+      } else {
+        html.setAttribute('lang', 'en');
+        html.setAttribute('dir', 'ltr');
+      }
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => setLanguage(button.dataset.lang));
+    });
+  </script>
+</body>
+</html>

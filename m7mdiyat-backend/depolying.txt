@@ -1,0 +1,12 @@
+gcloud run deploy tafsir-api-sqlite `
+  --source . `
+  --region me-central1 `
+  --runtime python312 `
+  --allow-unauthenticated
+
+
+
+gcloud run deploy tafsir-api-sqlite --source . --region me-central1 --allow-unauthenticated --set-build-env-vars GOOGLE_RUNTIME_VERSION=3.12.7
+
+
+curl.exe -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
