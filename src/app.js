@@ -175,6 +175,12 @@ let COMPARE_WRITE_RESUME_FN = null;
 let AUDIO_PLAYER = null;
 let AUDIO_PLAYING = false;
 
+// Listening mode state - continuous playback through surah
+let LISTENING_MODE = false;
+try {
+  LISTENING_MODE = localStorage.getItem('listeningMode') === '1';
+} catch { }
+
 /* context window (stable) */
 let CONTEXT_STATE = { surah: null, start: 1, end: 0, lang: "ar" };
 
@@ -509,6 +515,38 @@ function stopAudio() {
 }
 
 /**
+ * Set listening mode (continuous playback through surah)
+ */
+function setListeningMode(enabled) {
+  LISTENING_MODE = enabled;
+  try { localStorage.setItem('listeningMode', enabled ? '1' : '0'); } catch { }
+  updateListeningModeUI();
+}
+
+/**
+ * Toggle listening mode on/off
+ */
+function toggleListeningMode() {
+  setListeningMode(!LISTENING_MODE);
+}
+
+/**
+ * Update listening mode UI across desktop and mobile buttons
+ */
+function updateListeningModeUI() {
+  const desktopBtn = document.getElementById('listeningModeBtn');
+  const mobileBtn = document.querySelector('.mobile-listening-mode-btn');
+
+  // Update active state
+  desktopBtn?.classList.toggle('active', LISTENING_MODE);
+  mobileBtn?.classList.toggle('active', LISTENING_MODE);
+
+  // Update aria attributes
+  desktopBtn?.setAttribute('aria-pressed', LISTENING_MODE ? 'true' : 'false');
+  mobileBtn?.setAttribute('aria-pressed', LISTENING_MODE ? 'true' : 'false');
+}
+
+/**
  * Play audio for the current ayah
  */
 function playCurrentAyah() {
@@ -536,6 +574,29 @@ function playCurrentAyah() {
   AUDIO_PLAYER.addEventListener("timeupdate", updateSeekSlider);
 
   AUDIO_PLAYER.addEventListener("ended", () => {
+    // Check if listening mode is active and there's a next ayah
+    if (LISTENING_MODE && CURRENT) {
+      const surah = QURAN?.surahs?.find((s) => s.number === CURRENT.s);
+      if (surah && CURRENT.a < surah.ayahs.length) {
+        // Clean up current audio without full reset
+        if (AUDIO_PLAYER) {
+          AUDIO_PLAYER.pause();
+          AUDIO_PLAYER = null;
+        }
+        AUDIO_PLAYING = false;
+
+        // Navigate to next ayah (updates UI smoothly)
+        stepAyah(1);
+
+        // Start audio immediately
+        playCurrentAyah();
+
+        return;
+      } else {
+        // End of surah - disable listening mode
+        setListeningMode(false);
+      }
+    }
     stopAudio();
   });
 
@@ -687,6 +748,21 @@ document.querySelectorAll('.dropdown-play-btn').forEach(btn => {
 document.addEventListener('DOMContentLoaded', updateReciterUI);
 // Also run immediately in case DOM is already loaded
 if (document.readyState !== 'loading') updateReciterUI();
+
+// Listening mode button event listeners
+document.getElementById('listeningModeBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleListeningMode();
+});
+
+document.querySelector('.mobile-listening-mode-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleListeningMode();
+});
+
+// Initialize listening mode UI on page load
+document.addEventListener('DOMContentLoaded', updateListeningModeUI);
+if (document.readyState !== 'loading') updateListeningModeUI();
 
 
 function applyCompareFadeIn() {
