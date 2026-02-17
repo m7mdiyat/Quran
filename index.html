@@ -1134,6 +1134,50 @@
       color: #60a5fa;
     }
 
+    /* Speed Control Button */
+    .audio-speed-btn {
+      position: relative;
+      min-width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 10px;
+      letter-spacing: -0.02em;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .audio-speed-label {
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .audio-speed-btn:hover {
+      background: rgba(139, 92, 246, 0.15) !important;
+      border-color: rgba(139, 92, 246, 0.4) !important;
+      color: #8b5cf6 !important;
+      transform: scale(1.08);
+    }
+
+    .audio-speed-btn.speed-active {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(168, 85, 247, 0.24)) !important;
+      border-color: rgba(139, 92, 246, 0.5) !important;
+      color: #8b5cf6 !important;
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.25);
+    }
+
+    body.dark .audio-speed-btn:hover {
+      background: rgba(167, 139, 250, 0.18) !important;
+      border-color: rgba(167, 139, 250, 0.4) !important;
+      color: #a78bfa !important;
+    }
+
+    body.dark .audio-speed-btn.speed-active {
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.18), rgba(139, 92, 246, 0.22)) !important;
+      border-color: rgba(167, 139, 250, 0.5) !important;
+      color: #a78bfa !important;
+      box-shadow: 0 0 10px rgba(167, 139, 250, 0.2);
+    }
+
     /* Reciter Color Themes */
     /* Ali Jaber - Blue */
     .audio-player-wrapper.reciter-alijaber .audio-main-btn.playing,
@@ -1790,6 +1834,10 @@
                                 d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
                             </svg>
                           </button>
+                          <!-- Speed control button -->
+                          <button type="button" class="audio-speed-btn audio-vol-btn" title="سرعة التشغيل">
+                            <span class="audio-speed-label">1x</span>
+                          </button>
                           <!-- Switch reciter button -->
                           <button type="button" class="reciter-switch-btn" title="القارئ التالي">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
@@ -1940,6 +1988,10 @@
                               <path stroke-linecap="round" stroke-linejoin="round"
                                 d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
                             </svg>
+                          </button>
+                          <!-- Speed control button -->
+                          <button type="button" class="audio-speed-btn audio-vol-btn" title="سرعة التشغيل">
+                            <span class="audio-speed-label">1x</span>
                           </button>
                           <!-- Switch reciter button -->
                           <button type="button" class="reciter-switch-btn" title="القارئ التالي">
