@@ -175,6 +175,14 @@ let COMPARE_WRITE_RESUME_FN = null;
 let AUDIO_PLAYER = null;
 let AUDIO_PLAYING = false;
 
+// Audio playback speed state
+const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
+let AUDIO_SPEED = 1;
+try {
+  const savedSpeed = localStorage.getItem('audioSpeed');
+  if (savedSpeed && SPEED_OPTIONS.includes(parseFloat(savedSpeed))) AUDIO_SPEED = parseFloat(savedSpeed);
+} catch { }
+
 // Listening mode state - continuous playback through surah
 let LISTENING_MODE = false;
 try {
@@ -498,6 +506,60 @@ function setAudioVolume(volume) {
 }
 
 /**
+ * Set audio playback speed and update UI
+ */
+function setAudioSpeed(speed) {
+  AUDIO_SPEED = speed;
+  if (AUDIO_PLAYER) AUDIO_PLAYER.playbackRate = AUDIO_SPEED;
+  try { localStorage.setItem('audioSpeed', String(AUDIO_SPEED)); } catch { }
+  updateSpeedUI();
+}
+
+/**
+ * Cycle through playback speed options: 1x → 1.25x → 1.5x → 2x → 1x
+ */
+function cycleAudioSpeed() {
+  const idx = SPEED_OPTIONS.indexOf(AUDIO_SPEED);
+  const nextIdx = (idx + 1) % SPEED_OPTIONS.length;
+  setAudioSpeed(SPEED_OPTIONS[nextIdx]);
+}
+
+/**
+ * Update speed button labels across desktop and mobile
+ */
+function updateSpeedUI() {
+  const label = AUDIO_SPEED === 1 ? '1x' : AUDIO_SPEED + 'x';
+  document.querySelectorAll('.audio-speed-label').forEach(el => {
+    el.textContent = label;
+  });
+  document.querySelectorAll('.audio-speed-btn').forEach(btn => {
+    btn.classList.toggle('speed-active', AUDIO_SPEED !== 1);
+  });
+}
+
+/**
+ * Fade out audio volume over duration (ms), then fully stop
+ */
+function fadeOutAndStopAudio(duration = 600) {
+  if (!AUDIO_PLAYER || !AUDIO_PLAYING) return;
+  const player = AUDIO_PLAYER;
+  const startVol = player.volume;
+  const steps = 20;
+  const stepTime = duration / steps;
+  let step = 0;
+  const fade = setInterval(() => {
+    step++;
+    player.volume = Math.max(0, startVol * (1 - step / steps));
+    if (step >= steps) {
+      clearInterval(fade);
+      stopAudio();
+      // Restore volume setting for next playback
+      if (AUDIO_PLAYER) AUDIO_PLAYER.volume = AUDIO_VOLUME;
+    }
+  }, stepTime);
+}
+
+/**
  * Stop any currently playing audio
  */
 function stopAudio() {
@@ -561,6 +623,7 @@ function playCurrentAyah() {
   const url = getAyahAudioUrl(CURRENT.s, CURRENT.a);
   AUDIO_PLAYER = new Audio(url);
   AUDIO_PLAYER.volume = AUDIO_VOLUME;
+  AUDIO_PLAYER.playbackRate = AUDIO_SPEED;
 
   AUDIO_PLAYER.addEventListener("play", () => {
     AUDIO_PLAYING = true;
@@ -759,6 +822,18 @@ document.querySelector('.mobile-listening-mode-btn')?.addEventListener('click', 
   e.stopPropagation();
   toggleListeningMode();
 });
+
+// Speed control button event listeners
+document.querySelectorAll('.audio-speed-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    cycleAudioSpeed();
+  });
+});
+
+// Initialize speed UI on page load
+document.addEventListener('DOMContentLoaded', updateSpeedUI);
+if (document.readyState !== 'loading') updateSpeedUI();
 
 // Initialize listening mode UI on page load
 document.addEventListener('DOMContentLoaded', updateListeningModeUI);
@@ -2728,6 +2803,9 @@ async function runCompare(payload, abortController) {
   return { ok: true, offline: false };
 }
 async function handleCompareTafsirs() {
+  // Fade out audio smoothly when opening tafsir summary
+  if (AUDIO_PLAYING) fadeOutAndStopAudio(600);
+
   if (!navigator.onLine) {
     if (COMPARE_ABORT) {
       COMPARE_ABORT.abort();
