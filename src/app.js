@@ -1689,61 +1689,115 @@ function searchText(q) {
   if (nq.length < 2) return [];
   const MAX_RESULTS = 80;
 
-  // 2-3 chars: fast
-  if (nq.length <= 3) {
-    const exactMatches = [];
-    const exactSet = new Set();
-    const out = [];
+  // Detect "locked" words: pressing space after a word locks it to whole-word matching.
+  // normArabic trims whitespace, so check the raw input for trailing space.
+  const hasTrailingSpace = /\s$/.test(q);
+  const allTerms = nq.split(/\s+/).filter(t => t.length > 0);
+  let lockedTerms = [];
+  let partialTerm = null;
 
-    for (const it of INDEX) {
-      if (isExactAyahMatch(it.textNorm, nq)) {
-        exactMatches.push(it);
-        exactSet.add(`${it.s}:${it.a}`);
-      }
-    }
-
-    for (const it of INDEX) {
-      if (it.textNorm.includes(nq)) out.push(it);
-      if (out.length >= MAX_RESULTS) break;
-    }
-
-    if (!exactMatches.length) return out;
-    const limited = out.filter((it) => !exactSet.has(`${it.s}:${it.a}`));
-    return [...exactMatches, ...limited].slice(0, MAX_RESULTS);
+  if (hasTrailingSpace) {
+    lockedTerms = allTerms.filter(t => t.length >= 2);
+  } else if (allTerms.length > 1) {
+    lockedTerms = allTerms.slice(0, -1).filter(t => t.length >= 2);
+    partialTerm = allTerms[allTerms.length - 1] || null;
+    if (partialTerm && partialTerm.length < 2) partialTerm = null;
   }
 
-  // 4+ : scoring
-  let terms = nq.split(" ").map((t) => t.trim()).filter((t) => t.length > 1);
-  terms = [...new Set(terms)];
-  if (!terms.length) return [];
+  const hasLocked = lockedTerms.length > 0;
+  const lockedRegexes = hasLocked
+    ? lockedTerms.map(t => new RegExp('(?:^|\\s)' + escapeRegex(t) + '(?=$|\\s)'))
+    : [];
 
-  const anchor = terms.reduce((a, b) => (b.length > a.length ? b : a), terms[0]);
+  // --- No locked terms: original behavior ---
+  if (!hasLocked) {
+    // 2-3 chars: fast
+    if (nq.length <= 3) {
+      const exactMatches = [];
+      const exactSet = new Set();
+      const out = [];
+
+      for (const it of INDEX) {
+        if (isExactAyahMatch(it.textNorm, nq)) {
+          exactMatches.push(it);
+          exactSet.add(`${it.s}:${it.a}`);
+        }
+      }
+
+      for (const it of INDEX) {
+        if (it.textNorm.includes(nq)) out.push(it);
+        if (out.length >= MAX_RESULTS) break;
+      }
+
+      if (!exactMatches.length) return out;
+      const limited = out.filter((it) => !exactSet.has(`${it.s}:${it.a}`));
+      return [...exactMatches, ...limited].slice(0, MAX_RESULTS);
+    }
+
+    // 4+ : scoring
+    let terms = nq.split(" ").map((t) => t.trim()).filter((t) => t.length > 1);
+    terms = [...new Set(terms)];
+    if (!terms.length) return [];
+
+    const anchor = terms.reduce((a, b) => (b.length > a.length ? b : a), terms[0]);
+    const scored = [];
+
+    for (const it of INDEX) {
+      const text = it.textNorm;
+
+      let hits = 0;
+      for (const t of terms) if (text.includes(t)) hits++;
+      const ratio = hits / terms.length;
+
+      const hasPhrase = text.includes(nq);
+      const noSpaceQ = nq.replace(/\s+/g, "");
+      const noSpaceT = text.replace(/\s+/g, "");
+      const hasNoSpace = noSpaceT.includes(noSpaceQ);
+
+      // Stricter filtering: require ALL terms to be present, or exact phrase match
+      if (!hasPhrase && !hasNoSpace) {
+        // Must have all terms present for a match
+        if (hits < terms.length) continue;
+      }
+
+      let score = ratio;
+      if (hasPhrase) score += 2.5;
+      if (hasNoSpace) score += 1.5;
+
+      if (text.includes(anchor)) score += 0.3;
+
+      const exact = isExactAyahMatch(text, nq);
+      if (exact) score += 5;
+
+      scored.push({ ...it, score, exact });
+    }
+
+    scored.sort((a, b) => {
+      const exactDiff = Number(b.exact) - Number(a.exact);
+      if (exactDiff) return exactDiff;
+      return b.score - a.score;
+    });
+
+    return scored.slice(0, MAX_RESULTS);
+  }
+
+  // --- Locked-term path: whole-word matching for locked words ---
   const scored = [];
 
   for (const it of INDEX) {
     const text = it.textNorm;
 
-    let hits = 0;
-    for (const t of terms) if (text.includes(t)) hits++;
-    const ratio = hits / terms.length;
-
-    const hasPhrase = text.includes(nq);
-    const noSpaceQ = nq.replace(/\s+/g, "");
-    const noSpaceT = text.replace(/\s+/g, "");
-    const hasNoSpace = noSpaceT.includes(noSpaceQ);
-
-    // Stricter filtering: require ALL terms to be present, or exact phrase match
-    if (!hasPhrase && !hasNoSpace) {
-      // Must have all terms present for a match
-      if (hits < terms.length) continue;
+    let allMatch = true;
+    for (const re of lockedRegexes) {
+      if (!re.test(text)) { allMatch = false; break; }
     }
+    if (!allMatch) continue;
 
-    let score = ratio;
+    if (partialTerm && !text.includes(partialTerm)) continue;
+
+    let score = lockedTerms.length;
+    const hasPhrase = text.includes(nq);
     if (hasPhrase) score += 2.5;
-    if (hasNoSpace) score += 1.5;
-
-    if (text.includes(anchor)) score += 0.3;
-
     const exact = isExactAyahMatch(text, nq);
     if (exact) score += 5;
 
