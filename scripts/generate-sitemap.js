@@ -57,6 +57,16 @@ function generateSitemap() {
         }
     }
 
+    // Add Mushaf reading pages /read/page/1..604
+    for (let p = 1; p <= 604; p++) {
+        urls.push({
+            loc: `${SITE_URL}/read/page/${p}`,
+            lastmod: TODAY,
+            priority: '0.6',
+            changefreq: 'monthly'
+        });
+    }
+
     // Build XML
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
@@ -99,6 +109,8 @@ function main() {
     console.log(`   • ${SITE_URL}/1/1`);
     console.log(`   • ${SITE_URL}/2/255`);
     console.log(`   • ${SITE_URL}/114/6`);
+    console.log(`   • ${SITE_URL}/read/page/1`);
+    console.log(`   • ${SITE_URL}/read/page/604`);
 }
 
 main();

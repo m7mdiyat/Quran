@@ -399,6 +399,78 @@ function generatePageHtml(surah, ayah, surahName) {
 // 3. EXECUTION
 // -------------------------------------------------------------
 
+/**
+ * Generate Mushaf page HTML — minimal SEO shell for /read/page/N. The actual
+ * Mushaf rendering is client-side via mushaf.js, but we still emit a small
+ * HTML file per page so Google can index the URL with a meaningful title
+ * + canonical and the user lands on the right page without any redirects.
+ */
+let mushafChapters = [];
+let mushafFontMap = {};
+try {
+    const idxRaw = readJsonSafe(path.join(PUBLIC_DIR, 'data', 'qcf4', 'index.json'));
+    mushafChapters = idxRaw?.chapters || [];
+    mushafFontMap = readJsonSafe(path.join(PUBLIC_DIR, 'data', 'qcf4', 'font-map.json')) || {};
+} catch (e) {
+    console.error('⚠️ Mushaf metadata not found — Mushaf prerender will be skipped:', e.message);
+}
+
+function surahNamesForPage(pageNo) {
+    return mushafChapters
+        .filter((c) => c.pages?.[0] <= pageNo && pageNo <= c.pages?.[1])
+        .map((c) => c.name_arabic);
+}
+
+function generateMushafPageHtml(pageNo) {
+    const canonicalUrl = `${SITE_URL}/read/page/${pageNo}`;
+    const names = surahNamesForPage(pageNo);
+    const surahDesc = names.length
+        ? `يحتوي على سور: ${names.join('، ')}`
+        : '';
+    const title = `قراءة المصحف — صفحة ${pageNo} | محمديات`;
+    const description = `صفحة ${pageNo} من المصحف الشريف برسم مصحف المدينة. ${surahDesc} اقرأ بخط عثمان طه مع إمكانية اختيار الآيات وتشغيل التلاوة.`;
+
+    let html = baseTemplate;
+    html = html.replace(/<title[^>]*>.*?<\/title>/i, `<title>${title}</title>`);
+    const canonTag = `<link id="canonicalLink" rel="canonical" href="${canonicalUrl}" />`;
+    html = html.replace(/<link[^>]*id="canonicalLink"[^>]*\/?>/i, canonTag);
+    html = html.replace(/<meta[^>]*id="ogUrl"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="ogUrl" property="og:url" content="${canonicalUrl}" />`);
+    html = html.replace(/<meta[^>]*id="ogTitle"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="ogTitle" property="og:title" content="${title}" />`);
+    html = html.replace(/<meta[^>]*id="metaDescription"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="metaDescription" name="description" content="${description}" />`);
+    html = html.replace(/<meta[^>]*id="ogDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="ogDesc" property="og:description" content="${description}" />`);
+    html = html.replace(/<meta[^>]*id="twTitle"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twTitle" name="twitter:title" content="${title}" />`);
+    html = html.replace(/<meta[^>]*id="twDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twDesc" name="twitter:description" content="${description}" />`);
+
+    // Tag the <html> so the early-routing script knows the target page.
+    html = html.replace(
+        '<html lang="ar" dir="rtl">',
+        `<html lang="ar" dir="rtl" data-app-mode="mushaf" data-mushaf-page="${pageNo}">`
+    );
+
+    // Preload the font for this page so it's ready by the time mushaf.js renders.
+    const fontName = mushafFontMap[String(pageNo)];
+    if (fontName) {
+        const fontFile = `${fontName}_W.woff2`;
+        const preload = `<link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/qcf4/${fontFile}">`;
+        html = html.replace('</head>', `${preload}\n</head>`);
+    }
+
+    // Schema
+    const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "محمديات", "item": SITE_URL },
+            { "@type": "ListItem", "position": 2, "name": "المصحف", "item": `${SITE_URL}/read/page/1` },
+            { "@type": "ListItem", "position": 3, "name": `صفحة ${pageNo}` },
+        ],
+    };
+    const schemaScript = `<script type="application/ld+json">${JSON.stringify(breadcrumbSchema)}</script>`;
+    html = html.replace('</head>', `${schemaScript}\n</head>`);
+
+    return html;
+}
+
 async function prerender() {
     console.log('🚀 Starting pre-render process...');
     console.log(`📁 Output directory: ${DIST_DIR}`);
@@ -428,6 +500,20 @@ async function prerender() {
 
         if (surah.number % 10 === 0) {
             console.log(`  ✓ Processed surah ${surah.number}/114 (${surah.name_ar})`);
+        }
+    }
+
+    // 3. Generate Mushaf reading pages /read/page/N
+    if (mushafChapters.length) {
+        console.log('📖 Generating Mushaf pages /read/page/1..604 ...');
+        const mushafRoot = path.join(DIST_DIR, 'read', 'page');
+        if (!fs.existsSync(mushafRoot)) fs.mkdirSync(mushafRoot, { recursive: true });
+        for (let p = 1; p <= 604; p++) {
+            const dir = path.join(mushafRoot, String(p));
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'index.html'), generateMushafPageHtml(p));
+            totalPages++;
+            if (p % 100 === 0) console.log(`  ✓ Mushaf page ${p}/604`);
         }
     }
 
