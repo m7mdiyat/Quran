@@ -3783,7 +3783,7 @@ async function init() {
     getCurrentReciter: () => CURRENT_RECITER,
     setCurrentReciter: (r) => switchReciter(r),
     openTafsirForAyah: (s, a) => {
-      setAppMode("tafsir");
+      setAppMode("tafsir", { skipUrlUpdate: true });
       setPrimaryAyah(s, a, { scroll: true });
     },
     stopTafsirAudio: () => { try { stopAudio(); } catch { } },
