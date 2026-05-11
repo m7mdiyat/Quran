@@ -3783,6 +3783,7 @@ async function init() {
     reciterOrder: RECITER_ORDER,
     getCurrentReciter: () => CURRENT_RECITER,
     setCurrentReciter: (r) => switchReciter(r),
+    stopAudio: () => stopAudio(),
     tafsirSectionEl: tafsirSection,
     hasCurrentAyah: () => CURRENT != null,
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,

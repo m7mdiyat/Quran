@@ -3,7 +3,8 @@
  *
  * Inline panel that mirrors #tafsirSection chrome. All colors come from
  * the site's CSS vars (--card, --card2, --line, --text, --muted, --accent,
- * --accent-soft, --accent-muted) so light/dark mode is automatic.
+ * --accent-soft, --accent-muted, --accent-strong) so light/dark mode
+ * adapt automatically.
  */
 
 /* ============================================================
@@ -22,7 +23,7 @@
 }
 
 /* ============================================================
- * Mode toggle (in Tafsir search panel only)
+ * Mode toggle — iOS-style segmented control with Arabic labels
  * ============================================================ */
 .mode-toggle {
     display: inline-flex;
@@ -32,10 +33,11 @@
 }
 
 .mode-toggle__btn {
+    direction: ltr;
     position: relative;
     display: inline-flex;
-    align-items: center;
-    width: 92px;
+    align-items: stretch;
+    width: 240px;
     height: 36px;
     padding: 3px;
     border-radius: 999px;
@@ -43,7 +45,6 @@
     border: 1px solid var(--line);
     cursor: pointer;
     transition: background 200ms ease, border-color 200ms ease;
-    direction: ltr;
 }
 
 .mode-toggle__btn:hover {
@@ -58,17 +59,55 @@ body.dark .mode-toggle__btn:hover {
     background: rgba(148, 163, 184, 0.18);
 }
 
+.mode-toggle__labels {
+    /* RTL so the first label in source order (Tafsir) renders on the right */
+    direction: rtl;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    z-index: 2;
+}
+
+.mode-toggle__label {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    pointer-events: none;
+    transition: color 200ms ease, font-weight 200ms ease;
+    white-space: nowrap;
+    padding: 0 6px;
+}
+
+[data-app-mode="tafsir"] .mode-toggle__label--tafsir,
+[data-app-mode="mushaf"] .mode-toggle__label--mushaf {
+    color: var(--accent-strong);
+    font-weight: 800;
+}
+
+/* Fix 7: in dark mode the knob is near-white (#e5e7eb) and --accent-strong is
+ * also near-white (#cbd5e1) — the active label vanishes onto the knob. Pin the
+ * active label to a dark color in dark mode for proper contrast. */
+body.dark [data-app-mode="tafsir"] .mode-toggle__label--tafsir,
+body.dark [data-app-mode="mushaf"] .mode-toggle__label--mushaf {
+    color: #0b1326;
+}
+
 .mode-toggle__knob {
     position: absolute;
     top: 3px;
+    bottom: 3px;
     left: 3px;
-    width: 42px;
-    height: 28px;
+    width: calc(50% - 3px);
     border-radius: 999px;
     background: #fff;
     box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
     transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
+    z-index: 1;
 }
 
 body.dark .mode-toggle__knob {
@@ -76,42 +115,15 @@ body.dark .mode-toggle__knob {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-.mode-toggle__icons {
-    position: relative;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-    height: 100%;
-    align-items: center;
-    pointer-events: none;
-}
-
-.mode-toggle__icon {
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    transition: color 200ms ease;
-}
-
-.mode-toggle__icon svg {
-    width: 18px;
-    height: 18px;
-}
-
+/* Tafsir mode: knob on the visual RIGHT (covers the Tafsir label
+   which renders on the right because of direction:rtl on the labels). */
 [data-app-mode="tafsir"] .mode-toggle__knob {
-    transform: translateX(0);
+    transform: translateX(100%);
 }
 
-[data-app-mode="tafsir"] .mode-toggle__icon--tafsir {
-    color: var(--accent);
-}
-
+/* Mushaf mode: knob on the visual LEFT (covers the Mushaf label). */
 [data-app-mode="mushaf"] .mode-toggle__knob {
-    transform: translateX(44px);
-}
-
-[data-app-mode="mushaf"] .mode-toggle__icon--mushaf {
-    color: var(--accent);
+    transform: translateX(0);
 }
 
 .mode-toggle--in-search {
@@ -137,24 +149,55 @@ body.dark .mode-toggle__knob {
     display: none !important;
 }
 
+/* Fix 4: opacity transitions used by setAppMode to fade panels in/out
+ * sequentially during a mode toggle. mode-fade-out: fade to 0 over 180ms.
+ * mode-fade-in: starts at 0; JS removes the class on the next frame so the
+ * panel animates back to 1. */
+.mushaf-root,
+#tafsirSection {
+    transition: opacity 180ms ease;
+}
+
+.mode-fade-out {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+.mode-fade-in {
+    opacity: 0;
+}
+
 /* ============================================================
- * Clean surah-name header (above the first ayah of each surah
- * on the page). No box, no label — just the Arabic name,
- * centered, with subtle vertical spacing.
+ * Surah header — small "سورة" label above the large Arabic name.
+ * The whole header fades together when dimmed (non-target surah).
  * ============================================================ */
 .mushaf-surah-header {
     text-align: center;
-    margin: 22px auto 14px;
-    font-family: "Amiri", "MeQuran", serif;
-    font-size: 30px;
-    font-weight: 700;
-    color: var(--text);
+    margin: 24px auto 14px;
     line-height: 1.15;
-    letter-spacing: 0;
+    transition: opacity 250ms ease, filter 250ms ease;
 }
 
 .mushaf-surah-header:first-child {
     margin-top: 6px;
+}
+
+.mushaf-surah-header__label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+}
+
+.mushaf-surah-header__name {
+    display: block;
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
 }
 
 /* ============================================================
@@ -172,7 +215,7 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Page area + transitions
+ * Page area + transitions (200ms for snappier feel)
  * ============================================================ */
 .mushaf-stage {
     position: relative;
@@ -186,14 +229,14 @@ body.dark .mode-toggle__knob {
 }
 
 .mushaf-page {
-    --line-gap: 4px;
-    --font-size: 28px;
+    --line-gap: 6px;
+    --font-size: 32px;
     width: 100%;
     padding: 4px 8px;
     text-align: center;
     direction: rtl;
-    transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1),
-        opacity 200ms ease;
+    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 160ms ease;
     will-change: transform, opacity;
 }
 
@@ -227,20 +270,15 @@ body.dark .mode-toggle__knob {
     opacity: 1;
 }
 
-/* Font size presets */
-[data-font-size="s"] .mushaf-page {
-    --font-size: 22px;
-    --line-gap: 2px;
-}
-
+/* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
 [data-font-size="m"] .mushaf-page {
-    --font-size: 28px;
+    --font-size: 32px;
     --line-gap: 6px;
 }
 
-[data-font-size="l"] .mushaf-page {
-    --font-size: 36px;
-    --line-gap: 10px;
+[data-font-size="s"] .mushaf-page {
+    --font-size: 26px;
+    --line-gap: 4px;
 }
 
 /* ============================================================
@@ -299,20 +337,21 @@ body.dark .mushaf-ayah--playing {
 }
 
 /* ============================================================
- * Target-surah focus: non-target surahs get a JS-applied
- * --dimmed class. They render at 30% opacity, desaturated, and
- * are non-interactive (no hover menu, no click-to-play).
+ * Target-surah focus dimming (Fix 3: dimmed surahs are now clickable
+ * — click any dimmed ayah or its dimmed header to focus that surah)
  * ============================================================ */
 .mushaf-ayah--dimmed,
 .mushaf-surah-header--dimmed,
 .mushaf-line--bismillah.mushaf-line--dimmed {
     opacity: 0.30;
     filter: saturate(0.55);
-    pointer-events: none;
+    cursor: pointer;
 }
 
-.mushaf-ayah--dimmed {
-    cursor: default;
+.mushaf-ayah--dimmed:hover,
+.mushaf-surah-header--dimmed:hover {
+    opacity: 0.55;
+    filter: saturate(0.85);
 }
 
 /* ============================================================
@@ -393,18 +432,18 @@ body.dark .mushaf-ayah-menu {
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
 }
 
-/* Show the right sub-view */
 .mushaf-ayah-menu__main {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 6px;
 }
 
 .mushaf-ayah-menu__settings {
     display: none;
     flex-direction: column;
-    gap: 8px;
-    width: 240px;
-    padding: 4px 2px;
+    gap: 14px;
+    width: 280px;
+    padding: 6px 4px;
 }
 
 .mushaf-ayah-menu[data-view="settings"] .mushaf-ayah-menu__main {
@@ -428,6 +467,7 @@ body.dark .mushaf-ayah-menu {
     color: var(--text);
     cursor: pointer;
     transition: background 150ms ease;
+    padding: 0;
 }
 
 .mushaf-ayah-menu__btn:hover {
@@ -439,16 +479,128 @@ body.dark .mushaf-ayah-menu {
     height: 20px;
 }
 
-/* Settings rows / chips inside the menu */
+/* ============================================================
+ * Volume slider (Fix 5)
+ *   layout: [play] [dynamic-speaker-icon button] [edge-labels + slider] [tafsir] [settings]
+ *   - speaker icon updates on input (mute / low / high) and toggles mute on click
+ *   - edge labels are tiny mute/loud icons above the slider ends to hint direction
+ * ============================================================ */
+.mushaf-volume-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.mushaf-volume-edges {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 1px;
+    direction: ltr;
+}
+
+.mushaf-volume-edge {
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted);
+    opacity: 0.45;
+}
+
+.mushaf-volume-edge svg {
+    width: 10px;
+    height: 10px;
+}
+
+.mushaf-volume {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--line);
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+    direction: ltr;
+}
+
+.mushaf-volume::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    cursor: pointer;
+    border: 2px solid var(--card);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.20);
+    transition: transform 120ms ease;
+}
+
+.mushaf-volume::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+}
+
+.mushaf-volume::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    cursor: pointer;
+    border: 2px solid var(--card);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.20);
+}
+
+.mushaf-volume-icon {
+    /* Reuses .mushaf-ayah-menu__btn sizing but slightly tighter to fit row */
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+}
+
+.mushaf-volume-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.mushaf-volume-icon--muted {
+    color: var(--muted);
+}
+
+/* ============================================================
+ * Settings sub-view (sections, labels, chips)
+ * ============================================================ */
+.mushaf-settings__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mushaf-settings__label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: right;
+    padding-right: 2px;
+}
+
 .mushaf-settings__row {
     display: flex;
+    gap: 6px;
+}
+
+/* Reciter row stacks vertically for clarity (3 full Arabic names) */
+.mushaf-settings__row--col {
+    flex-direction: column;
     gap: 4px;
 }
 
 .mushaf-settings__chip {
     flex: 1;
-    min-height: 32px;
-    padding: 6px 8px;
+    min-height: 34px;
+    padding: 7px 10px;
     border-radius: 10px;
     border: 1px solid var(--line);
     background: var(--card2);
@@ -479,16 +631,12 @@ body.dark .mushaf-ayah-menu {
         padding: 4px 0;
     }
 
-    [data-font-size="s"] .mushaf-page {
-        --font-size: 18px;
-    }
-
     [data-font-size="m"] .mushaf-page {
-        --font-size: 22px;
+        --font-size: 24px;
     }
 
-    [data-font-size="l"] .mushaf-page {
-        --font-size: 28px;
+    [data-font-size="s"] .mushaf-page {
+        --font-size: 20px;
     }
 
     .mushaf-nav {
@@ -504,25 +652,38 @@ body.dark .mushaf-ayah-menu {
         left: 2px;
     }
 
-    .mushaf-surah-header {
+    .mushaf-surah-header__name {
         font-size: 26px;
     }
 
+    .mushaf-surah-header__label {
+        font-size: 12px;
+    }
+
     .mushaf-ayah-menu__settings {
+        width: 260px;
+    }
+
+    .mushaf-volume-wrap {
+        width: 64px;
+    }
+
+    .mode-toggle__btn {
         width: 220px;
+    }
+
+    .mode-toggle__label {
+        font-size: 12px;
     }
 }
 
 @media (max-width: 380px) {
     .mode-toggle__btn {
-        width: 84px;
+        width: 200px;
+        height: 34px;
     }
 
-    .mode-toggle__knob {
-        width: 38px;
-    }
-
-    [data-app-mode="mushaf"] .mode-toggle__knob {
-        transform: translateX(40px);
+    .mode-toggle__label {
+        font-size: 11px;
     }
 }

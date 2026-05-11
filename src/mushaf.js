@@ -23,12 +23,13 @@ const STORAGE = {
     LAST_PAGE: "mushaf_last_page",
     FONT_SIZE: "mushaf_font_size",
     AUDIO_MODE: "mushaf_audio_mode",
+    VOLUME: "mushaf_volume",
 };
 
 const TOTAL_PAGES = 604;
 const LONG_PRESS_MS = 500;
 const HOVER_SHOW_MS = 150;
-const HOVER_HIDE_MS = 140;
+const HOVER_HIDE_MS = 350; // grace period: lets cursor travel ayah → menu without losing it
 const SWIPE_THRESHOLD = 50;
 const MOVE_CANCEL_THRESHOLD = 10;
 
@@ -41,6 +42,9 @@ const ICONS = {
     gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
     chevronRight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
     chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+    volumeMute: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`,
+    volumeLow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+    volumeHigh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
 };
 
 /* Data caches */
@@ -74,8 +78,11 @@ let NAV_NEXT = null;
 let AUDIO_PLAYER = null;
 let AUDIO_VERSE = null;
 let AUDIO_MODE = "single";
-let FONT_SIZE = "m";
-let CURRENT_RECITER_LOCAL = null; // cached reciter for stable comparisons
+let AUDIO_VOLUME = 0.8;          // 0..1
+let MUTED_PREV_VOLUME = 0.8;     // volume to restore when un-muting
+let PRELOADED_AUDIO = null;      // { key, el } — eager next-ayah audio for continuous mode
+let FONT_SIZE = "m";             // "s" (صغير) | "m" (عادي, default) — old "l" is migrated to "m"
+let CURRENT_RECITER_LOCAL = null;
 
 /* Hover/long-press timers */
 let HOVER_SHOW_TIMER = null;
@@ -94,12 +101,27 @@ export function initMushaf(deps) {
 
     try {
         const fs = localStorage.getItem(STORAGE.FONT_SIZE);
-        if (fs === "s" || fs === "m" || fs === "l") FONT_SIZE = fs;
+        if (fs === "s" || fs === "m") FONT_SIZE = fs;
+        else if (fs === "l" || fs === "كبير") {
+            // Migration: old "l" (large) no longer exists — map to "m".
+            FONT_SIZE = "m";
+            localStorage.setItem(STORAGE.FONT_SIZE, "m");
+        }
         const am = localStorage.getItem(STORAGE.AUDIO_MODE);
         if (am === "single" || am === "continuous") AUDIO_MODE = am;
+        const vol = parseFloat(localStorage.getItem(STORAGE.VOLUME));
+        if (Number.isFinite(vol) && vol >= 0 && vol <= 1) {
+            AUDIO_VOLUME = vol;
+            if (vol > 0) MUTED_PREV_VOLUME = vol;
+        }
     } catch { }
 
     buildShell();
+    // The auto-bootstrap at module bottom may have run buildShell() before
+    // DEPS existed, in which case the reciter row would be empty. Repopulate
+    // it now that we have DEPS, and re-sync the active-state highlighting.
+    buildReciterChips();
+    syncSettingsUI();
 
     let saved = "tafsir";
     try {
@@ -135,9 +157,14 @@ export function isMushafMode() {
  *   - Toggle ON while a selected ayah exists (from either mode) →
  *     open the panel inline at that ayah.
  */
-export function setAppMode(mode) {
+export async function setAppMode(mode) {
     const wanted = mode === "mushaf" ? "mushaf" : "tafsir";
     if ((wanted === "mushaf") === MUSHAF_MODE) return;
+
+    // Fix 6: stop any audio playing in BOTH modes before switching. The user
+    // is changing context — audio should not bleed across the toggle.
+    stopMushafAudio();
+    try { DEPS?.stopAudio?.(); } catch { }
 
     MUSHAF_MODE = wanted === "mushaf";
     document.documentElement.setAttribute("data-app-mode", wanted);
@@ -146,11 +173,17 @@ export function setAppMode(mode) {
     if (wanted === "tafsir") {
         if (PANEL_OPEN) {
             const target = LAST_VIEWED_AYAH || DEPS?.getCurrentAyah?.();
+            await fadeOutPanel(ROOT_EL);
+            // Stage the tafsir view at opacity 0 BEFORE unhiding it so the
+            // transition from hidden→opacity-1 doesn't flash at full opacity.
+            const tafsirEl = DEPS?.tafsirSectionEl;
+            if (tafsirEl) tafsirEl.classList.add("mode-fade-in");
             closePanel();
             if (target && DEPS?.openTafsirForAyah) {
                 DEPS.openTafsirForAyah(target.s, target.a);
                 history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
             }
+            commitFadeIn(tafsirEl);
         }
         return;
     }
@@ -159,9 +192,42 @@ export function setAppMode(mode) {
     const fromTafsir = DEPS?.getCurrentAyah?.();
     const target = LAST_VIEWED_AYAH || fromTafsir || null;
     if (target) {
-        openMushafAtAyah(target.s, target.a);
+        const tafsirEl = DEPS?.tafsirSectionEl;
+        if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
+            await fadeOutPanel(tafsirEl);
+        }
+        // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
+        ROOT_EL?.classList.add("mode-fade-in");
+        await openMushafAtAyah(target.s, target.a);
+        commitFadeIn(ROOT_EL);
     }
     // If no ayah has ever been selected, do nothing — wait for first click.
+}
+
+/* Fix 4: fade helpers used by setAppMode. We don't tear down the existing
+ * panel-toggle logic — we just bracket it with opacity transitions. */
+function fadeOutPanel(el) {
+    if (!el) return Promise.resolve();
+    return new Promise((resolve) => {
+        el.classList.add("mode-fade-out");
+        // Wait one frame so the class is applied, then resolve after transition.
+        setTimeout(() => {
+            el.classList.remove("mode-fade-out");
+            resolve();
+        }, 180);
+    });
+}
+
+function commitFadeIn(el) {
+    if (!el) return;
+    // The caller is responsible for having already added `mode-fade-in`
+    // BEFORE making the element visible. We only flush it back to opacity 1
+    // here, after layout has settled with the staged opacity:0.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => el.classList.remove("mode-fade-in"));
+    });
+    // Safety net in case the rAF chain misses (tab backgrounded, etc.)
+    setTimeout(() => el.classList.remove("mode-fade-in"), 260);
 }
 
 export function closeMushafPanel() {
@@ -286,6 +352,27 @@ function ensureFontDeclared(fontFamily) {
     LOADED_FONTS.add(fontFamily);
 }
 
+/**
+ * Force the network to fetch a QCF4 font before it's actually used on a
+ * rendered page, so navigating to that page doesn't pause for ~800KB.
+ * Idempotent: if the font is already loaded or declared, this is a no-op
+ * apart from the document.fonts.add().
+ */
+function preloadFont(fontFamily) {
+    if (!fontFamily) return;
+    ensureFontDeclared(fontFamily);
+    if (typeof FontFace === "undefined" || !document.fonts) return;
+    // Avoid duplicate FontFace registration
+    for (const ff of document.fonts) {
+        if (ff.family === fontFamily) return;
+    }
+    const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
+    const face = new FontFace(fontFamily, `url("/fonts/qcf4/${fileName}") format("woff2")`);
+    face.load().then((f) => {
+        try { document.fonts.add(f); } catch { }
+    }).catch(() => { });
+}
+
 /* ============================================================
  * Shell construction (inline panel — NO top bar, NO floating cog)
  * ============================================================ */
@@ -311,28 +398,46 @@ function buildShell() {
     root.setAttribute("aria-label", "قارئ المصحف");
     root.innerHTML = `
     <div class="mushaf-stage">
-      <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronLeft}</button>
+      <!-- RTL navigation: right button → previous (chevron points right, "back"),
+           left button → next (chevron points left, "forward"). -->
+      <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
       <div class="mushaf-pages" id="mushafPages"></div>
-      <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronRight}</button>
+      <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
     <!-- Ayah floating menu: two views (main / settings) -->
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
         <button type="button" class="mushaf-ayah-menu__btn" data-act="play" aria-label="استمع للآية">${ICONS.play}</button>
+        <button type="button" class="mushaf-ayah-menu__btn mushaf-volume-icon" id="mushafVolumeIcon" data-act="mute" aria-label="كتم الصوت">${ICONS.volumeHigh}</button>
+        <div class="mushaf-volume-wrap">
+          <div class="mushaf-volume-edges" aria-hidden="true">
+            <span class="mushaf-volume-edge mushaf-volume-edge--min">${ICONS.volumeMute}</span>
+            <span class="mushaf-volume-edge mushaf-volume-edge--max">${ICONS.volumeHigh}</span>
+          </div>
+          <input type="range" class="mushaf-volume" id="mushafVolume" min="0" max="100" value="80" aria-label="مستوى الصوت" />
+        </div>
         <button type="button" class="mushaf-ayah-menu__btn" data-act="tafsir" aria-label="افتح التفسير">${ICONS.bookOpen}</button>
         <button type="button" class="mushaf-ayah-menu__btn" data-act="settings" aria-label="إعدادات">${ICONS.gear}</button>
       </div>
       <div class="mushaf-ayah-menu__settings">
-        <div class="mushaf-settings__row" data-settings-group="reciter"></div>
-        <div class="mushaf-settings__row" data-settings-group="audio-mode">
-          <button type="button" class="mushaf-settings__chip" data-val="single">آية</button>
-          <button type="button" class="mushaf-settings__chip" data-val="continuous">متواصل</button>
+        <div class="mushaf-settings__section">
+          <div class="mushaf-settings__label">حجم الخط</div>
+          <div class="mushaf-settings__row" data-settings-group="font-size">
+            <button type="button" class="mushaf-settings__chip" data-val="m">عادي</button>
+            <button type="button" class="mushaf-settings__chip" data-val="s">صغير</button>
+          </div>
         </div>
-        <div class="mushaf-settings__row" data-settings-group="font-size">
-          <button type="button" class="mushaf-settings__chip" data-val="s">ص</button>
-          <button type="button" class="mushaf-settings__chip" data-val="m">و</button>
-          <button type="button" class="mushaf-settings__chip" data-val="l">ك</button>
+        <div class="mushaf-settings__section">
+          <div class="mushaf-settings__label">طريقة التشغيل</div>
+          <div class="mushaf-settings__row" data-settings-group="audio-mode">
+            <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
+            <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
+          </div>
+        </div>
+        <div class="mushaf-settings__section">
+          <div class="mushaf-settings__label">القارئ</div>
+          <div class="mushaf-settings__row mushaf-settings__row--col" data-settings-group="reciter"></div>
         </div>
       </div>
     </div>
@@ -457,8 +562,12 @@ function updateNavDisabledState() {
 }
 
 function prefetchAdjacent(p) {
-    if (p > 1) fetchPage(p - 1).catch(() => { });
-    if (p < TOTAL_PAGES) fetchPage(p + 1).catch(() => { });
+    if (p > 1) {
+        fetchPage(p - 1).then((data) => preloadFont(data.font)).catch(() => { });
+    }
+    if (p < TOTAL_PAGES) {
+        fetchPage(p + 1).then((data) => preloadFont(data.font)).catch(() => { });
+    }
 }
 
 function findFirstVerseKey(data) {
@@ -613,7 +722,10 @@ function buildSurahHeader(surahId) {
         wrap.classList.add("mushaf-surah-header--dimmed");
     }
     wrap.dataset.surah = String(surahId);
-    wrap.textContent = name;
+    wrap.innerHTML = `
+      <span class="mushaf-surah-header__label">سورة</span>
+      <span class="mushaf-surah-header__name">${name}</span>
+    `;
     return wrap;
 }
 
@@ -681,37 +793,53 @@ function applyTargetHighlight() {
  * ============================================================ */
 
 function wireAyahInteractions(pageEl) {
-    // Desktop: capture-phase mouseenter on the page; we delegate to ayah.
+    // Desktop: hover only opens the menu for ayahs in the TARGET surah.
+    // Clicking a non-target surah triggers a smooth focus switch (Fix 3),
+    // so non-target ayahs are interactive but don't get the action menu.
     pageEl.addEventListener("mouseover", (e) => {
         const ayah = e.target.closest(".mushaf-ayah");
         if (!ayah) return;
-        if (isAyahNonInteractive(ayah)) return;
+        if (isAyahDimmed(ayah)) return;
         scheduleMenuShow(ayah);
     });
     pageEl.addEventListener("mouseout", (e) => {
         const ayah = e.target.closest(".mushaf-ayah");
         if (!ayah) return;
-        // Mouse may be entering the menu — relatedTarget tells us where it went.
         const to = e.relatedTarget;
         if (to && (AYAH_MENU_EL?.contains(to) || to.closest?.(".mushaf-ayah") === ayah)) return;
         scheduleMenuHide();
     });
 
-    // Click → play (toggle if same ayah)
+    // Click → either play (target surah) or smooth focus-switch (dimmed surah).
     pageEl.addEventListener("click", (e) => {
         const ayah = e.target.closest(".mushaf-ayah");
-        if (!ayah) return;
-        if (isAyahNonInteractive(ayah)) return;
-        const vk = ayah.dataset.verseKey;
-        toggleAudioForAyah(vk);
+        const header = e.target.closest(".mushaf-surah-header");
+        if (ayah) {
+            if (isAyahDimmed(ayah)) {
+                const sId = Number(ayah.dataset.surah);
+                if (sId) transitionToTargetSurah(sId);
+                return;
+            }
+            toggleAudioForAyah(ayah.dataset.verseKey);
+            return;
+        }
+        if (header && header.classList.contains("mushaf-surah-header--dimmed")) {
+            const sId = Number(header.dataset.surah);
+            if (sId) transitionToTargetSurah(sId);
+        }
     });
 
-    // Mobile: touchstart begins long-press timer; tap → play.
+    // Mobile: long-press shows menu (only for target ayahs); tap plays / switches.
     pageEl.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         const ayah = e.target.closest(".mushaf-ayah");
         if (!ayah) return;
-        if (isAyahNonInteractive(ayah)) return;
+        // Dimmed ayahs use the tap to switch surahs; no long-press menu.
+        if (isAyahDimmed(ayah)) {
+            TOUCH_START = { x: e.touches[0].clientX, y: e.touches[0].clientY, target: ayah, dimmed: true };
+            TOUCH_MOVED = false;
+            return;
+        }
         TOUCH_START = { x: e.touches[0].clientX, y: e.touches[0].clientY, target: ayah };
         TOUCH_MOVED = false;
         LONG_PRESS_FIRED = false;
@@ -741,17 +869,64 @@ function wireAyahInteractions(pageEl) {
         TOUCH_START = null;
         if (!start) return;
         if (LONG_PRESS_FIRED || TOUCH_MOVED) return; // menu already shown, or swipe
-        // Tap → play. preventDefault to suppress the synthetic click that
-        // would otherwise fire next and re-trigger toggleAudio.
         const ayah = start.target;
         e.preventDefault();
+        if (start.dimmed) {
+            const sId = Number(ayah.dataset.surah);
+            if (sId) transitionToTargetSurah(sId);
+            return;
+        }
         toggleAudioForAyah(ayah.dataset.verseKey);
     });
 }
 
-function isAyahNonInteractive(ayahEl) {
+function isAyahDimmed(ayahEl) {
     if (!TARGET_SURAH) return false;
     return ayahEl.dataset.surah && Number(ayahEl.dataset.surah) !== TARGET_SURAH;
+}
+
+/* Fix 3: smoothly shift target-surah focus to `newSurahId`. Two phases:
+ *   1) instantly toggle dim classes on the current page so the fade is visible
+ *      to the user (CSS already animates opacity 250ms on these elements)
+ *   2) navigate to the new surah's first page once the fade settles; if the
+ *      first page is the current page, step 1 is the whole transition.
+ */
+async function transitionToTargetSurah(newSurahId) {
+    if (!newSurahId || newSurahId === TARGET_SURAH) return;
+    await ensureMetaLoaded();
+
+    // Phase 1: re-tag dim classes on existing DOM.
+    TARGET_SURAH = newSurahId;
+    if (ACTIVE_PAGE_EL) {
+        ACTIVE_PAGE_EL.dataset.targetSurah = String(newSurahId);
+        ACTIVE_PAGE_EL.querySelectorAll(".mushaf-ayah").forEach((el) => {
+            const sId = Number(el.dataset.surah);
+            el.classList.toggle("mushaf-ayah--dimmed", !!sId && sId !== newSurahId);
+        });
+        ACTIVE_PAGE_EL.querySelectorAll(".mushaf-surah-header").forEach((el) => {
+            const sId = Number(el.dataset.surah);
+            el.classList.toggle("mushaf-surah-header--dimmed", !!sId && sId !== newSurahId);
+        });
+        ACTIVE_PAGE_EL.querySelectorAll(".mushaf-line--bismillah").forEach((el) => {
+            const sId = Number(el.dataset.surah);
+            el.classList.toggle("mushaf-line--dimmed", !!sId && sId !== newSurahId);
+        });
+    }
+
+    // Phase 2: locate new surah's first page; navigate after the fade if needed.
+    const ch = CHAPTERS?.find((c) => c.id === newSurahId);
+    const firstPage = ch?.pages?.[0] || 1;
+    LAST_VIEWED_AYAH = { s: newSurahId, a: 1 };
+
+    history.pushState({ mushaf: true, page: firstPage, surah: newSurahId }, "", `/read/surah/${newSurahId}`);
+    updateMushafSeo({ page: firstPage, surah: newSurahId });
+
+    if (firstPage !== CURRENT_PAGE) {
+        await new Promise((r) => setTimeout(r, 280));
+        CURRENT_TARGET_VERSE = `${newSurahId}:1`;
+        await goToPage(firstPage, { direction: "none" });
+    }
+    closeAyahMenu();
 }
 
 function scheduleMenuShow(ayah) {
@@ -777,6 +952,34 @@ function wireMenu() {
     // Keep menu open while mouse is inside
     AYAH_MENU_EL.addEventListener("mouseenter", () => clearTimeout(HOVER_HIDE_TIMER));
     AYAH_MENU_EL.addEventListener("mouseleave", () => scheduleMenuHide());
+
+    // Volume slider + dynamic speaker icon (Fix 5)
+    const vol = document.getElementById("mushafVolume");
+    const volIcon = document.getElementById("mushafVolumeIcon");
+    if (vol) {
+        vol.value = String(Math.round(AUDIO_VOLUME * 100));
+        updateVolumeIcon();
+        vol.addEventListener("input", (e) => {
+            const pct = parseInt(e.target.value, 10);
+            applyVolume(pct / 100, { persist: true, trackUnmute: pct > 0 });
+        });
+        vol.addEventListener("click", (e) => e.stopPropagation());
+    }
+    if (volIcon) {
+        volIcon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            // Toggle mute: 0 → restore previous; >0 → save & set 0
+            if (AUDIO_VOLUME > 0) {
+                MUTED_PREV_VOLUME = AUDIO_VOLUME;
+                applyVolume(0, { persist: true, trackUnmute: false });
+            } else {
+                const restore = MUTED_PREV_VOLUME > 0 ? MUTED_PREV_VOLUME : 0.8;
+                applyVolume(restore, { persist: true, trackUnmute: true });
+            }
+            const v = document.getElementById("mushafVolume");
+            if (v) v.value = String(Math.round(AUDIO_VOLUME * 100));
+        });
+    }
 
     AYAH_MENU_EL.addEventListener("click", (e) => {
         // Settings chip clicks
@@ -814,6 +1017,29 @@ function wireMenu() {
         if (e.target.closest(".mushaf-ayah") || e.target.closest(".mushaf-ayah-menu")) return;
         closeAyahMenu();
     });
+}
+
+function applyVolume(v, { persist = false, trackUnmute = true } = {}) {
+    AUDIO_VOLUME = Math.max(0, Math.min(1, v));
+    if (trackUnmute && AUDIO_VOLUME > 0) MUTED_PREV_VOLUME = AUDIO_VOLUME;
+    if (AUDIO_PLAYER) AUDIO_PLAYER.volume = AUDIO_VOLUME;
+    if (PRELOADED_AUDIO?.el) PRELOADED_AUDIO.el.volume = AUDIO_VOLUME;
+    if (persist) {
+        try { localStorage.setItem(STORAGE.VOLUME, String(AUDIO_VOLUME)); } catch { }
+    }
+    updateVolumeIcon();
+}
+
+function updateVolumeIcon() {
+    const btn = document.getElementById("mushafVolumeIcon");
+    if (!btn) return;
+    const pct = AUDIO_VOLUME * 100;
+    const icon = pct === 0
+        ? ICONS.volumeMute
+        : pct <= 50 ? ICONS.volumeLow : ICONS.volumeHigh;
+    btn.innerHTML = icon;
+    btn.setAttribute("aria-label", pct === 0 ? "إلغاء كتم الصوت" : "كتم الصوت");
+    btn.classList.toggle("mushaf-volume-icon--muted", pct === 0);
 }
 
 function showMenu(ayahEl, { reposition = false } = {}) {
@@ -878,23 +1104,67 @@ function buildAyahAudioUrl(s, a) {
     return `${base}${reciterPath}/${ss}/${ss}${aa}.mp3`;
 }
 
-function playMushafAyah(verseKey) {
+/* Fix 2: fetch+decode the next ayah's audio while the current one plays so
+ * the cross-ayah gap in continuous mode is bounded by play()'s decode-already-
+ * cached path (~10-50ms) instead of a cold fetch (~200-500ms). */
+function preloadAyahAudio(verseKey) {
     if (!verseKey) return;
-    stopMushafAudio();
+    if (PRELOADED_AUDIO?.key === verseKey) return;
+    discardPreloadedAudio();
     const [s, a] = verseKey.split(":").map(Number);
     const url = buildAyahAudioUrl(s, a);
-    AUDIO_PLAYER = new Audio(url);
+    const el = new Audio();
+    el.preload = "auto";
+    el.volume = AUDIO_VOLUME;
+    el.src = url;
+    try { el.load(); } catch { }
+    PRELOADED_AUDIO = { key: verseKey, el };
+}
+
+function discardPreloadedAudio() {
+    if (!PRELOADED_AUDIO) return;
+    try {
+        PRELOADED_AUDIO.el.pause();
+        PRELOADED_AUDIO.el.removeAttribute("src");
+        PRELOADED_AUDIO.el.load();
+    } catch { }
+    PRELOADED_AUDIO = null;
+}
+
+function playMushafAyah(verseKey) {
+    if (!verseKey) return;
+
+    // Pick up the preloaded element if it matches; otherwise build fresh.
+    let nextAudio;
+    if (PRELOADED_AUDIO?.key === verseKey) {
+        nextAudio = PRELOADED_AUDIO.el;
+        PRELOADED_AUDIO = null;
+    } else {
+        const [s, a] = verseKey.split(":").map(Number);
+        nextAudio = new Audio(buildAyahAudioUrl(s, a));
+    }
+    nextAudio.volume = AUDIO_VOLUME;
+
+    // Swap highlight FIRST — visual feedback should not wait on the network.
+    if (AUDIO_VERSE && AUDIO_VERSE !== verseKey) clearHighlight(AUDIO_VERSE);
+    const prevPlayer = AUDIO_PLAYER;
+    AUDIO_PLAYER = nextAudio;
     AUDIO_VERSE = verseKey;
     document.documentElement.setAttribute("data-audio-active", "1");
     highlightAyah(verseKey, "playing");
+    if (prevPlayer && prevPlayer !== nextAudio) {
+        try { prevPlayer.pause(); } catch { }
+    }
 
-    AUDIO_PLAYER.addEventListener("ended", async () => {
+    nextAudio.addEventListener("ended", async () => {
         if (AUDIO_MODE === "continuous") {
             const next = getNextVerseKey(verseKey);
             if (next) {
                 const nextPage = VERSES_LOOKUP?.[next]?.page;
                 if (nextPage && nextPage !== CURRENT_PAGE) {
-                    await goToPage(nextPage, { direction: "left" });
+                    // Instant page swap — no slide animation — so the audio
+                    // gap stays under ~100ms even at page boundaries.
+                    await goToPage(nextPage, { direction: "none" });
                     history.replaceState({ mushaf: true, page: nextPage }, "", `/read/page/${nextPage}`);
                 }
                 playMushafAyah(next);
@@ -903,11 +1173,19 @@ function playMushafAyah(verseKey) {
         }
         stopMushafAudio();
     });
-    AUDIO_PLAYER.addEventListener("error", () => stopMushafAudio());
-    AUDIO_PLAYER.play().catch((e) => {
+    nextAudio.addEventListener("error", () => stopMushafAudio());
+    nextAudio.play().catch((e) => {
         console.error("Mushaf audio play failed", e);
         stopMushafAudio();
     });
+
+    // Eagerly fetch the successor while this ayah plays.
+    if (AUDIO_MODE === "continuous") {
+        const upcoming = getNextVerseKey(verseKey);
+        if (upcoming) preloadAyahAudio(upcoming);
+    } else {
+        discardPreloadedAudio();
+    }
 }
 
 function stopMushafAudio() {
@@ -915,6 +1193,7 @@ function stopMushafAudio() {
         try { AUDIO_PLAYER.pause(); } catch { }
         AUDIO_PLAYER = null;
     }
+    discardPreloadedAudio();
     if (AUDIO_VERSE) clearHighlight(AUDIO_VERSE);
     AUDIO_VERSE = null;
     document.documentElement.removeAttribute("data-audio-active");
@@ -964,6 +1243,8 @@ function handleSettingsChip(chip) {
     const val = chip.dataset.val;
     if (group === "reciter") {
         DEPS?.setCurrentReciter?.(val);
+        // Preloaded URL embeds the old reciter — drop it so the next play fetches fresh.
+        discardPreloadedAudio();
         if (AUDIO_VERSE) {
             const v = AUDIO_VERSE;
             stopMushafAudio();
@@ -972,8 +1253,15 @@ function handleSettingsChip(chip) {
     } else if (group === "audio-mode") {
         AUDIO_MODE = val === "continuous" ? "continuous" : "single";
         try { localStorage.setItem(STORAGE.AUDIO_MODE, AUDIO_MODE); } catch { }
+        // Swapping in/out of continuous mode changes whether we should be preloading.
+        if (AUDIO_MODE === "continuous" && AUDIO_VERSE) {
+            const upcoming = getNextVerseKey(AUDIO_VERSE);
+            if (upcoming) preloadAyahAudio(upcoming);
+        } else {
+            discardPreloadedAudio();
+        }
     } else if (group === "font-size") {
-        FONT_SIZE = ["s", "m", "l"].includes(val) ? val : "m";
+        FONT_SIZE = (val === "s") ? "s" : "m";
         try { localStorage.setItem(STORAGE.FONT_SIZE, FONT_SIZE); } catch { }
         document.documentElement.setAttribute("data-font-size", FONT_SIZE);
     }
