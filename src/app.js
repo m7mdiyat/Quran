@@ -27,6 +27,9 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 /** ✅ GCS Audio Base URL for Quran recitations */
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
+/* Mushaf reading mode bridge */
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode } from "./mushaf.js";
+
 /* ---------------- DOM ---------------- */
 const textSearch = el("textSearch");
 const clearBtn = el("clearBtn");
@@ -1984,6 +1987,11 @@ function renderResults(items, query) {
     `;
 
     card.onclick = () => {
+      if (isMushafMode()) {
+        openMushafAtAyah(it.s, it.a);
+        collapseResultsToChip(it);
+        return;
+      }
       setPrimaryAyah(it.s, it.a, { scroll: false });
       collapseResultsToChip(it);
     };
@@ -3764,6 +3772,33 @@ async function init() {
   SURAH_META = await loadJson("/surahs.json");
   QURAN = normalizeQuran(await loadJson("/quran.json"));
 
+  // Boot the Mushaf reading mode. The module is a no-op until enterMushafMode
+  // is called or the user toggles into it.
+  initMushaf({
+    surahMeta: SURAH_META,
+    quran: QURAN,
+    audioBase: AUDIO_BASE,
+    reciters: RECITERS,
+    reciterOrder: RECITER_ORDER,
+    getCurrentReciter: () => CURRENT_RECITER,
+    setCurrentReciter: (r) => switchReciter(r),
+    openTafsirForAyah: (s, a) => {
+      setAppMode("tafsir");
+      setPrimaryAyah(s, a, { scroll: true });
+    },
+    stopTafsirAudio: () => { try { stopAudio(); } catch { } },
+  });
+
+  // If the URL was /read/* the early-routing script set window._mushafInit;
+  // resolve it now that meta is available.
+  if (window._mushafInit) {
+    const m = window._mushafInit;
+    window._mushafInit = null;
+    if (m.surah && m.ayah) openMushafAtAyah(m.surah, m.ayah, { updateUrl: false });
+    else if (m.surah) openMushafAtSurah(m.surah, { updateUrl: false });
+    else if (m.page) openMushafAtPage(m.page, { updateUrl: false });
+  }
+
   // Check for Surah Landing Page Route (e.g. /2)
   const surahMatch = window.location.pathname.match(/^\/(\d+)\/?$/);
   if (surahMatch) {
@@ -3987,6 +4022,20 @@ async function init() {
 
   // Back/forward navigation
   window.addEventListener("popstate", () => {
+    // /read/* — Mushaf mode
+    const path = window.location.pathname;
+    const mPage = path.match(/^\/read\/page\/([0-9]+)\/?$/);
+    const mSurah = path.match(/^\/read\/surah\/([0-9]+)\/?$/);
+    const mAyah = path.match(/^\/read\/ayah\/([0-9]+)\/([0-9]+)\/?$/);
+    if (mAyah) { openMushafAtAyah(Number(mAyah[1]), Number(mAyah[2]), { updateUrl: false }); return; }
+    if (mSurah) { openMushafAtSurah(Number(mSurah[1]), { updateUrl: false }); return; }
+    if (mPage) { openMushafAtPage(Number(mPage[1]), { updateUrl: false }); return; }
+
+    // Returning to a non-Mushaf URL while currently in Mushaf mode → leave it
+    if (isMushafMode()) {
+      setAppMode("tafsir", { skipUrlUpdate: true });
+    }
+
     const p = getAyahParamFromUrl();
     if (!p) {
       CURRENT = null;

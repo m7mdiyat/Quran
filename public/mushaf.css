@@ -1,0 +1,831 @@
+/*
+ * Mushaf reading mode styles
+ * Scoped under .mushaf-* / [data-app-mode] to avoid touching Tafsir mode UI.
+ */
+
+/* ============================================================
+ * QCF4 Font declarations
+ * Each Mushaf page uses one of QCF4_Hafs_01 ... QCF4_Hafs_47,
+ * plus QCF4_QBSML for surah headers. We declare them with
+ * font-display: block so glyphs render only once the font loads,
+ * preventing PUA-codepoint "tofu" flash.
+ * ============================================================ */
+@font-face {
+    font-family: "QCF4_QBSML";
+    src: url("/fonts/qcf4/QCF4_QBSML.woff2") format("woff2");
+    font-display: block;
+}
+
+/* QCF4_Hafs_01 is also used for the bismillah line on many pages
+   (per font-map data), so we preload it. The 47 page fonts are
+   declared dynamically by mushaf.js the first time each is needed. */
+@font-face {
+    font-family: "QCF4_Hafs_01";
+    src: url("/fonts/qcf4/QCF4_Hafs_01_W.woff2") format("woff2");
+    font-display: block;
+}
+
+/* ============================================================
+ * iOS-style mode toggle (used in both Tafsir search panel
+ * and Mushaf top bar)
+ * ============================================================ */
+.mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.mode-toggle__btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 92px;
+    height: 36px;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    cursor: pointer;
+    transition: background 200ms ease, border-color 200ms ease;
+    direction: ltr;
+}
+
+.mode-toggle__btn:hover {
+    background: rgba(15, 23, 42, 0.09);
+}
+
+body.dark .mode-toggle__btn {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.dark .mode-toggle__btn:hover {
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.mode-toggle__knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 42px;
+    height: 28px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+}
+
+body.dark .mode-toggle__knob {
+    background: #e5e7eb;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.mode-toggle__icons {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    pointer-events: none;
+}
+
+.mode-toggle__icon {
+    display: grid;
+    place-items: center;
+    color: rgba(15, 23, 42, 0.55);
+    transition: color 200ms ease;
+}
+
+.mode-toggle__icon svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 1.8;
+}
+
+body.dark .mode-toggle__icon {
+    color: rgba(203, 213, 225, 0.55);
+}
+
+/* In Tafsir mode (default), knob is on the left, tafsir icon active */
+[data-app-mode="tafsir"] .mode-toggle__knob {
+    transform: translateX(0);
+}
+
+[data-app-mode="tafsir"] .mode-toggle__icon--tafsir {
+    color: #1d8fff;
+}
+
+body.dark [data-app-mode="tafsir"] .mode-toggle__icon--tafsir {
+    color: #cbd5e1;
+}
+
+/* In Mushaf mode, knob slides right, mushaf icon active */
+[data-app-mode="mushaf"] .mode-toggle__knob {
+    transform: translateX(44px);
+}
+
+[data-app-mode="mushaf"] .mode-toggle__icon--mushaf {
+    color: #1d8fff;
+}
+
+body.dark [data-app-mode="mushaf"] .mode-toggle__icon--mushaf {
+    color: #cbd5e1;
+}
+
+/* ============================================================
+ * Mode visibility
+ * In Mushaf mode, the entire Tafsir UI (main + header) is hidden
+ * and the Mushaf root takes over the viewport.
+ * ============================================================ */
+.mushaf-root {
+    display: none;
+}
+
+[data-app-mode="mushaf"] .mushaf-root {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: #fdfcf8;
+    color: #1f2937;
+}
+
+body.dark [data-app-mode="mushaf"] .mushaf-root {
+    background: #1b2129;
+    color: #e5e7eb;
+}
+
+/* Hide Tafsir UI when in Mushaf mode */
+[data-app-mode="mushaf"] body > header.site-header,
+[data-app-mode="mushaf"] body > main {
+    display: none !important;
+}
+
+/* The toggle inside the Tafsir search panel — hide it when in
+   Mushaf mode (the search panel itself is hidden but be defensive). */
+[data-app-mode="mushaf"] .mode-toggle--in-search {
+    display: none;
+}
+
+/* The toggle inside the Mushaf top bar — hide in Tafsir mode. */
+[data-app-mode="tafsir"] .mode-toggle--in-mushaf-bar {
+    display: none;
+}
+
+/* Search-panel-position wrapper */
+.mode-toggle--in-search {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+/* ============================================================
+ * Mushaf top bar
+ * ============================================================ */
+.mushaf-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    transition: opacity 300ms ease;
+}
+
+body.dark .mushaf-topbar {
+    background: rgba(34, 40, 48, 0.85);
+    border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.mushaf-topbar__group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mushaf-topbar__spacer {
+    flex: 1;
+}
+
+.mushaf-select,
+.mushaf-page-input {
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(15, 23, 42, 0.05);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: inherit;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+    min-height: 36px;
+}
+
+.mushaf-select:hover,
+.mushaf-page-input:hover {
+    background: rgba(15, 23, 42, 0.08);
+}
+
+.mushaf-page-input {
+    width: 74px;
+    text-align: center;
+    cursor: text;
+}
+
+body.dark .mushaf-select,
+body.dark .mushaf-page-input {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: #e5e7eb;
+}
+
+body.dark .mushaf-select:hover,
+body.dark .mushaf-page-input:hover {
+    background: rgba(148, 163, 184, 0.18);
+}
+
+.mushaf-page-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(15, 23, 42, 0.55);
+    margin: 0 2px;
+}
+
+body.dark .mushaf-page-label {
+    color: rgba(203, 213, 225, 0.55);
+}
+
+/* ============================================================
+ * Mushaf page area
+ * ============================================================ */
+.mushaf-stage {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+}
+
+.mushaf-pages {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.mushaf-page {
+    --line-gap: 4px;
+    --font-size: 28px;
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 28px clamp(16px, 5vw, 56px) 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    text-align: center;
+    direction: rtl;
+    transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 200ms ease;
+    will-change: transform, opacity;
+}
+
+.mushaf-page--enter-right {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+.mushaf-page--enter-left {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.mushaf-page--exit-right {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
+.mushaf-page--exit-left {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.mushaf-page--active {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.mushaf-page__inner {
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* Font size presets (controlled by data-font-size on .mushaf-root) */
+[data-font-size="s"] .mushaf-page {
+    --font-size: 24px;
+    --line-gap: 2px;
+}
+
+[data-font-size="m"] .mushaf-page {
+    --font-size: 30px;
+    --line-gap: 6px;
+}
+
+[data-font-size="l"] .mushaf-page {
+    --font-size: 38px;
+    --line-gap: 12px;
+}
+
+/* ============================================================
+ * Mushaf line / word styling
+ * ============================================================ */
+.mushaf-line {
+    line-height: 1.85;
+    margin-bottom: var(--line-gap);
+    font-size: var(--font-size);
+    text-align: center;
+    word-spacing: 0;
+    letter-spacing: 0;
+    /* The Mushaf line break is encoded in the data; we let the line render
+       on one row when it fits the container and gracefully wrap otherwise.
+       (Pixel-perfect line-by-line autosize is a future polish step.) */
+}
+
+.mushaf-line--center {
+    text-align: center;
+    text-align-last: center;
+    margin: 6px 0 4px;
+}
+
+.mushaf-line--surah-header {
+    font-family: "QCF4_QBSML", serif;
+    font-size: calc(var(--font-size) * 0.95);
+    padding: 10px 4px;
+    margin: 6px auto 4px;
+    color: inherit;
+    border-top: 1px solid rgba(15, 23, 42, 0.10);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+    background: linear-gradient(180deg,
+            rgba(15, 23, 42, 0.02),
+            rgba(15, 23, 42, 0.04));
+}
+
+body.dark .mushaf-line--surah-header {
+    border-top-color: rgba(148, 163, 184, 0.22);
+    border-bottom-color: rgba(148, 163, 184, 0.22);
+    background: linear-gradient(180deg,
+            rgba(148, 163, 184, 0.05),
+            rgba(148, 163, 184, 0.10));
+}
+
+.mushaf-line--bismillah {
+    font-family: "QCF4_Hafs_01", serif;
+    text-align: center;
+    text-align-last: center;
+    margin: 6px 0 8px;
+    font-size: calc(var(--font-size) * 1.0);
+}
+
+/* Ayah span — each ayah's words are wrapped together so we can
+   highlight an entire ayah on tap or audio playback. */
+.mushaf-ayah {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0 1px;
+    transition: background-color 200ms ease, color 200ms ease,
+        box-shadow 200ms ease;
+}
+
+.mushaf-ayah:hover {
+    background: rgba(29, 143, 255, 0.06);
+}
+
+body.dark .mushaf-ayah:hover {
+    background: rgba(148, 163, 184, 0.10);
+}
+
+/* Subtle highlight when an ayah is the search-result target */
+.mushaf-ayah--target {
+    background: rgba(29, 143, 255, 0.12);
+    box-shadow: 0 0 0 1px rgba(29, 143, 255, 0.20) inset;
+}
+
+body.dark .mushaf-ayah--target {
+    background: rgba(148, 163, 184, 0.18);
+    box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.28) inset;
+}
+
+/* Currently playing audio highlight */
+.mushaf-ayah--playing {
+    background: rgba(34, 197, 94, 0.16);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.30) inset;
+}
+
+body.dark .mushaf-ayah--playing {
+    background: rgba(110, 231, 183, 0.18);
+    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.28) inset;
+}
+
+.mushaf-word {
+    display: inline-block;
+    /* font-family set per-element from page JSON */
+}
+
+/* Verse-end glyph */
+.mushaf-end {
+    display: inline-block;
+    margin: 0 2px;
+}
+
+/* ============================================================
+ * On-screen page nav arrows (subtle, fade with chrome)
+ * ============================================================ */
+.mushaf-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    color: rgba(15, 23, 42, 0.7);
+    cursor: pointer;
+    transition: opacity 250ms ease, background 150ms ease;
+    z-index: 4;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.mushaf-nav:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.mushaf-nav svg {
+    width: 22px;
+    height: 22px;
+}
+
+body.dark .mushaf-nav {
+    background: rgba(34, 40, 48, 0.6);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: rgba(203, 213, 225, 0.8);
+}
+
+body.dark .mushaf-nav:hover {
+    background: rgba(34, 40, 48, 0.9);
+}
+
+.mushaf-nav--prev {
+    right: 12px;
+}
+
+.mushaf-nav--next {
+    left: 12px;
+}
+
+/* Chrome auto-fade after 3s idle */
+[data-mushaf-idle="1"] .mushaf-topbar,
+[data-mushaf-idle="1"] .mushaf-nav {
+    opacity: 0.25;
+}
+
+[data-mushaf-idle="1"] .mushaf-topbar:hover,
+[data-mushaf-idle="1"] .mushaf-nav:hover {
+    opacity: 1;
+}
+
+/* ============================================================
+ * Floating ayah action menu
+ * ============================================================ */
+.mushaf-ayah-menu {
+    position: absolute;
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16),
+        0 2px 8px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 30;
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.mushaf-ayah-menu--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+body.dark .mushaf-ayah-menu {
+    background: rgba(34, 40, 48, 0.96);
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5),
+        0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.mushaf-ayah-menu__btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.mushaf-ayah-menu__btn:hover {
+    background: rgba(15, 23, 42, 0.06);
+}
+
+body.dark .mushaf-ayah-menu__btn:hover {
+    background: rgba(148, 163, 184, 0.14);
+}
+
+.mushaf-ayah-menu__btn svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+}
+
+/* ============================================================
+ * Settings cog (audio-active only)
+ * ============================================================ */
+.mushaf-settings {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 8;
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+[data-app-mode="mushaf"][data-audio-active="1"] .mushaf-settings {
+    display: flex;
+}
+
+.mushaf-settings__cog {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: rgba(15, 23, 42, 0.7);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: background 150ms ease;
+}
+
+.mushaf-settings__cog:hover {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+body.dark .mushaf-settings__cog {
+    background: rgba(34, 40, 48, 0.85);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: rgba(203, 213, 225, 0.8);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+body.dark .mushaf-settings__cog:hover {
+    background: rgba(34, 40, 48, 0.98);
+}
+
+.mushaf-settings__cog svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.8;
+}
+
+.mushaf-settings__panel {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    width: 240px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-radius: 16px;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.mushaf-settings--open .mushaf-settings__panel {
+    display: flex;
+}
+
+body.dark .mushaf-settings__panel {
+    background: rgba(34, 40, 48, 0.96);
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+
+.mushaf-settings__section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mushaf-settings__label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(15, 23, 42, 0.55);
+}
+
+body.dark .mushaf-settings__label {
+    color: rgba(203, 213, 225, 0.55);
+}
+
+.mushaf-settings__row {
+    display: flex;
+    gap: 6px;
+}
+
+.mushaf-settings__chip {
+    flex: 1;
+    min-height: 32px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    background: rgba(15, 23, 42, 0.03);
+    font-size: 13px;
+    font-weight: 600;
+    color: inherit;
+    cursor: pointer;
+    text-align: center;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.mushaf-settings__chip:hover {
+    background: rgba(15, 23, 42, 0.07);
+}
+
+.mushaf-settings__chip[aria-checked="true"] {
+    background: rgba(29, 143, 255, 0.14);
+    border-color: rgba(29, 143, 255, 0.30);
+    color: #0b6bdc;
+}
+
+body.dark .mushaf-settings__chip {
+    background: rgba(148, 163, 184, 0.10);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.dark .mushaf-settings__chip:hover {
+    background: rgba(148, 163, 184, 0.18);
+}
+
+body.dark .mushaf-settings__chip[aria-checked="true"] {
+    background: rgba(203, 213, 225, 0.20);
+    border-color: rgba(203, 213, 225, 0.40);
+    color: #f1f5f9;
+}
+
+/* Currently-playing reciter strip */
+.mushaf-now-playing {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+[data-app-mode="mushaf"][data-audio-active="1"] .mushaf-now-playing {
+    display: inline-flex;
+}
+
+body.dark .mushaf-now-playing {
+    background: rgba(34, 40, 48, 0.92);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+
+.mushaf-now-playing__btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 0;
+    background: rgba(15, 23, 42, 0.06);
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background 150ms ease;
+}
+
+.mushaf-now-playing__btn:hover {
+    background: rgba(15, 23, 42, 0.12);
+}
+
+body.dark .mushaf-now-playing__btn {
+    background: rgba(148, 163, 184, 0.15);
+}
+
+.mushaf-now-playing__btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ============================================================
+ * Mobile / small-screen adjustments
+ * ============================================================ */
+@media (max-width: 640px) {
+    .mushaf-page {
+        padding: 16px 12px 80px;
+    }
+
+    .mushaf-line {
+        line-height: 1.7;
+    }
+
+    [data-font-size="s"] .mushaf-page {
+        --font-size: 20px;
+    }
+
+    [data-font-size="m"] .mushaf-page {
+        --font-size: 24px;
+    }
+
+    [data-font-size="l"] .mushaf-page {
+        --font-size: 30px;
+    }
+
+    .mushaf-topbar {
+        padding: 8px 10px;
+        gap: 8px;
+    }
+
+    .mushaf-select,
+    .mushaf-page-input {
+        padding: 7px 10px;
+        font-size: 13px;
+        min-height: 36px;
+    }
+
+    .mushaf-nav {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+@media (max-width: 380px) {
+    .mode-toggle__btn {
+        width: 84px;
+    }
+
+    .mode-toggle__knob {
+        width: 38px;
+    }
+
+    [data-app-mode="mushaf"] .mode-toggle__knob {
+        transform: translateX(40px);
+    }
+}

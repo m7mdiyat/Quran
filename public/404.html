@@ -69,6 +69,14 @@
                 return;
             }
 
+            // Pattern 1b: Mushaf reading-mode routes — preserve them so app.js can pick them up.
+            var mushafMatch = path.match(/^\/read\/(page|surah|ayah)\/[0-9]+(\/[0-9]+)?\/?$/);
+            if (mushafMatch) {
+                sessionStorage.setItem('mushaf_redirect', path);
+                window.location.replace('/');
+                return;
+            }
+
             // Pattern 2: Handle old ?v=surah-ayah format
             var params = new URLSearchParams(search);
             var v = params.get('v') || params.get('ayah');
