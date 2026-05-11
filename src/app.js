@@ -3773,8 +3773,8 @@ async function init() {
   QURAN = normalizeQuran(await loadJson("/quran.json"));
 
   // Boot the Mushaf reading mode. The module renders into a sibling of
-  // #tafsirSection. The toggle is a pure routing preference — Mushaf
-  // mode never auto-shows the panel.
+  // #tafsirSection. Toggle is bidirectional — toggling into Mushaf at
+  // any time re-opens the panel for the currently selected ayah.
   initMushaf({
     surahMeta: SURAH_META,
     quran: QURAN,
@@ -3785,9 +3785,9 @@ async function init() {
     setCurrentReciter: (r) => switchReciter(r),
     tafsirSectionEl: tafsirSection,
     hasCurrentAyah: () => CURRENT != null,
+    getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
+    getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
     openTafsirForAyah: (s, a) => {
-      // Called by the Mushaf floating menu's "open tafsir" button. The
-      // mushaf module already handles closing the panel + mode switch.
       setPrimaryAyah(s, a, { scroll: true });
     },
   });

@@ -1,19 +1,13 @@
 /*
  * Mushaf reading mode styles.
  *
- * Design intent: the Mushaf is an INLINE panel (not a fullscreen route).
- * It slots into the same DOM location as #tafsirSection and uses the
- * same .glass shell + radius + spacing so it reads as a native panel
- * of the site. All colors come from existing :root CSS vars so dark
- * mode is automatic.
+ * Inline panel that mirrors #tafsirSection chrome. All colors come from
+ * the site's CSS vars (--card, --card2, --line, --text, --muted, --accent,
+ * --accent-soft, --accent-muted) so light/dark mode is automatic.
  */
 
 /* ============================================================
- * QCF4 Font declarations
- * Each Mushaf page uses one of QCF4_Hafs_01 ... QCF4_Hafs_47,
- * plus QCF4_QBSML for surah headers. We declare them with
- * font-display: block so glyphs render only once the font loads,
- * preventing PUA-codepoint "tofu" flash.
+ * QCF4 fonts (page-specific Hafs_NN fonts are declared lazily by JS)
  * ============================================================ */
 @font-face {
     font-family: "QCF4_QBSML";
@@ -28,14 +22,11 @@
 }
 
 /* ============================================================
- * iOS-style mode toggle (used inside the Tafsir search panel)
- * `data-app-mode` is set on <html> and only drives the toggle's
- * visual state — it does NOT hide/show any other UI.
+ * Mode toggle (in Tafsir search panel only)
  * ============================================================ */
 .mode-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     user-select: none;
     -webkit-user-select: none;
 }
@@ -105,7 +96,6 @@ body.dark .mode-toggle__knob {
 .mode-toggle__icon svg {
     width: 18px;
     height: 18px;
-    stroke-width: 1.8;
 }
 
 [data-app-mode="tafsir"] .mode-toggle__knob {
@@ -131,11 +121,7 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Mushaf panel — inline section, mirrors #tafsirSection.
- * .mushaf-root reuses the site's `.glass.rounded-3xl.p-6` styling
- * (applied in the markup) so this rule only adds Mushaf-specific
- * layout (relative positioning for the nav arrows, hidden by
- * default, etc.).
+ * Mushaf panel — inline, mirrors #tafsirSection chrome
  * ============================================================ */
 .mushaf-root {
     display: none;
@@ -146,53 +132,37 @@ body.dark .mode-toggle__knob {
     display: block;
 }
 
-/* When the Mushaf panel is open, ensure the Tafsir/verse sections
-   above the panel are hidden via JS-applied .hidden class — but as
-   a safety belt, we ALSO hide them via this rule scoped to .has-mushaf
-   on the parent wrapper. */
 .mx-auto.max-w-4xl.has-mushaf > #tafsirSection,
 .mx-auto.max-w-4xl.has-mushaf > #versePanel {
     display: none !important;
 }
 
 /* ============================================================
- * Mushaf-style surah header (above first ayah of each surah on
- * the page). Mirrors the site's typographic scale and uses the
- * same border treatment as Mushaf folio plates: thin double rule.
+ * Clean surah-name header (above the first ayah of each surah
+ * on the page). No box, no label — just the Arabic name,
+ * centered, with subtle vertical spacing.
  * ============================================================ */
 .mushaf-surah-header {
     text-align: center;
-    margin: 14px auto 10px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-    background: linear-gradient(180deg, var(--card2), var(--card));
-    border-radius: 10px;
-}
-
-.mushaf-surah-header__label {
-    display: block;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    color: var(--muted);
-    margin-bottom: 2px;
-}
-
-.mushaf-surah-header__name {
+    margin: 22px auto 14px;
     font-family: "Amiri", "MeQuran", serif;
-    font-size: 22px;
+    font-size: 30px;
     font-weight: 700;
     color: var(--text);
-    line-height: 1.2;
+    line-height: 1.15;
+    letter-spacing: 0;
+}
+
+.mushaf-surah-header:first-child {
+    margin-top: 6px;
 }
 
 /* ============================================================
- * Mushaf page footer (page number, like a real Mushaf folio)
+ * Page footer (centered "صفحة N")
  * ============================================================ */
 .mushaf-page-footer {
     text-align: center;
-    margin-top: 16px;
+    margin-top: 18px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
     font-size: 12px;
@@ -202,7 +172,7 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Page rendering area + transitions
+ * Page area + transitions
  * ============================================================ */
 .mushaf-stage {
     position: relative;
@@ -227,8 +197,6 @@ body.dark .mode-toggle__knob {
     will-change: transform, opacity;
 }
 
-/* When animating, position absolute to overlap; the active page is
-   in-flow so the panel auto-sizes to its height. */
 .mushaf-page--animating {
     position: absolute;
     inset: 0;
@@ -276,7 +244,7 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Lines + words inside a page
+ * Lines + words
  * ============================================================ */
 .mushaf-line {
     line-height: 1.85;
@@ -299,7 +267,7 @@ body.dark .mode-toggle__knob {
     border-radius: 4px;
     padding: 0 1px;
     transition: background-color 200ms ease, color 200ms ease,
-        box-shadow 200ms ease;
+        box-shadow 200ms ease, opacity 250ms ease, filter 250ms ease;
 }
 
 .mushaf-ayah:hover {
@@ -331,7 +299,24 @@ body.dark .mushaf-ayah--playing {
 }
 
 /* ============================================================
- * On-screen page nav arrows — subtle, inside the panel edges
+ * Target-surah focus: non-target surahs get a JS-applied
+ * --dimmed class. They render at 30% opacity, desaturated, and
+ * are non-interactive (no hover menu, no click-to-play).
+ * ============================================================ */
+.mushaf-ayah--dimmed,
+.mushaf-surah-header--dimmed,
+.mushaf-line--bismillah.mushaf-line--dimmed {
+    opacity: 0.30;
+    filter: saturate(0.55);
+    pointer-events: none;
+}
+
+.mushaf-ayah--dimmed {
+    cursor: default;
+}
+
+/* ============================================================
+ * On-screen page nav arrows
  * ============================================================ */
 .mushaf-nav {
     position: absolute;
@@ -362,7 +347,6 @@ body.dark .mushaf-ayah--playing {
 .mushaf-nav svg {
     width: 18px;
     height: 18px;
-    stroke-width: 2;
 }
 
 .mushaf-nav--prev {
@@ -380,12 +364,10 @@ body.dark .mushaf-ayah--playing {
 }
 
 /* ============================================================
- * Floating ayah action menu
+ * Floating ayah action menu (two views: main, settings)
  * ============================================================ */
 .mushaf-ayah-menu {
     position: absolute;
-    display: flex;
-    gap: 4px;
     padding: 6px;
     border-radius: 14px;
     background: linear-gradient(180deg, var(--card), var(--card2));
@@ -411,11 +393,33 @@ body.dark .mushaf-ayah-menu {
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
 }
 
+/* Show the right sub-view */
+.mushaf-ayah-menu__main {
+    display: flex;
+    gap: 4px;
+}
+
+.mushaf-ayah-menu__settings {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    width: 240px;
+    padding: 4px 2px;
+}
+
+.mushaf-ayah-menu[data-view="settings"] .mushaf-ayah-menu__main {
+    display: none;
+}
+
+.mushaf-ayah-menu[data-view="settings"] .mushaf-ayah-menu__settings {
+    display: flex;
+}
+
 .mushaf-ayah-menu__btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    min-height: 38px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
     display: grid;
     place-items: center;
     border-radius: 10px;
@@ -433,80 +437,12 @@ body.dark .mushaf-ayah-menu {
 .mushaf-ayah-menu__btn svg {
     width: 20px;
     height: 20px;
-    stroke-width: 1.8;
 }
 
-/* ============================================================
- * Settings cog (audio-active only)
- * ============================================================ */
-.mushaf-settings {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    z-index: 8;
-    display: none;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-}
-
-[data-audio-active="1"] .mushaf-root.is-open .mushaf-settings {
-    display: flex;
-}
-
-.mushaf-settings__cog {
-    width: 40px;
-    height: 40px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, var(--card), var(--card2));
-    border: 1px solid var(--line);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-    color: var(--text);
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10);
-    transition: background 150ms ease;
-}
-
-.mushaf-settings__cog svg {
-    width: 20px;
-    height: 20px;
-    stroke-width: 1.8;
-}
-
-.mushaf-settings__panel {
-    display: none;
-    flex-direction: column;
-    gap: 12px;
-    padding: 14px;
-    width: 240px;
-    background: linear-gradient(180deg, var(--card), var(--card2));
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
-}
-
-.mushaf-settings--open .mushaf-settings__panel {
-    display: flex;
-}
-
-.mushaf-settings__section {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.mushaf-settings__label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-}
-
+/* Settings rows / chips inside the menu */
 .mushaf-settings__row {
     display: flex;
-    gap: 6px;
+    gap: 4px;
 }
 
 .mushaf-settings__chip {
@@ -522,6 +458,7 @@ body.dark .mushaf-ayah-menu {
     cursor: pointer;
     text-align: center;
     transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    font-family: inherit;
 }
 
 .mushaf-settings__chip:hover {
@@ -532,46 +469,6 @@ body.dark .mushaf-ayah-menu {
     background: var(--accent-soft);
     border-color: var(--accent-muted);
     color: var(--accent-strong);
-}
-
-.mushaf-now-playing {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    background: linear-gradient(180deg, var(--card), var(--card2));
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-}
-
-[data-audio-active="1"] .mushaf-root.is-open .mushaf-now-playing {
-    display: inline-flex;
-}
-
-.mushaf-now-playing__btn {
-    width: 26px;
-    height: 26px;
-    border-radius: 999px;
-    border: 0;
-    background: var(--accent-soft);
-    color: var(--text);
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    transition: background 150ms ease;
-}
-
-.mushaf-now-playing__btn:hover {
-    background: var(--accent-muted);
-}
-
-.mushaf-now-playing__btn svg {
-    width: 12px;
-    height: 12px;
 }
 
 /* ============================================================
@@ -607,8 +504,12 @@ body.dark .mushaf-ayah-menu {
         left: 2px;
     }
 
-    .mushaf-surah-header__name {
-        font-size: 19px;
+    .mushaf-surah-header {
+        font-size: 26px;
+    }
+
+    .mushaf-ayah-menu__settings {
+        width: 220px;
     }
 }
 
