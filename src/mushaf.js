@@ -73,6 +73,12 @@ let AYAH_MENU_VERSE = null;
 let AYAH_MENU_ANCHOR = null;      // the .mushaf-ayah currently anchoring the menu
 let NAV_PREV = null;
 let NAV_NEXT = null;
+let PLAYBACK_BAR_EL = null;
+let PLAYBACK_LABEL_EL = null;
+let PLAYBACK_PLAY_BTN = null;
+let PLAYBACK_PREV_BTN = null;
+let PLAYBACK_NEXT_BTN = null;
+let PLAYBACK_HIDE_TIMER = null;
 
 /* Audio state */
 let AUDIO_PLAYER = null;
@@ -198,7 +204,8 @@ export async function setAppMode(mode) {
         }
         // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
         ROOT_EL?.classList.add("mode-fade-in");
-        await openMushafAtAyah(target.s, target.a);
+        // noScroll: the mode toggle must not move the viewport (Fix 3).
+        await openMushafAtAyah(target.s, target.a, { noScroll: true });
         commitFadeIn(ROOT_EL);
     }
     // If no ayah has ever been selected, do nothing — wait for first click.
@@ -243,7 +250,7 @@ export async function openMushafAtAyah(s, a, opts = {}) {
     TARGET_SURAH = Number(s);
     LAST_VIEWED_AYAH = { s: Number(s), a: Number(a) };
     openPanel();
-    await goToPage(page, { direction: "none" });
+    await goToPage(page, { direction: "none", noScroll: !!opts.noScroll });
     if (opts.updateUrl !== false) {
         history.pushState({ mushaf: true, page, target: key }, "", `/read/ayah/${s}/${a}`);
     }
@@ -384,6 +391,11 @@ function buildShell() {
         AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
         NAV_PREV = document.getElementById("mushafPrev");
         NAV_NEXT = document.getElementById("mushafNext");
+        PLAYBACK_BAR_EL = document.getElementById("mushafPlaybackBar");
+        PLAYBACK_LABEL_EL = document.getElementById("mushafPlaybackLabel");
+        PLAYBACK_PLAY_BTN = document.getElementById("mushafPlaybackPlay");
+        PLAYBACK_PREV_BTN = document.getElementById("mushafPlaybackPrev");
+        PLAYBACK_NEXT_BTN = document.getElementById("mushafPlaybackNext");
         return;
     }
 
@@ -405,18 +417,21 @@ function buildShell() {
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
-    <!-- Ayah floating menu: two views (main / settings) -->
+    <!-- Floating playback bar: appears when audio is playing; auto-hides 3s after stop. -->
+    <div class="mushaf-playback-bar" id="mushafPlaybackBar" dir="rtl" aria-hidden="true">
+      <div class="mushaf-playback-bar__indicator" id="mushafPlaybackLabel"></div>
+      <div class="mushaf-playback-bar__controls">
+        <button type="button" class="mushaf-playback-btn" id="mushafPlaybackPrev" aria-label="الآية السابقة">${ICONS.chevronRight}</button>
+        <button type="button" class="mushaf-playback-btn mushaf-playback-btn--primary" id="mushafPlaybackPlay" aria-label="تشغيل/إيقاف">${ICONS.play}</button>
+        <button type="button" class="mushaf-playback-btn" id="mushafPlaybackNext" aria-label="الآية التالية">${ICONS.chevronLeft}</button>
+        <button type="button" class="mushaf-playback-btn mushaf-volume-icon" id="mushafVolumeIcon" aria-label="كتم الصوت">${ICONS.volumeHigh}</button>
+      </div>
+    </div>
+
+    <!-- Ayah floating menu: two views (main / settings).
+         Note: play/volume moved to the playback bar (Fix 1b). -->
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
-        <button type="button" class="mushaf-ayah-menu__btn" data-act="play" aria-label="استمع للآية">${ICONS.play}</button>
-        <button type="button" class="mushaf-ayah-menu__btn mushaf-volume-icon" id="mushafVolumeIcon" data-act="mute" aria-label="كتم الصوت">${ICONS.volumeHigh}</button>
-        <div class="mushaf-volume-wrap">
-          <div class="mushaf-volume-edges" aria-hidden="true">
-            <span class="mushaf-volume-edge mushaf-volume-edge--min">${ICONS.volumeMute}</span>
-            <span class="mushaf-volume-edge mushaf-volume-edge--max">${ICONS.volumeHigh}</span>
-          </div>
-          <input type="range" class="mushaf-volume" id="mushafVolume" min="0" max="100" value="80" aria-label="مستوى الصوت" />
-        </div>
         <button type="button" class="mushaf-ayah-menu__btn" data-act="tafsir" aria-label="افتح التفسير">${ICONS.bookOpen}</button>
         <button type="button" class="mushaf-ayah-menu__btn" data-act="settings" aria-label="إعدادات">${ICONS.gear}</button>
       </div>
@@ -437,7 +452,7 @@ function buildShell() {
         </div>
         <div class="mushaf-settings__section">
           <div class="mushaf-settings__label">القارئ</div>
-          <div class="mushaf-settings__row mushaf-settings__row--col" data-settings-group="reciter"></div>
+          <div class="mushaf-settings__row mushaf-settings__row--pills" data-settings-group="reciter"></div>
         </div>
       </div>
     </div>
@@ -449,11 +464,17 @@ function buildShell() {
     AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
     NAV_PREV = document.getElementById("mushafPrev");
     NAV_NEXT = document.getElementById("mushafNext");
+    PLAYBACK_BAR_EL = document.getElementById("mushafPlaybackBar");
+    PLAYBACK_LABEL_EL = document.getElementById("mushafPlaybackLabel");
+    PLAYBACK_PLAY_BTN = document.getElementById("mushafPlaybackPlay");
+    PLAYBACK_PREV_BTN = document.getElementById("mushafPlaybackPrev");
+    PLAYBACK_NEXT_BTN = document.getElementById("mushafPlaybackNext");
 
     wireNav();
     wireMenu();
     wirePageSwipe();
     wireCopy();
+    wirePlaybackBar();
     buildReciterChips();
     syncSettingsUI();
 }
@@ -516,10 +537,10 @@ function wirePageSwipe() {
     }, { passive: true });
 }
 
-async function goToPage(p, { direction = "none" } = {}) {
+async function goToPage(p, { direction = "none", noScroll = false } = {}) {
     await ensureMetaLoaded();
     if (p === CURRENT_PAGE && ACTIVE_PAGE_EL) {
-        applyTargetHighlight();
+        applyTargetHighlight({ noScroll });
         return;
     }
     try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
@@ -537,7 +558,7 @@ async function goToPage(p, { direction = "none" } = {}) {
         CURRENT_PAGE = p;
         updateNavDisabledState();
         prefetchAdjacent(p);
-        applyTargetHighlight();
+        applyTargetHighlight({ noScroll });
 
         if (CURRENT_TARGET_VERSE) {
             const [s, a] = CURRENT_TARGET_VERSE.split(":").map(Number);
@@ -777,12 +798,14 @@ function buildLineElement(line, lineSurahId) {
     return lineEl;
 }
 
-function applyTargetHighlight() {
+function applyTargetHighlight({ noScroll = false } = {}) {
     if (!ACTIVE_PAGE_EL || !CURRENT_TARGET_VERSE) return;
     const el = ACTIVE_PAGE_EL.querySelector(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
     if (!el) return;
     el.classList.add("mushaf-ayah--target");
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!noScroll) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     setTimeout(() => el.classList.remove("mushaf-ayah--target"), 4000);
 }
 
@@ -953,34 +976,6 @@ function wireMenu() {
     AYAH_MENU_EL.addEventListener("mouseenter", () => clearTimeout(HOVER_HIDE_TIMER));
     AYAH_MENU_EL.addEventListener("mouseleave", () => scheduleMenuHide());
 
-    // Volume slider + dynamic speaker icon (Fix 5)
-    const vol = document.getElementById("mushafVolume");
-    const volIcon = document.getElementById("mushafVolumeIcon");
-    if (vol) {
-        vol.value = String(Math.round(AUDIO_VOLUME * 100));
-        updateVolumeIcon();
-        vol.addEventListener("input", (e) => {
-            const pct = parseInt(e.target.value, 10);
-            applyVolume(pct / 100, { persist: true, trackUnmute: pct > 0 });
-        });
-        vol.addEventListener("click", (e) => e.stopPropagation());
-    }
-    if (volIcon) {
-        volIcon.addEventListener("click", (e) => {
-            e.stopPropagation();
-            // Toggle mute: 0 → restore previous; >0 → save & set 0
-            if (AUDIO_VOLUME > 0) {
-                MUTED_PREV_VOLUME = AUDIO_VOLUME;
-                applyVolume(0, { persist: true, trackUnmute: false });
-            } else {
-                const restore = MUTED_PREV_VOLUME > 0 ? MUTED_PREV_VOLUME : 0.8;
-                applyVolume(restore, { persist: true, trackUnmute: true });
-            }
-            const v = document.getElementById("mushafVolume");
-            if (v) v.value = String(Math.round(AUDIO_VOLUME * 100));
-        });
-    }
-
     AYAH_MENU_EL.addEventListener("click", (e) => {
         // Settings chip clicks
         const chip = e.target.closest(".mushaf-settings__chip");
@@ -991,9 +986,7 @@ function wireMenu() {
         const btn = e.target.closest("[data-act]");
         if (!btn || !AYAH_MENU_VERSE) return;
         const act = btn.dataset.act;
-        if (act === "play") {
-            toggleAudioForAyah(AYAH_MENU_VERSE);
-        } else if (act === "tafsir") {
+        if (act === "tafsir") {
             const [s, a] = AYAH_MENU_VERSE.split(":").map(Number);
             LAST_VIEWED_AYAH = { s, a };
             setAppMode("tafsir");
@@ -1017,6 +1010,79 @@ function wireMenu() {
         if (e.target.closest(".mushaf-ayah") || e.target.closest(".mushaf-ayah-menu")) return;
         closeAyahMenu();
     });
+}
+
+/* ============================================================
+ * Floating playback bar (Fix 1b) — fades in when audio plays;
+ * fades out 3s after audio stops.
+ * ============================================================ */
+function wirePlaybackBar() {
+    if (!PLAYBACK_BAR_EL) return;
+    PLAYBACK_PLAY_BTN?.addEventListener("click", () => {
+        if (AUDIO_VERSE) toggleAudioForAyah(AUDIO_VERSE);
+        else if (LAST_VIEWED_AYAH) toggleAudioForAyah(`${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}`);
+    });
+    PLAYBACK_PREV_BTN?.addEventListener("click", () => {
+        const ref = AUDIO_VERSE || (LAST_VIEWED_AYAH ? `${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}` : null);
+        if (!ref) return;
+        const prev = getPrevVerseKey(ref);
+        if (prev) playMushafAyah(prev);
+    });
+    PLAYBACK_NEXT_BTN?.addEventListener("click", () => {
+        const ref = AUDIO_VERSE || (LAST_VIEWED_AYAH ? `${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}` : null);
+        if (!ref) return;
+        const next = getNextVerseKey(ref);
+        if (next) playMushafAyah(next);
+    });
+    const volIcon = document.getElementById("mushafVolumeIcon");
+    if (volIcon) {
+        volIcon.addEventListener("click", () => {
+            if (AUDIO_VOLUME > 0) {
+                MUTED_PREV_VOLUME = AUDIO_VOLUME;
+                applyVolume(0, { persist: true, trackUnmute: false });
+            } else {
+                const restore = MUTED_PREV_VOLUME > 0 ? MUTED_PREV_VOLUME : 0.8;
+                applyVolume(restore, { persist: true, trackUnmute: true });
+            }
+        });
+    }
+    updateVolumeIcon();
+}
+
+function showPlaybackBar() {
+    if (!PLAYBACK_BAR_EL) return;
+    clearTimeout(PLAYBACK_HIDE_TIMER);
+    PLAYBACK_HIDE_TIMER = null;
+    PLAYBACK_BAR_EL.classList.add("mushaf-playback-bar--visible");
+    PLAYBACK_BAR_EL.setAttribute("aria-hidden", "false");
+}
+
+function schedulePlaybackBarHide() {
+    if (!PLAYBACK_BAR_EL) return;
+    clearTimeout(PLAYBACK_HIDE_TIMER);
+    PLAYBACK_HIDE_TIMER = setTimeout(() => {
+        PLAYBACK_BAR_EL.classList.remove("mushaf-playback-bar--visible");
+        PLAYBACK_BAR_EL.setAttribute("aria-hidden", "true");
+        PLAYBACK_HIDE_TIMER = null;
+    }, 3000);
+}
+
+function setPlaybackPlayingState(playing) {
+    if (!PLAYBACK_PLAY_BTN) return;
+    PLAYBACK_PLAY_BTN.innerHTML = playing ? ICONS.pause : ICONS.play;
+    PLAYBACK_PLAY_BTN.setAttribute("aria-label", playing ? "إيقاف" : "تشغيل");
+}
+
+function updatePlaybackBarLabel(verseKey) {
+    if (!PLAYBACK_LABEL_EL || !verseKey) return;
+    const [s, a] = verseKey.split(":").map(Number);
+    const name = chapterArabicName(s);
+    PLAYBACK_LABEL_EL.textContent = `${name} • ${toArabicDigits(a)}`;
+}
+
+function toArabicDigits(n) {
+    const map = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+    return String(n).split("").map((d) => /\d/.test(d) ? map[Number(d)] : d).join("");
 }
 
 function applyVolume(v, { persist = false, trackUnmute = true } = {}) {
@@ -1087,8 +1153,12 @@ function toggleAudioForAyah(verseKey) {
         // Same ayah currently selected: toggle play/pause
         if (AUDIO_PLAYER.paused) {
             AUDIO_PLAYER.play().catch((e) => console.error("resume failed", e));
+            setPlaybackPlayingState(true);
+            showPlaybackBar();
         } else {
             AUDIO_PLAYER.pause();
+            setPlaybackPlayingState(false);
+            // Stay visible while paused — only auto-hide on stop.
         }
         return;
     }
@@ -1156,6 +1226,15 @@ function playMushafAyah(verseKey) {
         try { prevPlayer.pause(); } catch { }
     }
 
+    // Playback bar lifecycle: show + reflect state on each play.
+    updatePlaybackBarLabel(verseKey);
+    setPlaybackPlayingState(true);
+    showPlaybackBar();
+    nextAudio.addEventListener("play", () => setPlaybackPlayingState(true));
+    nextAudio.addEventListener("pause", () => {
+        if (AUDIO_PLAYER === nextAudio && !nextAudio.ended) setPlaybackPlayingState(false);
+    });
+
     nextAudio.addEventListener("ended", async () => {
         if (AUDIO_MODE === "continuous") {
             const next = getNextVerseKey(verseKey);
@@ -1197,6 +1276,8 @@ function stopMushafAudio() {
     if (AUDIO_VERSE) clearHighlight(AUDIO_VERSE);
     AUDIO_VERSE = null;
     document.documentElement.removeAttribute("data-audio-active");
+    setPlaybackPlayingState(false);
+    schedulePlaybackBarHide();
 }
 
 function highlightAyah(verseKey, kind) {
@@ -1220,6 +1301,15 @@ function getNextVerseKey(verseKey) {
     const next = CHAPTERS.find((c) => c.id === s + 1);
     if (!next) return null;
     return `${next.id}:1`;
+}
+
+function getPrevVerseKey(verseKey) {
+    if (!verseKey) return null;
+    const [s, a] = verseKey.split(":").map(Number);
+    if (a > 1) return `${s}:${a - 1}`;
+    const prev = CHAPTERS?.find((c) => c.id === s - 1);
+    if (!prev) return null;
+    return `${prev.id}:${prev.verses_count}`;
 }
 
 /* ============================================================

@@ -479,92 +479,7 @@ body.dark .mushaf-ayah-menu {
     height: 20px;
 }
 
-/* ============================================================
- * Volume slider (Fix 5)
- *   layout: [play] [dynamic-speaker-icon button] [edge-labels + slider] [tafsir] [settings]
- *   - speaker icon updates on input (mute / low / high) and toggles mute on click
- *   - edge labels are tiny mute/loud icons above the slider ends to hint direction
- * ============================================================ */
-.mushaf-volume-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1px;
-    width: 80px;
-    flex-shrink: 0;
-}
-
-.mushaf-volume-edges {
-    display: flex;
-    justify-content: space-between;
-    padding: 0 1px;
-    direction: ltr;
-}
-
-.mushaf-volume-edge {
-    display: inline-flex;
-    align-items: center;
-    color: var(--muted);
-    opacity: 0.45;
-}
-
-.mushaf-volume-edge svg {
-    width: 10px;
-    height: 10px;
-}
-
-.mushaf-volume {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 4px;
-    background: var(--line);
-    border-radius: 999px;
-    outline: none;
-    cursor: pointer;
-    direction: ltr;
-}
-
-.mushaf-volume::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--accent-strong);
-    cursor: pointer;
-    border: 2px solid var(--card);
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.20);
-    transition: transform 120ms ease;
-}
-
-.mushaf-volume::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
-}
-
-.mushaf-volume::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--accent-strong);
-    cursor: pointer;
-    border: 2px solid var(--card);
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.20);
-}
-
-.mushaf-volume-icon {
-    /* Reuses .mushaf-ayah-menu__btn sizing but slightly tighter to fit row */
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    min-height: 34px !important;
-}
-
-.mushaf-volume-icon svg {
-    width: 18px !important;
-    height: 18px !important;
-}
-
+/* Volume mute toggle (lives inside the playback bar). */
 .mushaf-volume-icon--muted {
     color: var(--muted);
 }
@@ -591,10 +506,30 @@ body.dark .mushaf-ayah-menu {
     gap: 6px;
 }
 
-/* Reciter row stacks vertically for clarity (3 full Arabic names) */
-.mushaf-settings__row--col {
-    flex-direction: column;
-    gap: 4px;
+/* Reciter row: compact horizontal pills, wraps to a second line on narrow
+ * screens. Pills feel like controls, not list items. */
+.mushaf-settings__row--pills {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mushaf-settings__row--pills .mushaf-settings__chip {
+    flex: 0 1 auto;
+    min-height: 28px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true"] {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #fff;
+}
+
+body.dark .mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true"] {
+    color: #0b1326;
 }
 
 .mushaf-settings__chip {
@@ -621,6 +556,104 @@ body.dark .mushaf-ayah-menu {
     background: var(--accent-soft);
     border-color: var(--accent-muted);
     color: var(--accent-strong);
+}
+
+/* ============================================================
+ * Floating playback bar (Fix 1b)
+ *   - sits below the mushaf page content
+ *   - frosted-glass card, hairline border, low elevation
+ *   - fades in when audio starts, fades out 3s after audio stops
+ * ============================================================ */
+.mushaf-playback-bar {
+    margin-top: 18px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.mushaf-playback-bar--visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+body.dark .mushaf-playback-bar {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.32);
+}
+
+.mushaf-playback-bar__indicator {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    direction: rtl;
+    padding-inline-start: 6px;
+}
+
+.mushaf-playback-bar__controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mushaf-playback-btn {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 150ms ease, transform 150ms ease;
+    padding: 0;
+}
+
+.mushaf-playback-btn:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-playback-btn:active {
+    transform: scale(0.94);
+}
+
+.mushaf-playback-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.mushaf-playback-btn--primary {
+    width: 40px;
+    height: 40px;
+    background: var(--accent-strong);
+    color: #fff;
+}
+
+.mushaf-playback-btn--primary:hover {
+    background: var(--accent-strong);
+    filter: brightness(1.05);
+}
+
+.mushaf-playback-btn--primary svg {
+    width: 18px;
+    height: 18px;
+}
+
+body.dark .mushaf-playback-btn--primary {
+    color: #0b1326;
 }
 
 /* ============================================================
@@ -664,8 +697,14 @@ body.dark .mushaf-ayah-menu {
         width: 260px;
     }
 
-    .mushaf-volume-wrap {
-        width: 64px;
+    .mushaf-playback-bar {
+        padding: 6px 10px;
+        gap: 8px;
+        margin-top: 14px;
+    }
+
+    .mushaf-playback-bar__indicator {
+        font-size: 12px;
     }
 
     .mode-toggle__btn {

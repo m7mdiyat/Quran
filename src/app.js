@@ -3105,7 +3105,7 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}) {
 }
 
 /* ---------------- Primary select ---------------- */
-function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scroll = true } = {}) {
+function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scroll = true, animate = true } = {}) {
   stopAudio(); // Stop any playing audio when changing ayah
   CURRENT = { s: surahNo, a: ayahNo };
   setUrlForAyah(surahNo, ayahNo, { replace: replaceUrl });
@@ -3118,12 +3118,20 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   if (tafsirSection) {
     tafsirSection.classList.remove("is-hidden");
     tafsirSection.classList.remove("hidden");
-    tafsirSection.classList.remove("is-visible");
-    tafsirSection.classList.remove("tafsir-animate");
-    requestAnimationFrame(() => {
+    if (animate) {
+      // Strip + rAF re-add re-fires the entrance animation. Skip this path
+      // when the caller (e.g. the mode toggle) wants the panel to appear
+      // without re-running tafsirGlow / is-visible transitions — otherwise
+      // they fight a concurrent mode-fade-in and the user sees a double paint.
+      tafsirSection.classList.remove("is-visible");
+      tafsirSection.classList.remove("tafsir-animate");
+      requestAnimationFrame(() => {
+        tafsirSection.classList.add("is-visible");
+        tafsirSection.classList.add("tafsir-animate");
+      });
+    } else {
       tafsirSection.classList.add("is-visible");
-      tafsirSection.classList.add("tafsir-animate");
-    });
+    }
   }
   if (scroll) {
     try { tafsirSection?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { }
@@ -3789,7 +3797,9 @@ async function init() {
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
     getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
     openTafsirForAyah: (s, a) => {
-      setPrimaryAyah(s, a, { scroll: true });
+      // Mode switch: skip the tafsir entrance animation (double-render with
+      // mode-fade-in) and skip scrollIntoView (jarring during a toggle).
+      setPrimaryAyah(s, a, { scroll: false, animate: false });
     },
   });
 
