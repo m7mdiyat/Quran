@@ -1,18 +1,25 @@
 /*
- * Mushaf reading mode — Madinah Mushaf 1441 AH (QCF4)
+ * Mushaf reading mode — Madinah Mushaf 1441 AH (QCF4).
  *
- * Lazy-loads page JSONs and per-page WOFF2 fonts on demand, renders one
- * page at a time, supports swipe / keyboard / button navigation, ayah
- * tap menu (audio / open-tafsir / copy), and audio playback with
- * highlighting (single or continuous mode).
+ * UX model: the Mushaf is an INLINE panel that sits in the same DOM
+ * slot as #tafsirSection. It is mutually exclusive with the Tafsir
+ * view but otherwise lives inside the regular homepage layout.
  *
- * Designed to live alongside Tafsir mode in src/app.js. Bridges in:
- *   - initMushaf(deps) — called from app.js init() with shared data
- *   - enterMushafMode(opts) / exitMushafMode()
+ * The toggle is a pure routing preference — it doesn't navigate, hide
+ * UI, or change the URL. It only switches WHERE the next search-result
+ * click goes:
+ *   - Tafsir mode click → setPrimaryAyah (existing tafsir flow)
+ *   - Mushaf mode click → opens this panel inline, hides #tafsirSection
+ *
+ * Direct loads of /read/page/N, /read/ayah/S/A, /read/surah/S open
+ * the panel inline (search box and other chrome stay visible).
+ *
+ * Bridges:
+ *   - initMushaf(deps) — wires the module to Quran data, reciter helpers,
+ *     and Tafsir-side functions exposed by src/app.js
  *   - openMushafAtAyah(s,a) / openMushafAtPage(p) / openMushafAtSurah(s)
+ *   - setAppMode("tafsir" | "mushaf") — toggle-only behavior
  *   - isMushafMode()
- *
- * State is module-scoped; the module is a singleton for the page.
  */
 
 "use strict";
@@ -22,49 +29,49 @@ const STORAGE = {
     LAST_PAGE: "mushaf_last_page",
     FONT_SIZE: "mushaf_font_size",
     AUDIO_MODE: "mushaf_audio_mode",
-    RECITER: "audioReciter", // shared with Tafsir mode
 };
 
 const TOTAL_PAGES = 604;
 
 /* Data caches */
-const PAGE_CACHE = new Map(); // pageNo -> parsed JSON
-const PAGE_INFLIGHT = new Map(); // pageNo -> Promise
+const PAGE_CACHE = new Map();
+const PAGE_INFLIGHT = new Map();
 const LOADED_FONTS = new Set(["QCF4_QBSML", "QCF4_Hafs_01"]); // declared in mushaf.css
-let VERSES_LOOKUP = null; // { "s:a": { page, lines:[{line,word_start,word_end}] } }
-let FONT_MAP = null; // { "1": "QCF4_Hafs_01", ... }
-let CHAPTERS = null; // [{id, name_arabic, name, pages:[start,end], verses_count}]
-let META_READY = null; // Promise
+let VERSES_LOOKUP = null;
+let FONT_MAP = null;
+let CHAPTERS = null;
+let META_READY = null;
 
 /* Runtime state */
 let DEPS = null;
 let MUSHAF_MODE = false;
-let CURRENT_PAGE = 1;
+let PANEL_OPEN = false;          // is the panel currently visible?
+let CURRENT_PAGE = 0;            // last/currently rendered page in the panel
 let CURRENT_TARGET_VERSE = null; // "s:a" — highlight on next render
+let LAST_VIEWED_AYAH = null;     // {s, a} — used to restore Tafsir on toggle OFF
+
 let ROOT_EL = null;
 let PAGES_EL = null;
-let TOPBAR_EL = null;
-let SURAH_SELECT = null;
-let PAGE_INPUT = null;
-let JUZ_SELECT = null;
 let ACTIVE_PAGE_EL = null;
 let AYAH_MENU_EL = null;
 let AYAH_MENU_VERSE = null;
 let SETTINGS_EL = null;
 let NOW_PLAYING_EL = null;
-let IDLE_TIMER = null;
+let NAV_PREV = null;
+let NAV_NEXT = null;
 
-/* Audio state (separate from Tafsir-mode audio in app.js — independent
-   Audio object so the modes don't fight over it). */
+/* Audio state (independent of Tafsir-mode audio in app.js) */
 let AUDIO_PLAYER = null;
-let AUDIO_VERSE = null; // "s:a" currently playing
-let AUDIO_MODE = "single"; // "single" | "continuous"
-let FONT_SIZE = "m"; // "s" | "m" | "l"
+let AUDIO_VERSE = null;
+let AUDIO_MODE = "single";
+let FONT_SIZE = "m";
 
-/* ---------------- bridging ---------------- */
+/* ============================================================
+ * Public bridging
+ * ============================================================ */
 
 export function initMushaf(deps) {
-    DEPS = deps; // { surahMeta, quran, audioBase, reciters, reciterOrder, getCurrentReciter, setCurrentReciter, openTafsirForAyah, stopTafsirAudio }
+    DEPS = deps;
 
     // Restore persisted prefs
     try {
@@ -74,80 +81,89 @@ export function initMushaf(deps) {
         if (am === "single" || am === "continuous") AUDIO_MODE = am;
     } catch { }
 
-    // Build the UI shell (idempotent)
-    buildShell();
+    buildShell(); // idempotent — bootstrapShell() may have already run
 
-    // Wire global mode bridging (toggle buttons)
+    // Set initial mode from localStorage. The data-app-mode attr drives
+    // only the toggle knob's CSS — it never hides any other UI.
+    let saved = "tafsir";
+    try {
+        const v = localStorage.getItem(STORAGE.MODE);
+        if (v === "mushaf" || v === "tafsir") saved = v;
+    } catch { }
+    MUSHAF_MODE = saved === "mushaf";
+    document.documentElement.setAttribute("data-app-mode", saved);
+    document.documentElement.setAttribute("data-font-size", FONT_SIZE);
+
+    // Wire toggle buttons (both in the search panel; there may be just one)
     document.querySelectorAll("[data-mode-toggle]").forEach((btn) => {
         btn.addEventListener("click", () => {
             setAppMode(MUSHAF_MODE ? "tafsir" : "mushaf");
         });
     });
 
-    // Set initial data-app-mode if not yet set
-    if (!document.documentElement.hasAttribute("data-app-mode")) {
-        let saved = "tafsir";
-        try {
-            const v = localStorage.getItem(STORAGE.MODE);
-            if (v === "mushaf" || v === "tafsir") saved = v;
-        } catch { }
-        document.documentElement.setAttribute("data-app-mode", saved);
-        MUSHAF_MODE = saved === "mushaf";
-    } else {
-        MUSHAF_MODE = document.documentElement.getAttribute("data-app-mode") === "mushaf";
-    }
-    document.documentElement.setAttribute("data-font-size", FONT_SIZE);
-
-    // Idle / chrome-fade tracker
-    setupIdleTracker();
-
-    // Keyboard navigation
+    // Keyboard navigation (only fires when panel is open + not in inputs)
     document.addEventListener("keydown", onKeyDown);
 
-    return { setAppMode, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode };
+    syncSettingsUI();
+
+    return {
+        setAppMode, openMushafAtAyah, openMushafAtPage,
+        openMushafAtSurah, isMushafMode, closeMushafPanel,
+    };
 }
 
 export function isMushafMode() {
     return MUSHAF_MODE;
 }
 
-export function setAppMode(mode, { skipUrlUpdate = false } = {}) {
+/**
+ * Toggle behavior: pure internal state. No URL change. No UI hiding.
+ * One exception: when switching from Mushaf→Tafsir while the panel is
+ * visible, hide the panel and restore the Tafsir view for the last
+ * ayah viewed in the panel.
+ */
+export function setAppMode(mode) {
     const wanted = mode === "mushaf" ? "mushaf" : "tafsir";
     const prev = MUSHAF_MODE ? "mushaf" : "tafsir";
+    if (wanted === prev) return;
+
     MUSHAF_MODE = wanted === "mushaf";
     document.documentElement.setAttribute("data-app-mode", wanted);
     try { localStorage.setItem(STORAGE.MODE, wanted); } catch { }
 
-    if (MUSHAF_MODE && prev !== "mushaf") {
-        // Stop any Tafsir-mode audio so we don't have two streams
-        try { DEPS?.stopTafsirAudio?.(); } catch { }
-        ensureCurrentPageRendered();
-        if (!skipUrlUpdate) {
-            const p = CURRENT_PAGE || 1;
-            history.pushState({ mushaf: true, page: p }, "", `/read/page/${p}`);
-            updateMushafSeo({ page: p });
-        }
-    } else if (!MUSHAF_MODE && prev !== "tafsir") {
-        // Stop Mushaf audio
-        stopMushafAudio();
-        if (!skipUrlUpdate) {
-            history.pushState({}, "", "/");
-            // Reset SEO via DEPS if available; otherwise just home title
-            document.title = "محمديات";
+    if (wanted === "tafsir" && PANEL_OPEN) {
+        // Restore Tafsir view for the ayah the user was last looking at
+        const target = LAST_VIEWED_AYAH;
+        closePanel();
+        if (target && DEPS?.openTafsirForAyah) {
+            DEPS.openTafsirForAyah(target.s, target.a);
+            history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
         }
     }
+    // Switching INTO Mushaf mode does nothing visible — wait for a click.
 }
 
+export function closeMushafPanel() {
+    if (PANEL_OPEN) closePanel();
+}
+
+/**
+ * Open the Mushaf panel at a specific ayah. Hides the Tafsir view.
+ * Used by:
+ *   - search-result clicks in Mushaf mode
+ *   - direct /read/ayah/S/A URL loads
+ *   - browser popstate to a /read/ayah/S/A entry
+ */
 export async function openMushafAtAyah(s, a, opts = {}) {
     await ensureMetaLoaded();
     const key = `${s}:${a}`;
     const entry = VERSES_LOOKUP?.[key];
     const page = entry?.page || 1;
     CURRENT_TARGET_VERSE = key;
-    setAppMode("mushaf", { skipUrlUpdate: true });
+    LAST_VIEWED_AYAH = { s, a };
+    openPanel();
     await goToPage(page, { direction: "none" });
-    const updateUrl = opts.updateUrl !== false;
-    if (updateUrl) {
+    if (opts.updateUrl !== false) {
         history.pushState({ mushaf: true, page, target: key }, "", `/read/ayah/${s}/${a}`);
     }
     updateMushafSeo({ page, verse: key });
@@ -155,16 +171,14 @@ export async function openMushafAtAyah(s, a, opts = {}) {
 
 export async function openMushafAtPage(p, opts = {}) {
     await ensureMetaLoaded();
-    setAppMode("mushaf", { skipUrlUpdate: true });
+    p = Math.max(1, Math.min(TOTAL_PAGES, Number(p) || 1));
     CURRENT_TARGET_VERSE = null;
-    await goToPage(Math.max(1, Math.min(TOTAL_PAGES, Number(p) || 1)), {
-        direction: "none",
-    });
-    const updateUrl = opts.updateUrl !== false;
-    if (updateUrl) {
-        history.pushState({ mushaf: true, page: CURRENT_PAGE }, "", `/read/page/${CURRENT_PAGE}`);
+    openPanel();
+    await goToPage(p, { direction: "none" });
+    if (opts.updateUrl !== false) {
+        history.pushState({ mushaf: true, page: p }, "", `/read/page/${p}`);
     }
-    updateMushafSeo({ page: CURRENT_PAGE });
+    updateMushafSeo({ page: p });
 }
 
 export async function openMushafAtSurah(s, opts = {}) {
@@ -172,16 +186,49 @@ export async function openMushafAtSurah(s, opts = {}) {
     const ch = CHAPTERS?.find((c) => c.id === Number(s));
     const page = ch?.pages?.[0] || 1;
     CURRENT_TARGET_VERSE = `${s}:1`;
-    setAppMode("mushaf", { skipUrlUpdate: true });
+    LAST_VIEWED_AYAH = { s: Number(s), a: 1 };
+    openPanel();
     await goToPage(page, { direction: "none" });
-    const updateUrl = opts.updateUrl !== false;
-    if (updateUrl) {
+    if (opts.updateUrl !== false) {
         history.pushState({ mushaf: true, page, surah: Number(s) }, "", `/read/surah/${s}`);
     }
     updateMushafSeo({ page, surah: Number(s) });
 }
 
-/* ---------------- metadata + page loading ---------------- */
+/* ============================================================
+ * Panel show/hide + Tafsir mutual exclusion
+ * ============================================================ */
+
+function openPanel() {
+    if (!ROOT_EL) buildShell();
+    if (PANEL_OPEN) return;
+    PANEL_OPEN = true;
+    ROOT_EL.classList.add("is-open");
+    // Mark the wrapper so #tafsirSection / #versePanel hide via CSS belt + JS:
+    const wrapper = ROOT_EL.parentElement;
+    if (wrapper) wrapper.classList.add("has-mushaf");
+    // Belt-and-suspenders: also explicitly hide the Tafsir card so the
+    // existing animation/state inside it doesn't visually flicker.
+    if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.add("hidden");
+}
+
+function closePanel() {
+    if (!PANEL_OPEN) return;
+    PANEL_OPEN = false;
+    ROOT_EL?.classList.remove("is-open");
+    const wrapper = ROOT_EL?.parentElement;
+    if (wrapper) wrapper.classList.remove("has-mushaf");
+    if (DEPS?.tafsirSectionEl) {
+        // Only un-hide if the Tafsir side has content; otherwise leave hidden.
+        if (DEPS?.hasCurrentAyah?.()) DEPS.tafsirSectionEl.classList.remove("hidden");
+    }
+    stopMushafAudio();
+    closeAyahMenu();
+}
+
+/* ============================================================
+ * Data / font loading
+ * ============================================================ */
 
 async function ensureMetaLoaded() {
     if (META_READY) return META_READY;
@@ -194,8 +241,6 @@ async function ensureMetaLoaded() {
         VERSES_LOOKUP = verses;
         FONT_MAP = fontMap;
         CHAPTERS = index?.chapters || [];
-        populateSurahSelect();
-        populateJuzSelect();
     })();
     return META_READY;
 }
@@ -212,18 +257,13 @@ async function fetchPage(pageNo) {
         return data;
     })();
     PAGE_INFLIGHT.set(pageNo, p);
-    try {
-        return await p;
-    } finally {
-        PAGE_INFLIGHT.delete(pageNo);
-    }
+    try { return await p; }
+    finally { PAGE_INFLIGHT.delete(pageNo); }
 }
 
 function ensureFontDeclared(fontFamily) {
     if (LOADED_FONTS.has(fontFamily)) return;
-    // Page fonts follow pattern QCF4_Hafs_NN — file is QCF4_Hafs_NN_W.woff2
-    let fileName = `${fontFamily}_W.woff2`;
-    if (fontFamily === "QCF4_QBSML") fileName = "QCF4_QBSML.woff2";
+    const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
     const css = `@font-face { font-family: "${fontFamily}"; src: url("/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
     const style = document.createElement("style");
     style.dataset.qcf4Font = fontFamily;
@@ -232,52 +272,43 @@ function ensureFontDeclared(fontFamily) {
     LOADED_FONTS.add(fontFamily);
 }
 
-/* ---------------- UI shell construction ---------------- */
+/* ============================================================
+ * Shell construction (inline panel — NO top bar)
+ * ============================================================ */
 
 function buildShell() {
     if (document.getElementById("mushafRoot")) {
         ROOT_EL = document.getElementById("mushafRoot");
         PAGES_EL = document.getElementById("mushafPages");
-        SURAH_SELECT = document.getElementById("mushafSurahSelect");
-        PAGE_INPUT = document.getElementById("mushafPageInput");
-        JUZ_SELECT = document.getElementById("mushafJuzSelect");
         AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
         SETTINGS_EL = document.getElementById("mushafSettings");
         NOW_PLAYING_EL = document.getElementById("mushafNowPlaying");
+        NAV_PREV = document.getElementById("mushafPrev");
+        NAV_NEXT = document.getElementById("mushafNext");
         return;
     }
 
-    const root = document.createElement("div");
+    // Find the insertion point: same wrapper as #tafsirSection.
+    const tafsirSection = document.getElementById("tafsirSection");
+    const wrapper = tafsirSection?.parentElement; // .mx-auto.max-w-4xl
+    if (!wrapper) {
+        // DOM not ready yet — defer.
+        return;
+    }
+
+    const root = document.createElement("section");
     root.id = "mushafRoot";
-    root.className = "mushaf-root";
+    root.className = "mushaf-root glass rounded-3xl p-6";
     root.dir = "rtl";
+    root.setAttribute("aria-label", "قارئ المصحف");
     root.innerHTML = `
-    <div class="mushaf-topbar" id="mushafTopbar">
-      <div class="mushaf-topbar__group">
-        <label class="mushaf-page-label" for="mushafSurahSelect">السورة</label>
-        <select id="mushafSurahSelect" class="mushaf-select" aria-label="اختر سورة"></select>
-      </div>
-      <div class="mushaf-topbar__group">
-        <label class="mushaf-page-label" for="mushafJuzSelect">الجزء</label>
-        <select id="mushafJuzSelect" class="mushaf-select" aria-label="اختر جزء"></select>
-      </div>
-      <div class="mushaf-topbar__group">
-        <label class="mushaf-page-label" for="mushafPageInput">صفحة</label>
-        <input id="mushafPageInput" class="mushaf-page-input" type="number" min="1" max="${TOTAL_PAGES}" value="1" />
-        <span class="mushaf-page-label">/ ${TOTAL_PAGES}</span>
-      </div>
-      <div class="mushaf-topbar__spacer"></div>
-      <div class="mushaf-topbar__group mode-toggle--in-mushaf-bar">
-        ${buildToggleMarkup()}
-      </div>
-    </div>
     <div class="mushaf-stage">
       <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </button>
       <div class="mushaf-pages" id="mushafPages"></div>
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
       </button>
     </div>
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" role="menu" aria-hidden="true">
@@ -327,141 +358,57 @@ function buildShell() {
       </div>
     </div>
   `;
-    document.body.appendChild(root);
+    wrapper.appendChild(root); // sibling of #tafsirSection
 
     ROOT_EL = root;
     PAGES_EL = document.getElementById("mushafPages");
-    SURAH_SELECT = document.getElementById("mushafSurahSelect");
-    PAGE_INPUT = document.getElementById("mushafPageInput");
-    JUZ_SELECT = document.getElementById("mushafJuzSelect");
     AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
     SETTINGS_EL = document.getElementById("mushafSettings");
     NOW_PLAYING_EL = document.getElementById("mushafNowPlaying");
-    TOPBAR_EL = document.getElementById("mushafTopbar");
+    NAV_PREV = document.getElementById("mushafPrev");
+    NAV_NEXT = document.getElementById("mushafNext");
 
-    wireTopbar();
     wireNav();
     wireAyahMenu();
     wireSwipe();
     wireSettings();
     buildReciterButtons();
-    syncSettingsUI();
 }
 
-function buildToggleMarkup() {
-    return `
-    <div class="mode-toggle">
-      <button type="button" class="mode-toggle__btn" data-mode-toggle aria-label="التبديل بين التفسير والمصحف">
-        <div class="mode-toggle__icons">
-          <span class="mode-toggle__icon mode-toggle__icon--tafsir" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 4h6a4 4 0 014 4v12a3 3 0 00-3-3H4z"/>
-              <path d="M20 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7z"/>
-            </svg>
-          </span>
-          <span class="mode-toggle__icon mode-toggle__icon--mushaf" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2"/>
-              <path d="M12 4v16"/>
-              <path d="M7 9h2"/>
-              <path d="M15 9h2"/>
-              <path d="M7 14h2"/>
-              <path d="M15 14h2"/>
-            </svg>
-          </span>
-        </div>
-        <span class="mode-toggle__knob"></span>
-      </button>
-    </div>
-  `;
-}
-
-/** Build the toggle markup for the Tafsir search panel (called from app.js). */
-export function getSearchPanelToggleHtml() {
-    return `<div class="mode-toggle--in-search">${buildToggleMarkup()}</div>`;
-}
-
-/* ---------------- Topbar wiring ---------------- */
-
-function populateSurahSelect() {
-    if (!SURAH_SELECT || !CHAPTERS) return;
-    SURAH_SELECT.innerHTML = '<option value="">—</option>' +
-        CHAPTERS.map(
-            (c) => `<option value="${c.id}">${c.id}. ${c.name_arabic}</option>`
-        ).join("");
-}
-
-const JUZ_PAGES = [
-    1, 22, 42, 62, 82, 102, 121, 142, 162, 182, 201, 222, 242, 262, 282,
-    302, 322, 342, 362, 382, 402, 422, 442, 462, 482, 502, 522, 542, 562, 582,
-]; // QCF4 page where each Juz starts (1-indexed)
-
-function populateJuzSelect() {
-    if (!JUZ_SELECT) return;
-    JUZ_SELECT.innerHTML = '<option value="">—</option>' +
-        JUZ_PAGES.map((p, i) => `<option value="${p}">${i + 1}</option>`).join("");
-}
-
-function wireTopbar() {
-    SURAH_SELECT?.addEventListener("change", () => {
-        const s = Number(SURAH_SELECT.value);
-        if (!s) return;
-        openMushafAtSurah(s);
-        SURAH_SELECT.blur();
-    });
-
-    JUZ_SELECT?.addEventListener("change", () => {
-        const p = Number(JUZ_SELECT.value);
-        if (!p) return;
-        openMushafAtPage(p);
-        JUZ_SELECT.blur();
-    });
-
-    PAGE_INPUT?.addEventListener("change", () => {
-        const p = Math.max(1, Math.min(TOTAL_PAGES, Number(PAGE_INPUT.value) || 1));
-        PAGE_INPUT.value = String(p);
-        openMushafAtPage(p);
-        PAGE_INPUT.blur();
-    });
-    PAGE_INPUT?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            PAGE_INPUT.dispatchEvent(new Event("change"));
-        }
-    });
-}
-
-/* ---------------- Page navigation ---------------- */
+/* ============================================================
+ * Page navigation (internal — these DO update the URL)
+ * ============================================================ */
 
 function wireNav() {
-    document.getElementById("mushafPrev")?.addEventListener("click", () => goPrev());
-    document.getElementById("mushafNext")?.addEventListener("click", () => goNext());
+    NAV_PREV?.addEventListener("click", () => goPrev());
+    NAV_NEXT?.addEventListener("click", () => goNext());
 }
 
 function goPrev() {
     if (CURRENT_PAGE <= 1) return;
     CURRENT_TARGET_VERSE = null;
-    goToPage(CURRENT_PAGE - 1, { direction: "right" });
-    history.pushState({ mushaf: true, page: CURRENT_PAGE - 1 }, "", `/read/page/${CURRENT_PAGE - 1}`);
+    const target = CURRENT_PAGE - 1;
+    goToPage(target, { direction: "right" });
+    history.pushState({ mushaf: true, page: target }, "", `/read/page/${target}`);
+    updateMushafSeo({ page: target });
 }
 
 function goNext() {
     if (CURRENT_PAGE >= TOTAL_PAGES) return;
     CURRENT_TARGET_VERSE = null;
-    goToPage(CURRENT_PAGE + 1, { direction: "left" });
-    history.pushState({ mushaf: true, page: CURRENT_PAGE + 1 }, "", `/read/page/${CURRENT_PAGE + 1}`);
+    const target = CURRENT_PAGE + 1;
+    goToPage(target, { direction: "left" });
+    history.pushState({ mushaf: true, page: target }, "", `/read/page/${target}`);
+    updateMushafSeo({ page: target });
 }
 
 function onKeyDown(e) {
-    if (!MUSHAF_MODE) return;
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-    // In a RTL Mushaf, ArrowLeft naturally advances (next page = leftward), ArrowRight goes back.
+    if (!PANEL_OPEN) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
     if (e.key === "ArrowLeft") { e.preventDefault(); goNext(); }
     else if (e.key === "ArrowRight") { e.preventDefault(); goPrev(); }
     else if (e.key === "PageDown") { e.preventDefault(); goNext(); }
     else if (e.key === "PageUp") { e.preventDefault(); goPrev(); }
-    else if (e.key === "Home") { e.preventDefault(); openMushafAtPage(1); }
-    else if (e.key === "End") { e.preventDefault(); openMushafAtPage(TOTAL_PAGES); }
     else if (e.key === "Escape") { closeAyahMenu(); }
 }
 
@@ -482,7 +429,7 @@ function wireSwipe() {
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
         if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
-        // RTL: swipe right (positive dx) = previous page; swipe left = next
+        // RTL: swipe right = previous page, swipe left = next
         if (dx > 0) goPrev(); else goNext();
     }, { passive: true });
 }
@@ -490,30 +437,40 @@ function wireSwipe() {
 async function goToPage(p, { direction = "none" } = {}) {
     await ensureMetaLoaded();
     if (p === CURRENT_PAGE && ACTIVE_PAGE_EL) {
-        // Already on this page — just re-apply target highlight if any
         applyTargetHighlight();
         return;
     }
-
-    // Persist last page
     try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
 
-    // Update page input
-    if (PAGE_INPUT) PAGE_INPUT.value = String(p);
-
-    // Update surah dropdown (best guess: first surah on the page)
     try {
         const data = await fetchPage(p);
-        if (SURAH_SELECT && data.surahs?.[0]) {
-            SURAH_SELECT.value = String(data.surahs[0].id);
-        }
         renderPage(data, direction);
         CURRENT_PAGE = p;
+        updateNavDisabledState();
         prefetchAdjacent(p);
         applyTargetHighlight();
+        // Update last-viewed ayah for the toggle-OFF restore. If there's
+        // an explicit target verse (search-result click), keep that as
+        // the last-viewed ayah; otherwise fall back to the first verse
+        // visible on the rendered page.
+        if (CURRENT_TARGET_VERSE) {
+            const [s, a] = CURRENT_TARGET_VERSE.split(":").map(Number);
+            LAST_VIEWED_AYAH = { s, a };
+        } else {
+            const firstVerseKey = findFirstVerseKey(data);
+            if (firstVerseKey) {
+                const [s, a] = firstVerseKey.split(":").map(Number);
+                LAST_VIEWED_AYAH = { s, a };
+            }
+        }
     } catch (e) {
         console.error("Mushaf goToPage error:", e);
     }
+}
+
+function updateNavDisabledState() {
+    if (NAV_PREV) NAV_PREV.disabled = CURRENT_PAGE <= 1;
+    if (NAV_NEXT) NAV_NEXT.disabled = CURRENT_PAGE >= TOTAL_PAGES;
 }
 
 function prefetchAdjacent(p) {
@@ -521,26 +478,25 @@ function prefetchAdjacent(p) {
     if (p < TOTAL_PAGES) fetchPage(p + 1).catch(() => { });
 }
 
-async function ensureCurrentPageRendered() {
-    let target = CURRENT_PAGE;
-    if (!target) {
-        try {
-            const last = Number(localStorage.getItem(STORAGE.LAST_PAGE));
-            if (Number.isFinite(last) && last >= 1 && last <= TOTAL_PAGES) target = last;
-        } catch { }
+function findFirstVerseKey(data) {
+    for (const line of data.lines) {
+        for (const w of line.words) {
+            if (w.verse_key) return w.verse_key;
+        }
     }
-    target = target || 1;
-    if (!ACTIVE_PAGE_EL) {
-        await goToPage(target, { direction: "none" });
-    }
+    return null;
 }
 
-/* ---------------- Page rendering ---------------- */
+/* ============================================================
+ * Page rendering — inline panel layout with Mushaf-style
+ * surah header above the first ayah of each surah on the page
+ * + page-number footer.
+ * ============================================================ */
 
 function renderPage(data, direction = "none") {
     if (!PAGES_EL) return;
+
     ensureFontDeclared(data.font);
-    // Declare any extra fonts referenced by words on this page (rare).
     for (const line of data.lines) {
         for (const w of line.words) {
             if (w.font && !LOADED_FONTS.has(w.font)) ensureFontDeclared(w.font);
@@ -548,37 +504,65 @@ function renderPage(data, direction = "none") {
     }
 
     const newPage = document.createElement("div");
-    newPage.className = "mushaf-page mushaf-page--enter-" + (direction === "left" ? "right" : direction === "right" ? "left" : "right");
+    newPage.className = "mushaf-page";
     newPage.dataset.page = String(data.page);
+    if (direction !== "none") {
+        newPage.classList.add("mushaf-page--animating");
+        newPage.classList.add(direction === "left" ? "mushaf-page--enter-right" : "mushaf-page--enter-left");
+    } else {
+        newPage.classList.add("mushaf-page--active");
+    }
 
-    const inner = document.createElement("div");
-    inner.className = "mushaf-page__inner";
-
-    // Render lines, grouping word-type runs by verse_key so an entire ayah's
-    // glyphs share one .mushaf-ayah parent (for highlight/audio/menu).
+    // Pre-scan: which verse_key begins each surah on this page?
+    const firstAyahKeyPerSurah = new Map(); // surahId -> verse_key string ("S:A")
     for (const line of data.lines) {
-        const lineEl = document.createElement("div");
-        lineEl.className = "mushaf-line";
+        for (const w of line.words) {
+            if (!w.verse_key) continue;
+            const [sStr] = w.verse_key.split(":");
+            const sId = Number(sStr);
+            if (!firstAyahKeyPerSurah.has(sId)) {
+                firstAyahKeyPerSurah.set(sId, w.verse_key);
+            }
+        }
+    }
 
-        // Detect special line types from the first word
+    let renderedSurahHeaderFor = new Set();
+
+    for (let li = 0; li < data.lines.length; li++) {
+        const line = data.lines[li];
         const first = line.words?.[0];
         const isSurahHeader = first?.type === "surah_header";
         const isBismillah = first?.type === "bismillah";
-        if (isSurahHeader) lineEl.classList.add("mushaf-line--surah-header", "mushaf-line--center");
-        else if (isBismillah) lineEl.classList.add("mushaf-line--bismillah", "mushaf-line--center");
+
+        // Skip QCF4's ornamental surah_header lines — we render our own
+        // site-styled header above the first ayah of each surah instead.
+        if (isSurahHeader) continue;
+
+        // Inject a clean surah header above the first ayah of each surah
+        // that starts on this page (including the first surah, even if
+        // it's a continuation from the previous page).
+        const firstWordVerseKey = line.words.find((w) => w.verse_key)?.verse_key;
+        if (firstWordVerseKey) {
+            const [sStr] = firstWordVerseKey.split(":");
+            const sId = Number(sStr);
+            if (!renderedSurahHeaderFor.has(sId) && firstAyahKeyPerSurah.get(sId) === firstWordVerseKey) {
+                newPage.appendChild(buildSurahHeader(sId));
+                renderedSurahHeaderFor.add(sId);
+            } else if (renderedSurahHeaderFor.size === 0) {
+                // Continuation case: first line on the page that contains a
+                // verse, but it's mid-surah from the previous page.
+                newPage.appendChild(buildSurahHeader(sId));
+                renderedSurahHeaderFor.add(sId);
+            }
+        }
+
+        const lineEl = document.createElement("div");
+        lineEl.className = "mushaf-line";
+        if (isBismillah) lineEl.classList.add("mushaf-line--bismillah");
 
         let currentAyahEl = null;
         let currentVerseKey = null;
         for (const w of line.words) {
-            if (w.type === "surah_header") {
-                // Header line content
-                const span = document.createElement("span");
-                span.className = "mushaf-word";
-                span.style.fontFamily = `"${w.font}", serif`;
-                span.textContent = w.char || w.text || "";
-                lineEl.appendChild(span);
-                continue;
-            }
             if (w.type === "bismillah") {
                 const span = document.createElement("span");
                 span.className = "mushaf-word";
@@ -601,36 +585,57 @@ function renderPage(data, direction = "none") {
             wEl.className = w.type === "end" ? "mushaf-word mushaf-end" : "mushaf-word";
             wEl.style.fontFamily = `"${w.font}", serif`;
             wEl.textContent = w.char || w.text || "";
-            // Tiny space between words (the QCF4 glyphs include their own spacing)
             if (currentAyahEl) currentAyahEl.appendChild(wEl);
             else lineEl.appendChild(wEl);
         }
 
-        inner.appendChild(lineEl);
+        newPage.appendChild(lineEl);
     }
 
-    newPage.appendChild(inner);
+    // Page-number footer (folio)
+    const footer = document.createElement("div");
+    footer.className = "mushaf-page-footer";
+    footer.textContent = `صفحة ${data.page}`;
+    newPage.appendChild(footer);
 
-    // Cross-fade swap: animate old out, new in
+    // Swap with animation
     const old = ACTIVE_PAGE_EL;
     PAGES_EL.appendChild(newPage);
-    // Force reflow before transitioning in
-    void newPage.offsetWidth;
-    requestAnimationFrame(() => {
-        newPage.classList.remove("mushaf-page--enter-right", "mushaf-page--enter-left");
-        newPage.classList.add("mushaf-page--active");
-        if (old) {
-            old.classList.remove("mushaf-page--active");
-            old.classList.add(direction === "left" ? "mushaf-page--exit-right" : "mushaf-page--exit-left");
-            setTimeout(() => old.remove(), 320);
-        }
-    });
-    ACTIVE_PAGE_EL = newPage;
 
-    // Per-ayah click handler (event delegation)
+    if (direction !== "none") {
+        void newPage.offsetWidth;
+        requestAnimationFrame(() => {
+            newPage.classList.remove("mushaf-page--enter-right", "mushaf-page--enter-left");
+            newPage.classList.add("mushaf-page--active");
+            if (old) {
+                old.classList.add("mushaf-page--animating");
+                old.classList.remove("mushaf-page--active");
+                old.classList.add(direction === "left" ? "mushaf-page--exit-right" : "mushaf-page--exit-left");
+                setTimeout(() => old.remove(), 320);
+            }
+            // After animation, drop the absolute-positioning class so the panel
+            // sizes to the new page's height.
+            setTimeout(() => newPage.classList.remove("mushaf-page--animating"), 320);
+        });
+    } else {
+        if (old) old.remove();
+    }
+
+    ACTIVE_PAGE_EL = newPage;
     newPage.addEventListener("click", onPageClick);
-    // Re-apply audio highlight if currently playing one on this page
     if (AUDIO_VERSE) highlightAyah(AUDIO_VERSE, "playing");
+}
+
+function buildSurahHeader(surahId) {
+    const ch = CHAPTERS?.find((c) => c.id === surahId);
+    const name = ch?.name_arabic || `${surahId}`;
+    const wrap = document.createElement("div");
+    wrap.className = "mushaf-surah-header";
+    wrap.innerHTML = `
+        <span class="mushaf-surah-header__label">سُورَة</span>
+        <span class="mushaf-surah-header__name">${name}</span>
+    `;
+    return wrap;
 }
 
 function applyTargetHighlight() {
@@ -639,20 +644,17 @@ function applyTargetHighlight() {
     if (!el) return;
     el.classList.add("mushaf-ayah--target");
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-    // Subtle pulse: remove highlight after 4s
     setTimeout(() => el.classList.remove("mushaf-ayah--target"), 4000);
 }
 
-/* ---------------- Ayah click / floating menu ---------------- */
+/* ============================================================
+ * Ayah click → floating menu
+ * ============================================================ */
 
 function onPageClick(e) {
     const ayahEl = e.target.closest(".mushaf-ayah");
-    if (!ayahEl) {
-        closeAyahMenu();
-        return;
-    }
-    const vk = ayahEl.dataset.verseKey;
-    openAyahMenu(vk, ayahEl);
+    if (!ayahEl) { closeAyahMenu(); return; }
+    openAyahMenu(ayahEl.dataset.verseKey, ayahEl);
 }
 
 function wireAyahMenu() {
@@ -661,18 +663,20 @@ function wireAyahMenu() {
         const btn = e.target.closest("[data-act]");
         if (!btn || !AYAH_MENU_VERSE) return;
         const act = btn.dataset.act;
+        const [s, a] = AYAH_MENU_VERSE.split(":").map(Number);
         if (act === "play") {
             playMushafAyah(AYAH_MENU_VERSE);
         } else if (act === "tafsir") {
-            const [s, a] = AYAH_MENU_VERSE.split(":").map(Number);
-            DEPS?.openTafsirForAyah?.(s, a);
+            // Switch to Tafsir mode, hide panel, open tafsir for this ayah
+            LAST_VIEWED_AYAH = { s, a };
+            setAppMode("tafsir"); // setAppMode handles panel close + tafsir restore + URL
         } else if (act === "copy") {
             copyAyahText(AYAH_MENU_VERSE);
         }
         closeAyahMenu();
     });
     document.addEventListener("click", (e) => {
-        if (!MUSHAF_MODE) return;
+        if (!PANEL_OPEN) return;
         if (e.target.closest(".mushaf-ayah") || e.target.closest(".mushaf-ayah-menu")) return;
         closeAyahMenu();
     });
@@ -683,13 +687,11 @@ function openAyahMenu(verseKey, ayahEl) {
     AYAH_MENU_VERSE = verseKey;
     const rect = ayahEl.getBoundingClientRect();
     const rootRect = ROOT_EL.getBoundingClientRect();
-    // Show first to measure
     AYAH_MENU_EL.classList.add("mushaf-ayah-menu--open");
     const menuW = AYAH_MENU_EL.offsetWidth;
     const menuH = AYAH_MENU_EL.offsetHeight;
     let left = rect.left + rect.width / 2 - menuW / 2 - rootRect.left;
     let top = rect.bottom + 8 - rootRect.top;
-    // Clamp into viewport
     const maxLeft = rootRect.width - menuW - 8;
     if (left < 8) left = 8;
     if (left > maxLeft) left = maxLeft;
@@ -715,13 +717,14 @@ function copyAyahText(verseKey) {
 }
 
 function getAyahPlainText(s, a) {
-    // Prefer QURAN (the existing dataset) for unicode text.
     const surah = DEPS?.quran?.surahs?.find((x) => x.number === s);
     const ayah = surah?.ayahs?.find((y) => y.numberInSurah === a);
     return ayah?.text || "";
 }
 
-/* ---------------- Audio playback ---------------- */
+/* ============================================================
+ * Audio playback (independent of Tafsir-mode audio)
+ * ============================================================ */
 
 function buildAyahAudioUrl(s, a) {
     const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
@@ -734,8 +737,7 @@ function buildAyahAudioUrl(s, a) {
 
 function playMushafAyah(verseKey) {
     if (!verseKey) return;
-    stopMushafAudio(); // also clears previous highlight
-
+    stopMushafAudio();
     const [s, a] = verseKey.split(":").map(Number);
     const url = buildAyahAudioUrl(s, a);
     AUDIO_PLAYER = new Audio(url);
@@ -748,7 +750,6 @@ function playMushafAyah(verseKey) {
         if (AUDIO_MODE === "continuous") {
             const next = await getNextVerseKey(verseKey);
             if (next) {
-                // Ensure we're on the page that contains the next ayah
                 const nextPage = VERSES_LOOKUP?.[next]?.page;
                 if (nextPage && nextPage !== CURRENT_PAGE) {
                     await goToPage(nextPage, { direction: "left" });
@@ -796,13 +797,14 @@ async function getNextVerseKey(verseKey) {
     const ch = CHAPTERS?.find((c) => c.id === s);
     if (!ch) return null;
     if (a < ch.verses_count) return `${s}:${a + 1}`;
-    // Move to next surah's first ayah
     const next = CHAPTERS.find((c) => c.id === s + 1);
     if (!next) return null;
     return `${next.id}:1`;
 }
 
-/* ---------------- Settings panel ---------------- */
+/* ============================================================
+ * Settings panel
+ * ============================================================ */
 
 function buildReciterButtons() {
     if (!SETTINGS_EL || !DEPS?.reciters) return;
@@ -835,7 +837,6 @@ function wireSettings() {
         const val = chip.dataset.val;
         if (group === "reciter") {
             DEPS?.setCurrentReciter?.(val);
-            // If audio currently playing, restart on new reciter
             if (AUDIO_VERSE) {
                 const v = AUDIO_VERSE;
                 stopMushafAudio();
@@ -888,23 +889,9 @@ function updateNowPlayingUI() {
     }
 }
 
-/* ---------------- Idle chrome fade ---------------- */
-
-function setupIdleTracker() {
-    const reset = () => {
-        document.documentElement.removeAttribute("data-mushaf-idle");
-        clearTimeout(IDLE_TIMER);
-        IDLE_TIMER = setTimeout(() => {
-            if (MUSHAF_MODE) document.documentElement.setAttribute("data-mushaf-idle", "1");
-        }, 3000);
-    };
-    ["mousemove", "touchstart", "keydown", "scroll"].forEach((evt) => {
-        document.addEventListener(evt, reset, { passive: true });
-    });
-    reset();
-}
-
-/* ---------------- SEO ---------------- */
+/* ============================================================
+ * SEO
+ * ============================================================ */
 
 function updateMushafSeo({ page, surah, verse } = {}) {
     let title = `قراءة المصحف — صفحة ${page} | محمديات`;
@@ -934,15 +921,21 @@ function chapterArabicName(s) {
     return fromMeta?.name_ar || `${s}`;
 }
 
-/* Build the shell as soon as the module loads — this matters for first-paint
-   when the URL is /read/* (the early-routing script set data-app-mode="mushaf"
-   already, so the .mushaf-root element needs to exist immediately so the user
-   doesn't see a flash of blank page while app data loads). */
+/* ============================================================
+ * Bootstrap: try to build the shell at module load so it exists
+ * in the DOM as early as possible for direct /read/* loads. If
+ * #tafsirSection isn't ready yet, defer until DOMContentLoaded.
+ * ============================================================ */
 function bootstrapShell() {
-    if (document.body) buildShell();
-    else document.addEventListener("DOMContentLoaded", buildShell);
-    // On direct /read/* loads, kick off metadata + target page fetch immediately
-    // so the page is ready by the time initMushaf wires DEPS.
+    if (document.getElementById("tafsirSection")) {
+        buildShell();
+    } else if (document.body) {
+        // tafsirSection lives further down in the DOM; module script may
+        // run mid-parse. Wait for the rest of the document.
+        document.addEventListener("DOMContentLoaded", buildShell);
+    } else {
+        document.addEventListener("DOMContentLoaded", buildShell);
+    }
     if (window._mushafInit) {
         ensureMetaLoaded();
         const m = window._mushafInit;

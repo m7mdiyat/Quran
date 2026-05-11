@@ -49,10 +49,10 @@
           ayah = pathMatch[2];
         }
 
-        // Pattern 1b: Mushaf reading mode routes — switch into mushaf early
-        // so first paint isn't the Tafsir hero. Either via direct path
-        // (when served by something that knows the route) or via the
-        // 404.html → sessionStorage handoff on GitHub Pages.
+        // Pattern 1b: Mushaf reading-mode routes (direct or via 404.html →
+        // sessionStorage handoff on GitHub Pages). We don't change layout
+        // here — mushaf.js opens the panel inline once app.js init runs.
+        // We only set window._mushafInit so init() knows what to open.
         var mushafPath = url.pathname;
         try {
           var redirected = sessionStorage.getItem('mushaf_redirect');
@@ -66,24 +66,17 @@
         var mushafPageMatch = mushafPath.match(/^\/read\/page\/([0-9]+)\/?$/);
         var mushafSurahMatch = mushafPath.match(/^\/read\/surah\/([0-9]+)\/?$/);
         var mushafAyahMatch = mushafPath.match(/^\/read\/ayah\/([0-9]+)\/([0-9]+)\/?$/);
-        if (mushafPageMatch || mushafSurahMatch || mushafAyahMatch) {
-          document.documentElement.setAttribute("data-app-mode", "mushaf");
-          try { localStorage.setItem("app_mode", "mushaf"); } catch {}
-          if (mushafPageMatch) window._mushafInit = { page: Number(mushafPageMatch[1]) };
-          else if (mushafSurahMatch) window._mushafInit = { surah: Number(mushafSurahMatch[1]) };
-          else if (mushafAyahMatch) window._mushafInit = { surah: Number(mushafAyahMatch[1]), ayah: Number(mushafAyahMatch[2]) };
-        } else if (pathMatch) {
-          // Tafsir-shaped URL (/surah/ayah) — URL wins over localStorage so the
-          // user lands on the Tafsir view even if mushaf was their last mode.
+        if (mushafPageMatch) window._mushafInit = { page: Number(mushafPageMatch[1]) };
+        else if (mushafSurahMatch) window._mushafInit = { surah: Number(mushafSurahMatch[1]) };
+        else if (mushafAyahMatch) window._mushafInit = { surah: Number(mushafAyahMatch[1]), ayah: Number(mushafAyahMatch[2]) };
+
+        // The mode toggle's visual state is independent of which URL is
+        // loaded — it reflects the user's saved preference only.
+        try {
+          var savedMode = localStorage.getItem("app_mode");
+          document.documentElement.setAttribute("data-app-mode", savedMode === "mushaf" ? "mushaf" : "tafsir");
+        } catch {
           document.documentElement.setAttribute("data-app-mode", "tafsir");
-        } else {
-          // Default mode from localStorage
-          try {
-            var savedMode = localStorage.getItem("app_mode");
-            document.documentElement.setAttribute("data-app-mode", savedMode === "mushaf" ? "mushaf" : "tafsir");
-          } catch {
-            document.documentElement.setAttribute("data-app-mode", "tafsir");
-          }
         }
 
         // Pattern 2: Old query format ?v=surah-ayah (redirect to new format)

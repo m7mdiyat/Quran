@@ -441,10 +441,12 @@ function generateMushafPageHtml(pageNo) {
     html = html.replace(/<meta[^>]*id="twTitle"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twTitle" name="twitter:title" content="${title}" />`);
     html = html.replace(/<meta[^>]*id="twDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twDesc" name="twitter:description" content="${description}" />`);
 
-    // Tag the <html> so the early-routing script knows the target page.
+    // Tag the <html> with the page number for analytics/debugging. The
+    // early-routing script in index.html parses /read/page/N from the URL
+    // and sets window._mushafInit accordingly — no other hint needed.
     html = html.replace(
         '<html lang="ar" dir="rtl">',
-        `<html lang="ar" dir="rtl" data-app-mode="mushaf" data-mushaf-page="${pageNo}">`
+        `<html lang="ar" dir="rtl" data-mushaf-page="${pageNo}">`
     );
 
     // Preload the font for this page so it's ready by the time mushaf.js renders.

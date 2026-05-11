@@ -28,7 +28,7 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
 /* Mushaf reading mode bridge */
-import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode } from "./mushaf.js";
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel } from "./mushaf.js";
 
 /* ---------------- DOM ---------------- */
 const textSearch = el("textSearch");
@@ -3772,8 +3772,9 @@ async function init() {
   SURAH_META = await loadJson("/surahs.json");
   QURAN = normalizeQuran(await loadJson("/quran.json"));
 
-  // Boot the Mushaf reading mode. The module is a no-op until enterMushafMode
-  // is called or the user toggles into it.
+  // Boot the Mushaf reading mode. The module renders into a sibling of
+  // #tafsirSection. The toggle is a pure routing preference — Mushaf
+  // mode never auto-shows the panel.
   initMushaf({
     surahMeta: SURAH_META,
     quran: QURAN,
@@ -3782,15 +3783,18 @@ async function init() {
     reciterOrder: RECITER_ORDER,
     getCurrentReciter: () => CURRENT_RECITER,
     setCurrentReciter: (r) => switchReciter(r),
+    tafsirSectionEl: tafsirSection,
+    hasCurrentAyah: () => CURRENT != null,
     openTafsirForAyah: (s, a) => {
-      setAppMode("tafsir", { skipUrlUpdate: true });
+      // Called by the Mushaf floating menu's "open tafsir" button. The
+      // mushaf module already handles closing the panel + mode switch.
       setPrimaryAyah(s, a, { scroll: true });
     },
-    stopTafsirAudio: () => { try { stopAudio(); } catch { } },
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
-  // resolve it now that meta is available.
+  // resolve it now that meta is available. The mushaf panel opens INLINE
+  // (the rest of the homepage stays visible above it).
   if (window._mushafInit) {
     const m = window._mushafInit;
     window._mushafInit = null;
@@ -4022,7 +4026,8 @@ async function init() {
 
   // Back/forward navigation
   window.addEventListener("popstate", () => {
-    // /read/* — Mushaf mode
+    // /read/* — open the Mushaf panel inline (mode toggle stays whatever
+    // the user set it to; the panel's visibility is driven by the URL).
     const path = window.location.pathname;
     const mPage = path.match(/^\/read\/page\/([0-9]+)\/?$/);
     const mSurah = path.match(/^\/read\/surah\/([0-9]+)\/?$/);
@@ -4031,10 +4036,9 @@ async function init() {
     if (mSurah) { openMushafAtSurah(Number(mSurah[1]), { updateUrl: false }); return; }
     if (mPage) { openMushafAtPage(Number(mPage[1]), { updateUrl: false }); return; }
 
-    // Returning to a non-Mushaf URL while currently in Mushaf mode → leave it
-    if (isMushafMode()) {
-      setAppMode("tafsir", { skipUrlUpdate: true });
-    }
+    // Non-Mushaf URL: close the panel (if open) and fall through to the
+    // standard Tafsir restore for the URL's ayah.
+    closeMushafPanel();
 
     const p = getAyahParamFromUrl();
     if (!p) {
