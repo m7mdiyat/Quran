@@ -236,6 +236,40 @@ body.dark .mode-toggle__knob {
     border-radius: 12px;
 }
 
+.mushaf-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--card);
+    z-index: 10;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+    border-radius: 12px;
+}
+
+.mushaf-loader--visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.mushaf-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent-strong);
+    border-radius: 50%;
+    animation: mushafSpin 800ms linear infinite;
+}
+
+@keyframes mushafSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .mushaf-page {
     --line-gap: 6px;
     --font-size: 32px;

@@ -367,25 +367,48 @@ function ensureFontDeclared(fontFamily) {
     LOADED_FONTS.add(fontFamily);
 }
 
-/**
- * Force the network to fetch a QCF4 font before it's actually used on a
- * rendered page, so navigating to that page doesn't pause for ~800KB.
- * Idempotent: if the font is already loaded or declared, this is a no-op
- * apart from the document.fonts.add().
- */
-function preloadFont(fontFamily) {
-    if (!fontFamily) return;
+const FONT_LOAD_PROMISES = new Map();
+
+function loadFontAndWait(fontFamily) {
+    if (!fontFamily) return Promise.resolve();
+    if (LOADED_FONTS.has(fontFamily)) return Promise.resolve();
+    if (FONT_LOAD_PROMISES.has(fontFamily)) return FONT_LOAD_PROMISES.get(fontFamily);
+
     ensureFontDeclared(fontFamily);
-    if (typeof FontFace === "undefined" || !document.fonts) return;
-    // Avoid duplicate FontFace registration
-    for (const ff of document.fonts) {
-        if (ff.family === fontFamily) return;
+
+    if (typeof FontFace === "undefined" || !document.fonts) {
+        return Promise.resolve();
     }
+
+    let exists = false;
+    for (const ff of document.fonts) {
+        if (ff.family === fontFamily) {
+            exists = true;
+            break;
+        }
+    }
+
+    if (exists) {
+        LOADED_FONTS.add(fontFamily);
+        return Promise.resolve();
+    }
+
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
     const face = new FontFace(fontFamily, `url("/fonts/qcf4/${fileName}") format("woff2")`);
-    face.load().then((f) => {
+    
+    const p = face.load().then((f) => {
         try { document.fonts.add(f); } catch { }
-    }).catch(() => { });
+        LOADED_FONTS.add(fontFamily);
+    }).catch((e) => {
+        console.error(`Font load failed for ${fontFamily}:`, e);
+    });
+
+    FONT_LOAD_PROMISES.set(fontFamily, p);
+    return p;
+}
+
+function preloadFont(fontFamily) {
+    loadFontAndWait(fontFamily).catch(() => {});
 }
 
 /* ============================================================
@@ -459,7 +482,11 @@ function buildShell() {
 
     <div class="mushaf-stage">
       <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
-      <div class="mushaf-pages" id="mushafPages"></div>
+      <div class="mushaf-pages" id="mushafPages">
+        <div class="mushaf-loader" id="mushafLoader">
+          <div class="mushaf-spinner"></div>
+        </div>
+      </div>
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
@@ -556,6 +583,16 @@ function wirePageSwipe() {
     }, { passive: true });
 }
 
+function showMushafLoader() {
+    const loader = document.getElementById("mushafLoader");
+    if (loader) loader.classList.add("mushaf-loader--visible");
+}
+
+function hideMushafLoader() {
+    const loader = document.getElementById("mushafLoader");
+    if (loader) loader.classList.remove("mushaf-loader--visible");
+}
+
 async function goToPage(p, { direction = "none", noScroll = false } = {}) {
     await ensureMetaLoaded();
     if (p === CURRENT_PAGE && ACTIVE_PAGE_EL) {
@@ -565,6 +602,7 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
     try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
 
     try {
+        showMushafLoader();
         const data = await fetchPage(p);
 
         // If there's no explicit target verse, the target surah is the
@@ -572,6 +610,22 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
         if (!CURRENT_TARGET_VERSE && data.surahs?.length) {
             TARGET_SURAH = data.surahs[0].id;
         }
+
+        const neededFonts = new Set();
+        if (data.font) neededFonts.add(data.font);
+        for (const line of data.lines) {
+            for (const w of line.words) {
+                if (w.font) neededFonts.add(w.font);
+            }
+        }
+        
+        const fontPromises = [];
+        for (const font of neededFonts) {
+            fontPromises.push(loadFontAndWait(font));
+        }
+        await Promise.all(fontPromises);
+
+        hideMushafLoader();
 
         renderPage(data, direction);
         CURRENT_PAGE = p;
