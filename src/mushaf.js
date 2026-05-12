@@ -380,15 +380,15 @@ function loadFontAndWait(fontFamily) {
         return Promise.resolve();
     }
 
-    let exists = false;
+    let loaded = false;
     for (const ff of document.fonts) {
-        if (ff.family === fontFamily) {
-            exists = true;
+        if (ff.family === fontFamily && ff.status === "loaded") {
+            loaded = true;
             break;
         }
     }
 
-    if (exists) {
+    if (loaded) {
         LOADED_FONTS.add(fontFamily);
         return Promise.resolve();
     }
