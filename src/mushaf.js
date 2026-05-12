@@ -483,6 +483,12 @@ function buildShell() {
     wireToolbar();
     buildReciterChips();
     syncSettingsUI();
+
+    if (window.ResizeObserver) {
+        new ResizeObserver(() => {
+            if (PANEL_OPEN) autoFitFontSize();
+        }).observe(PAGES_EL);
+    }
 }
 
 /* ============================================================
@@ -726,6 +732,7 @@ function renderPage(data, direction = "none") {
     ACTIVE_PAGE_EL = newPage;
     wireAyahInteractions(newPage);
     if (AUDIO_VERSE) highlightAyah(AUDIO_VERSE, "playing");
+    autoFitFontSize();
 }
 
 function buildSurahHeader(surahId) {
@@ -801,6 +808,41 @@ function applyTargetHighlight({ noScroll = false } = {}) {
         els[0].scrollIntoView({ behavior: "smooth", block: "center" });
     }
     setTimeout(() => els.forEach((el) => el.classList.remove("mushaf-ayah--target")), 4000);
+}
+
+function autoFitFontSize() {
+    if (!ACTIVE_PAGE_EL || !PAGES_EL) return;
+    
+    // Reset to CSS default so we can measure the natural unscaled width
+    ACTIVE_PAGE_EL.style.removeProperty('--font-size');
+    const containerWidth = PAGES_EL.clientWidth - 16; // 8px padding each side
+    if (containerWidth <= 0) return;
+
+    document.fonts.ready.then(() => {
+        if (!ACTIVE_PAGE_EL) return;
+        
+        let maxLineWidth = 0;
+        const lines = ACTIVE_PAGE_EL.querySelectorAll('.mushaf-line');
+        lines.forEach((line) => {
+            const width = line.scrollWidth;
+            if (width > maxLineWidth) maxLineWidth = width;
+        });
+
+        if (maxLineWidth > 0) {
+            const currentFontSizeStr = window.getComputedStyle(ACTIVE_PAGE_EL).getPropertyValue('--font-size');
+            const baseFontSize = parseFloat(currentFontSizeStr) || 32;
+
+            // Scale to fit exactly, minus 2% for anti-aliasing safety margin
+            const scale = (containerWidth / maxLineWidth) * 0.98;
+            
+            let newSize = baseFontSize * scale;
+            
+            // Limit maximum font size so it doesn't get gigantic on wide desktop monitors
+            if (newSize > 38) newSize = 38;
+            
+            ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
+        }
+    });
 }
 
 /* ============================================================

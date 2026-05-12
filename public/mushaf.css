@@ -300,6 +300,7 @@ body.dark .mode-toggle__knob {
     text-align: center;
     word-spacing: 0;
     letter-spacing: 0;
+    white-space: nowrap; /* Mushaf lines must never wrap — each line is an exact replica of the printed page */
 }
 
 .mushaf-line--bismillah {
@@ -836,10 +837,19 @@ body.dark .mushaf-toolbar__dropdown {
  * Mobile adjustments
  * ============================================================ */
 @media (max-width: 640px) {
+    /* Reduce padding on the mushaf root to maximise content width.
+       The class p-6 (24px) on .mushaf-root is overridden here. */
+    .mushaf-root {
+        padding: 12px 6px !important;
+    }
+
     .mushaf-page {
         padding: 4px 0;
     }
 
+    /* Font-size is now calculated dynamically by autoFitFontSize() in JS,
+       so we only set sensible CSS defaults as initial values.  The JS will
+       override --font-size on each .mushaf-page after measuring lines. */
     [data-font-size="m"] .mushaf-page {
         --font-size: 24px;
     }
