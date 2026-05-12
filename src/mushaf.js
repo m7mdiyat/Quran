@@ -24,6 +24,7 @@ const STORAGE = {
     FONT_SIZE: "mushaf_font_size",
     AUDIO_MODE: "mushaf_audio_mode",
     VOLUME: "mushaf_volume",
+    SPEED: "mushaf_speed",
 };
 
 const TOTAL_PAGES = 604;
@@ -85,6 +86,7 @@ let AUDIO_PLAYER = null;
 let AUDIO_VERSE = null;
 let AUDIO_MODE = "single";
 let AUDIO_VOLUME = 0.8;          // 0..1
+let AUDIO_SPEED = 1;             // 0.5..2
 let MUTED_PREV_VOLUME = 0.8;     // volume to restore when un-muting
 let PRELOADED_AUDIO = null;      // { key, el } — eager next-ayah audio for continuous mode
 let FONT_SIZE = "m";             // "s" (صغير) | "m" (عادي, default) — old "l" is migrated to "m"
@@ -119,6 +121,10 @@ export function initMushaf(deps) {
         if (Number.isFinite(vol) && vol >= 0 && vol <= 1) {
             AUDIO_VOLUME = vol;
             if (vol > 0) MUTED_PREV_VOLUME = vol;
+        }
+        const speed = parseFloat(localStorage.getItem(STORAGE.SPEED));
+        if (Number.isFinite(speed) && speed >= 0.5 && speed <= 2) {
+            AUDIO_SPEED = speed;
         }
     } catch { }
 
@@ -474,6 +480,13 @@ function buildShell() {
               <button type="button" class="mushaf-toolbar__vol-btn" id="mushafVolDown" aria-label="خفض"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.5 12h-15"/></svg></button>
               <input type="range" id="mushafVolSlider" min="0" max="100" value="80" class="mushaf-toolbar__slider">
               <button type="button" class="mushaf-toolbar__vol-btn" id="mushafVolUp" aria-label="رفع"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></button>
+            </div>
+          </div>
+          <div class="mushaf-settings__section" style="margin-top: 4px;">
+            <div class="mushaf-settings__label">السرعة</div>
+            <div class="mushaf-toolbar__vol-row" style="gap: 8px;">
+              <button type="button" class="mushaf-settings__chip" id="mushafSpeedBtn" style="min-width: 3.5rem; padding: 0.25rem 0.5rem; flex-shrink: 0;" aria-label="تغيير السرعة">1x</button>
+              <input type="range" id="mushafSpeedSlider" min="0.5" max="2" step="0.05" value="1" class="mushaf-toolbar__slider">
             </div>
           </div>
         </div>
@@ -1122,6 +1135,27 @@ function wireToolbar() {
     volDown?.addEventListener("click", () => { const v = Math.max(0, AUDIO_VOLUME - 0.1); applyVolume(v, { persist: true }); if (volSlider) volSlider.value = String(Math.round(v * 100)); });
     volUp?.addEventListener("click", () => { const v = Math.min(1, AUDIO_VOLUME + 0.1); applyVolume(v, { persist: true }); if (volSlider) volSlider.value = String(Math.round(v * 100)); });
 
+    // --- Speed slider + button ---
+    const speedSlider = document.getElementById("mushafSpeedSlider");
+    const speedBtn = document.getElementById("mushafSpeedBtn");
+    
+    if (speedSlider) {
+        speedSlider.value = String(AUDIO_SPEED);
+        speedSlider.addEventListener("input", () => applySpeed(Number(speedSlider.value), { persist: true }));
+    }
+    
+    if (speedBtn) {
+        speedBtn.textContent = `${AUDIO_SPEED}x`;
+        speedBtn.addEventListener("click", () => {
+            let nextSpeed = 1;
+            if (AUDIO_SPEED < 1.25) nextSpeed = 1.25;
+            else if (AUDIO_SPEED < 1.5) nextSpeed = 1.5;
+            else if (AUDIO_SPEED < 2) nextSpeed = 2;
+            else nextSpeed = 1; // cycle back
+            applySpeed(nextSpeed, { persist: true });
+        });
+    }
+
     // --- Chip clicks in settings dropdown ---
     settingsDD?.addEventListener("click", (e) => { const chip = e.target.closest(".mushaf-settings__chip"); if (chip) handleSettingsChip(chip); });
 
@@ -1153,6 +1187,21 @@ function applyVolume(v, { persist = false, trackUnmute = true } = {}) {
         try { localStorage.setItem(STORAGE.VOLUME, String(AUDIO_VOLUME)); } catch { }
     }
     updateVolumeIcon();
+}
+
+function applySpeed(s, { persist = false } = {}) {
+    AUDIO_SPEED = Math.max(0.5, Math.min(2, s));
+    if (AUDIO_PLAYER) AUDIO_PLAYER.playbackRate = AUDIO_SPEED;
+    if (PRELOADED_AUDIO?.el) PRELOADED_AUDIO.el.playbackRate = AUDIO_SPEED;
+    
+    const slider = document.getElementById("mushafSpeedSlider");
+    if (slider) slider.value = String(AUDIO_SPEED);
+    const btn = document.getElementById("mushafSpeedBtn");
+    if (btn) btn.textContent = `${AUDIO_SPEED}x`;
+    
+    if (persist) {
+        try { localStorage.setItem(STORAGE.SPEED, String(AUDIO_SPEED)); } catch { }
+    }
 }
 
 function updateVolumeIcon() {
@@ -1250,6 +1299,7 @@ function preloadAyahAudio(verseKey) {
     const el = new Audio();
     el.preload = "auto";
     el.volume = AUDIO_VOLUME;
+    el.playbackRate = AUDIO_SPEED;
     el.src = url;
     try { el.load(); } catch { }
     PRELOADED_AUDIO = { key: verseKey, el };
@@ -1278,6 +1328,7 @@ function playMushafAyah(verseKey) {
         nextAudio = new Audio(buildAyahAudioUrl(s, a));
     }
     nextAudio.volume = AUDIO_VOLUME;
+    nextAudio.playbackRate = AUDIO_SPEED;
 
     // Swap highlight FIRST — visual feedback should not wait on the network.
     if (AUDIO_VERSE && AUDIO_VERSE !== verseKey) clearHighlight(AUDIO_VERSE);
