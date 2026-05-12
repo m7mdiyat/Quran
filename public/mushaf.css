@@ -242,12 +242,18 @@ body.dark .mode-toggle__knob {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--card);
-    z-index: 10;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 50;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 200ms ease;
+    transition: opacity 250ms ease;
     border-radius: 12px;
+}
+
+body.dark .mushaf-loader {
+    background: rgba(30, 41, 59, 0.5);
 }
 
 .mushaf-loader--visible {

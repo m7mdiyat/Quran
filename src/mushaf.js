@@ -481,12 +481,11 @@ function buildShell() {
     </div>
 
     <div class="mushaf-stage">
-      <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
-      <div class="mushaf-pages" id="mushafPages">
-        <div class="mushaf-loader" id="mushafLoader">
-          <div class="mushaf-spinner"></div>
-        </div>
+      <div class="mushaf-loader" id="mushafLoader">
+        <div class="mushaf-spinner"></div>
       </div>
+      <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
+      <div class="mushaf-pages" id="mushafPages"></div>
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
