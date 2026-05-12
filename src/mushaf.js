@@ -195,8 +195,9 @@ export async function setAppMode(mode) {
     }
 
     // wanted === "mushaf" — open the panel at the currently selected ayah.
+    // ALWAYS prefer the tafsir's current ayah so switching modes shows the same ayah.
     const fromTafsir = DEPS?.getCurrentAyah?.();
-    const target = LAST_VIEWED_AYAH || fromTafsir || null;
+    const target = fromTafsir || LAST_VIEWED_AYAH || null;
     if (target) {
         const tafsirEl = DEPS?.tafsirSectionEl;
         if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
@@ -391,11 +392,11 @@ function buildShell() {
         AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
         NAV_PREV = document.getElementById("mushafPrev");
         NAV_NEXT = document.getElementById("mushafNext");
-        PLAYBACK_BAR_EL = document.getElementById("mushafPlaybackBar");
-        PLAYBACK_LABEL_EL = document.getElementById("mushafPlaybackLabel");
-        PLAYBACK_PLAY_BTN = document.getElementById("mushafPlaybackPlay");
-        PLAYBACK_PREV_BTN = document.getElementById("mushafPlaybackPrev");
-        PLAYBACK_NEXT_BTN = document.getElementById("mushafPlaybackNext");
+        PLAYBACK_BAR_EL = null;
+        PLAYBACK_LABEL_EL = null;
+        PLAYBACK_PLAY_BTN = document.getElementById("mushafToolbarPlay");
+        PLAYBACK_PREV_BTN = null;
+        PLAYBACK_NEXT_BTN = null;
         return;
     }
 
@@ -409,51 +410,56 @@ function buildShell() {
     root.dir = "rtl";
     root.setAttribute("aria-label", "قارئ المصحف");
     root.innerHTML = `
+    <!-- Toolbar: Settings + Play/Stop -->
+    <div class="mushaf-toolbar" id="mushafToolbar">
+      <div class="mushaf-toolbar__btn-wrap" id="mushafSettingsWrap">
+        <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings" id="mushafToolbarSettings" aria-label="إعدادات">${ICONS.gear}</button>
+        <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--settings" id="mushafSettingsDropdown">
+          <div class="mushaf-settings__section">
+            <div class="mushaf-settings__label">القارئ</div>
+            <div class="mushaf-settings__row mushaf-settings__row--pills" data-settings-group="reciter"></div>
+          </div>
+          <div class="mushaf-settings__section">
+            <div class="mushaf-settings__label">حجم الخط</div>
+            <div class="mushaf-settings__row" data-settings-group="font-size">
+              <button type="button" class="mushaf-settings__chip" data-val="m">عادي</button>
+              <button type="button" class="mushaf-settings__chip" data-val="s">صغير</button>
+            </div>
+          </div>
+          <div class="mushaf-settings__section">
+            <div class="mushaf-settings__label">طريقة التشغيل</div>
+            <div class="mushaf-settings__row" data-settings-group="audio-mode">
+              <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
+              <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mushaf-toolbar__btn-wrap" id="mushafPlayWrap">
+        <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="mushafToolbarPlay" aria-label="تشغيل/إيقاف" data-playing="false">${ICONS.play}</button>
+        <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="mushafVolDropdown">
+          <div class="mushaf-settings__section">
+            <div class="mushaf-settings__label">مستوى الصوت</div>
+            <div class="mushaf-toolbar__vol-row">
+              <button type="button" class="mushaf-toolbar__vol-btn" id="mushafVolDown" aria-label="خفض"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.5 12h-15"/></svg></button>
+              <input type="range" id="mushafVolSlider" min="0" max="100" value="80" class="mushaf-toolbar__slider">
+              <button type="button" class="mushaf-toolbar__vol-btn" id="mushafVolUp" aria-label="رفع"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.5v15m7.5-7.5h-15"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="mushaf-stage">
-      <!-- RTL navigation: right button → previous (chevron points right, "back"),
-           left button → next (chevron points left, "forward"). -->
       <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
       <div class="mushaf-pages" id="mushafPages"></div>
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
-    <!-- Floating playback bar: appears when audio is playing; auto-hides 3s after stop. -->
-    <div class="mushaf-playback-bar" id="mushafPlaybackBar" dir="rtl" aria-hidden="true">
-      <div class="mushaf-playback-bar__indicator" id="mushafPlaybackLabel"></div>
-      <div class="mushaf-playback-bar__controls">
-        <button type="button" class="mushaf-playback-btn" id="mushafPlaybackPrev" aria-label="الآية السابقة">${ICONS.chevronRight}</button>
-        <button type="button" class="mushaf-playback-btn mushaf-playback-btn--primary" id="mushafPlaybackPlay" aria-label="تشغيل/إيقاف">${ICONS.play}</button>
-        <button type="button" class="mushaf-playback-btn" id="mushafPlaybackNext" aria-label="الآية التالية">${ICONS.chevronLeft}</button>
-        <button type="button" class="mushaf-playback-btn mushaf-volume-icon" id="mushafVolumeIcon" aria-label="كتم الصوت">${ICONS.volumeHigh}</button>
-      </div>
-    </div>
-
-    <!-- Ayah floating menu: two views (main / settings).
-         Note: play/volume moved to the playback bar (Fix 1b). -->
+    <!-- Ayah menu: tafsir only (settings moved to toolbar) -->
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
         <button type="button" class="mushaf-ayah-menu__btn" data-act="tafsir" aria-label="افتح التفسير">${ICONS.bookOpen}</button>
-        <button type="button" class="mushaf-ayah-menu__btn" data-act="settings" aria-label="إعدادات">${ICONS.gear}</button>
-      </div>
-      <div class="mushaf-ayah-menu__settings">
-        <div class="mushaf-settings__section">
-          <div class="mushaf-settings__label">حجم الخط</div>
-          <div class="mushaf-settings__row" data-settings-group="font-size">
-            <button type="button" class="mushaf-settings__chip" data-val="m">عادي</button>
-            <button type="button" class="mushaf-settings__chip" data-val="s">صغير</button>
-          </div>
-        </div>
-        <div class="mushaf-settings__section">
-          <div class="mushaf-settings__label">طريقة التشغيل</div>
-          <div class="mushaf-settings__row" data-settings-group="audio-mode">
-            <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
-            <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
-          </div>
-        </div>
-        <div class="mushaf-settings__section">
-          <div class="mushaf-settings__label">القارئ</div>
-          <div class="mushaf-settings__row mushaf-settings__row--pills" data-settings-group="reciter"></div>
-        </div>
       </div>
     </div>
   `;
@@ -464,17 +470,17 @@ function buildShell() {
     AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
     NAV_PREV = document.getElementById("mushafPrev");
     NAV_NEXT = document.getElementById("mushafNext");
-    PLAYBACK_BAR_EL = document.getElementById("mushafPlaybackBar");
-    PLAYBACK_LABEL_EL = document.getElementById("mushafPlaybackLabel");
-    PLAYBACK_PLAY_BTN = document.getElementById("mushafPlaybackPlay");
-    PLAYBACK_PREV_BTN = document.getElementById("mushafPlaybackPrev");
-    PLAYBACK_NEXT_BTN = document.getElementById("mushafPlaybackNext");
+    PLAYBACK_BAR_EL = null;
+    PLAYBACK_LABEL_EL = null;
+    PLAYBACK_PLAY_BTN = document.getElementById("mushafToolbarPlay");
+    PLAYBACK_PREV_BTN = null;
+    PLAYBACK_NEXT_BTN = null;
 
     wireNav();
     wireMenu();
     wirePageSwipe();
     wireCopy();
-    wirePlaybackBar();
+    wireToolbar();
     buildReciterChips();
     syncSettingsUI();
 }
@@ -583,11 +589,9 @@ function updateNavDisabledState() {
 }
 
 function prefetchAdjacent(p) {
-    if (p > 1) {
-        fetchPage(p - 1).then((data) => preloadFont(data.font)).catch(() => { });
-    }
-    if (p < TOTAL_PAGES) {
-        fetchPage(p + 1).then((data) => preloadFont(data.font)).catch(() => { });
+    for (let d = 1; d <= 2; d++) {
+        if (p - d >= 1) fetchPage(p - d).then((data) => preloadFont(data.font)).catch(() => { });
+        if (p + d <= TOTAL_PAGES) fetchPage(p + d).then((data) => preloadFont(data.font)).catch(() => { });
     }
 }
 
@@ -638,12 +642,6 @@ function renderPage(data, direction = "none") {
     newPage.className = "mushaf-page";
     newPage.dataset.page = String(data.page);
     if (TARGET_SURAH) newPage.dataset.targetSurah = String(TARGET_SURAH);
-    if (direction !== "none") {
-        newPage.classList.add("mushaf-page--animating");
-        newPage.classList.add(direction === "left" ? "mushaf-page--enter-right" : "mushaf-page--enter-left");
-    } else {
-        newPage.classList.add("mushaf-page--active");
-    }
 
     // Pre-scan: identify the *first verse key* of each surah on this page,
     // so we know exactly where to inject the clean surah header.
@@ -708,24 +706,20 @@ function renderPage(data, direction = "none") {
     footer.textContent = `صفحة ${data.page}`;
     newPage.appendChild(footer);
 
-    // Swap with animation
+    // --- Page swap with @keyframes fade animation ---
     const old = ACTIVE_PAGE_EL;
     PAGES_EL.appendChild(newPage);
 
-    if (direction !== "none") {
-        void newPage.offsetWidth;
-        requestAnimationFrame(() => {
-            newPage.classList.remove("mushaf-page--enter-right", "mushaf-page--enter-left");
-            newPage.classList.add("mushaf-page--active");
-            if (old) {
-                old.classList.add("mushaf-page--animating");
-                old.classList.remove("mushaf-page--active");
-                old.classList.add(direction === "left" ? "mushaf-page--exit-right" : "mushaf-page--exit-left");
-                setTimeout(() => old.remove(), 320);
-            }
-            setTimeout(() => newPage.classList.remove("mushaf-page--animating"), 320);
-        });
+    if (direction !== "none" && old) {
+        // New page fades in from 0% → 100% opacity
+        newPage.classList.add("mushaf-page--fade-in");
+        // Old page fades out and is removed when animation ends
+        old.classList.add("mushaf-page--animating", "mushaf-page--fade-out");
+        old.addEventListener("animationend", () => old.remove(), { once: true });
+        // Safety fallback in case animationend doesn't fire
+        setTimeout(() => { if (old.parentNode) old.remove(); }, 300);
     } else {
+        // No animation needed (initial load or direct navigation)
         if (old) old.remove();
     }
 
@@ -800,13 +794,13 @@ function buildLineElement(line, lineSurahId) {
 
 function applyTargetHighlight({ noScroll = false } = {}) {
     if (!ACTIVE_PAGE_EL || !CURRENT_TARGET_VERSE) return;
-    const el = ACTIVE_PAGE_EL.querySelector(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
-    if (!el) return;
-    el.classList.add("mushaf-ayah--target");
+    const els = ACTIVE_PAGE_EL.querySelectorAll(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
+    if (!els.length) return;
+    els.forEach((el) => el.classList.add("mushaf-ayah--target"));
     if (!noScroll) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        els[0].scrollIntoView({ behavior: "smooth", block: "center" });
     }
-    setTimeout(() => el.classList.remove("mushaf-ayah--target"), 4000);
+    setTimeout(() => els.forEach((el) => el.classList.remove("mushaf-ayah--target")), 4000);
 }
 
 /* ============================================================
@@ -819,19 +813,7 @@ function wireAyahInteractions(pageEl) {
     // Desktop: hover only opens the menu for ayahs in the TARGET surah.
     // Clicking a non-target surah triggers a smooth focus switch (Fix 3),
     // so non-target ayahs are interactive but don't get the action menu.
-    pageEl.addEventListener("mouseover", (e) => {
-        const ayah = e.target.closest(".mushaf-ayah");
-        if (!ayah) return;
-        if (isAyahDimmed(ayah)) return;
-        scheduleMenuShow(ayah);
-    });
-    pageEl.addEventListener("mouseout", (e) => {
-        const ayah = e.target.closest(".mushaf-ayah");
-        if (!ayah) return;
-        const to = e.relatedTarget;
-        if (to && (AYAH_MENU_EL?.contains(to) || to.closest?.(".mushaf-ayah") === ayah)) return;
-        scheduleMenuHide();
-    });
+    // Hover menu disabled — no popup on mouseover.
 
     // Click → either play (target surah) or smooth focus-switch (dimmed surah).
     pageEl.addEventListener("click", (e) => {
@@ -971,40 +953,18 @@ function scheduleMenuHide() {
 
 function wireMenu() {
     if (!AYAH_MENU_EL) return;
-
-    // Keep menu open while mouse is inside
     AYAH_MENU_EL.addEventListener("mouseenter", () => clearTimeout(HOVER_HIDE_TIMER));
     AYAH_MENU_EL.addEventListener("mouseleave", () => scheduleMenuHide());
-
     AYAH_MENU_EL.addEventListener("click", (e) => {
-        // Settings chip clicks
-        const chip = e.target.closest(".mushaf-settings__chip");
-        if (chip) {
-            handleSettingsChip(chip);
-            return;
-        }
         const btn = e.target.closest("[data-act]");
         if (!btn || !AYAH_MENU_VERSE) return;
-        const act = btn.dataset.act;
-        if (act === "tafsir") {
+        if (btn.dataset.act === "tafsir") {
             const [s, a] = AYAH_MENU_VERSE.split(":").map(Number);
             LAST_VIEWED_AYAH = { s, a };
             setAppMode("tafsir");
-        } else if (act === "settings") {
-            // Toggle into the settings sub-view (don't close)
-            const view = AYAH_MENU_EL.getAttribute("data-view") === "settings" ? "main" : "settings";
-            AYAH_MENU_EL.setAttribute("data-view", view);
-            // Reposition: settings view is wider.
-            if (AYAH_MENU_ANCHOR) showMenu(AYAH_MENU_ANCHOR, { reposition: true });
-            syncSettingsUI();
-            return;
-        } else {
-            return;
+            closeAyahMenu();
         }
-        closeAyahMenu();
     });
-
-    // Click outside the menu closes it (mobile + edge cases).
     document.addEventListener("click", (e) => {
         if (!PANEL_OPEN) return;
         if (e.target.closest(".mushaf-ayah") || e.target.closest(".mushaf-ayah-menu")) return;
@@ -1013,71 +973,68 @@ function wireMenu() {
 }
 
 /* ============================================================
- * Floating playback bar (Fix 1b) — fades in when audio plays;
- * fades out 3s after audio stops.
+ * Toolbar wiring — settings dropdown, play/stop, volume slider
  * ============================================================ */
-function wirePlaybackBar() {
-    if (!PLAYBACK_BAR_EL) return;
-    PLAYBACK_PLAY_BTN?.addEventListener("click", () => {
+function wireToolbar() {
+    const settingsWrap = document.getElementById("mushafSettingsWrap");
+    const settingsDD = document.getElementById("mushafSettingsDropdown");
+    const settingsBtn = document.getElementById("mushafToolbarSettings");
+    const playWrap = document.getElementById("mushafPlayWrap");
+    const volDD = document.getElementById("mushafVolDropdown");
+    const playBtn = document.getElementById("mushafToolbarPlay");
+
+    // --- Settings dropdown hover ---
+    if (settingsWrap && settingsDD) {
+        let hideT = null;
+        settingsWrap.addEventListener("mouseenter", () => { clearTimeout(hideT); settingsDD.classList.add("mushaf-toolbar__dropdown--open"); syncSettingsUI(); });
+        settingsWrap.addEventListener("mouseleave", () => { clearTimeout(hideT); hideT = setTimeout(() => settingsDD.classList.remove("mushaf-toolbar__dropdown--open"), 350); });
+        settingsBtn?.addEventListener("click", (e) => { e.stopPropagation(); settingsDD.classList.toggle("mushaf-toolbar__dropdown--open"); syncSettingsUI(); });
+    }
+
+    // --- Volume dropdown: shows only while audio is playing ---
+    if (playWrap && volDD) {
+        let volHideT = null;
+        playWrap.addEventListener("mouseenter", () => {
+            if (!AUDIO_VERSE) return; // only show when audio is active
+            clearTimeout(volHideT);
+            volDD.classList.add("mushaf-toolbar__dropdown--open");
+        });
+        playWrap.addEventListener("mouseleave", () => { clearTimeout(volHideT); volHideT = setTimeout(() => volDD.classList.remove("mushaf-toolbar__dropdown--open"), 350); });
+    }
+
+    // --- Play button click ---
+    playBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (AUDIO_VERSE) toggleAudioForAyah(AUDIO_VERSE);
         else if (LAST_VIEWED_AYAH) toggleAudioForAyah(`${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}`);
     });
-    PLAYBACK_PREV_BTN?.addEventListener("click", () => {
-        const ref = AUDIO_VERSE || (LAST_VIEWED_AYAH ? `${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}` : null);
-        if (!ref) return;
-        const prev = getPrevVerseKey(ref);
-        if (prev) playMushafAyah(prev);
-    });
-    PLAYBACK_NEXT_BTN?.addEventListener("click", () => {
-        const ref = AUDIO_VERSE || (LAST_VIEWED_AYAH ? `${LAST_VIEWED_AYAH.s}:${LAST_VIEWED_AYAH.a}` : null);
-        if (!ref) return;
-        const next = getNextVerseKey(ref);
-        if (next) playMushafAyah(next);
-    });
-    const volIcon = document.getElementById("mushafVolumeIcon");
-    if (volIcon) {
-        volIcon.addEventListener("click", () => {
-            if (AUDIO_VOLUME > 0) {
-                MUTED_PREV_VOLUME = AUDIO_VOLUME;
-                applyVolume(0, { persist: true, trackUnmute: false });
-            } else {
-                const restore = MUTED_PREV_VOLUME > 0 ? MUTED_PREV_VOLUME : 0.8;
-                applyVolume(restore, { persist: true, trackUnmute: true });
-            }
-        });
+
+    // --- Volume slider + buttons ---
+    const volSlider = document.getElementById("mushafVolSlider");
+    const volDown = document.getElementById("mushafVolDown");
+    const volUp = document.getElementById("mushafVolUp");
+    if (volSlider) {
+        volSlider.value = String(Math.round(AUDIO_VOLUME * 100));
+        volSlider.addEventListener("input", () => applyVolume(Number(volSlider.value) / 100, { persist: true }));
     }
-    updateVolumeIcon();
-}
+    volDown?.addEventListener("click", () => { const v = Math.max(0, AUDIO_VOLUME - 0.1); applyVolume(v, { persist: true }); if (volSlider) volSlider.value = String(Math.round(v * 100)); });
+    volUp?.addEventListener("click", () => { const v = Math.min(1, AUDIO_VOLUME + 0.1); applyVolume(v, { persist: true }); if (volSlider) volSlider.value = String(Math.round(v * 100)); });
 
-function showPlaybackBar() {
-    if (!PLAYBACK_BAR_EL) return;
-    clearTimeout(PLAYBACK_HIDE_TIMER);
-    PLAYBACK_HIDE_TIMER = null;
-    PLAYBACK_BAR_EL.classList.add("mushaf-playback-bar--visible");
-    PLAYBACK_BAR_EL.setAttribute("aria-hidden", "false");
-}
+    // --- Chip clicks in settings dropdown ---
+    settingsDD?.addEventListener("click", (e) => { const chip = e.target.closest(".mushaf-settings__chip"); if (chip) handleSettingsChip(chip); });
 
-function schedulePlaybackBarHide() {
-    if (!PLAYBACK_BAR_EL) return;
-    clearTimeout(PLAYBACK_HIDE_TIMER);
-    PLAYBACK_HIDE_TIMER = setTimeout(() => {
-        PLAYBACK_BAR_EL.classList.remove("mushaf-playback-bar--visible");
-        PLAYBACK_BAR_EL.setAttribute("aria-hidden", "true");
-        PLAYBACK_HIDE_TIMER = null;
-    }, 3000);
+    // --- Close dropdowns on outside click ---
+    document.addEventListener("click", (e) => {
+        if (settingsWrap && !settingsWrap.contains(e.target)) settingsDD?.classList.remove("mushaf-toolbar__dropdown--open");
+        if (playWrap && !playWrap.contains(e.target)) volDD?.classList.remove("mushaf-toolbar__dropdown--open");
+    });
 }
 
 function setPlaybackPlayingState(playing) {
     if (!PLAYBACK_PLAY_BTN) return;
     PLAYBACK_PLAY_BTN.innerHTML = playing ? ICONS.pause : ICONS.play;
     PLAYBACK_PLAY_BTN.setAttribute("aria-label", playing ? "إيقاف" : "تشغيل");
-}
-
-function updatePlaybackBarLabel(verseKey) {
-    if (!PLAYBACK_LABEL_EL || !verseKey) return;
-    const [s, a] = verseKey.split(":").map(Number);
-    const name = chapterArabicName(s);
-    PLAYBACK_LABEL_EL.textContent = `${name} • ${toArabicDigits(a)}`;
+    PLAYBACK_PLAY_BTN.setAttribute("data-playing", playing ? "true" : "false");
 }
 
 function toArabicDigits(n) {
@@ -1149,12 +1106,17 @@ function closeAyahMenu() {
 
 function toggleAudioForAyah(verseKey) {
     if (!verseKey) return;
+    // Sync selected ayah to URL + state so tafsir tab picks it up
+    const [vs, va] = verseKey.split(":").map(Number);
+    if (Number.isFinite(vs) && Number.isFinite(va)) {
+        LAST_VIEWED_AYAH = { s: vs, a: va };
+        history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: verseKey }, "", `/${vs}/${va}`);
+    }
     if (AUDIO_VERSE === verseKey && AUDIO_PLAYER) {
         // Same ayah currently selected: toggle play/pause
         if (AUDIO_PLAYER.paused) {
             AUDIO_PLAYER.play().catch((e) => console.error("resume failed", e));
             setPlaybackPlayingState(true);
-            showPlaybackBar();
         } else {
             AUDIO_PLAYER.pause();
             setPlaybackPlayingState(false);
@@ -1226,10 +1188,8 @@ function playMushafAyah(verseKey) {
         try { prevPlayer.pause(); } catch { }
     }
 
-    // Playback bar lifecycle: show + reflect state on each play.
-    updatePlaybackBarLabel(verseKey);
+    // Reflect state on each play.
     setPlaybackPlayingState(true);
-    showPlaybackBar();
     nextAudio.addEventListener("play", () => setPlaybackPlayingState(true));
     nextAudio.addEventListener("pause", () => {
         if (AUDIO_PLAYER === nextAudio && !nextAudio.ended) setPlaybackPlayingState(false);
@@ -1277,7 +1237,6 @@ function stopMushafAudio() {
     AUDIO_VERSE = null;
     document.documentElement.removeAttribute("data-audio-active");
     setPlaybackPlayingState(false);
-    schedulePlaybackBarHide();
 }
 
 function highlightAyah(verseKey, kind) {
@@ -1317,8 +1276,10 @@ function getPrevVerseKey(verseKey) {
  * ============================================================ */
 
 function buildReciterChips() {
-    if (!AYAH_MENU_EL || !DEPS?.reciters) return;
-    const row = AYAH_MENU_EL.querySelector('[data-settings-group="reciter"]');
+    if (!DEPS?.reciters) return;
+    const dd = document.getElementById("mushafSettingsDropdown");
+    if (!dd) return;
+    const row = dd.querySelector('[data-settings-group="reciter"]');
     if (!row) return;
     row.innerHTML = (DEPS.reciterOrder || Object.keys(DEPS.reciters))
         .map((key) => {
@@ -1333,7 +1294,6 @@ function handleSettingsChip(chip) {
     const val = chip.dataset.val;
     if (group === "reciter") {
         DEPS?.setCurrentReciter?.(val);
-        // Preloaded URL embeds the old reciter — drop it so the next play fetches fresh.
         discardPreloadedAudio();
         if (AUDIO_VERSE) {
             const v = AUDIO_VERSE;
@@ -1343,7 +1303,6 @@ function handleSettingsChip(chip) {
     } else if (group === "audio-mode") {
         AUDIO_MODE = val === "continuous" ? "continuous" : "single";
         try { localStorage.setItem(STORAGE.AUDIO_MODE, AUDIO_MODE); } catch { }
-        // Swapping in/out of continuous mode changes whether we should be preloading.
         if (AUDIO_MODE === "continuous" && AUDIO_VERSE) {
             const upcoming = getNextVerseKey(AUDIO_VERSE);
             if (upcoming) preloadAyahAudio(upcoming);
@@ -1359,17 +1318,21 @@ function handleSettingsChip(chip) {
 }
 
 function syncSettingsUI() {
-    if (!AYAH_MENU_EL) return;
+    const dd = document.getElementById("mushafSettingsDropdown");
+    if (!dd) return;
     const reciter = DEPS?.getCurrentReciter?.();
-    AYAH_MENU_EL.querySelectorAll('[data-settings-group="reciter"] .mushaf-settings__chip').forEach((c) => {
+    dd.querySelectorAll('[data-settings-group="reciter"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === reciter ? "true" : "false");
     });
-    AYAH_MENU_EL.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
+    dd.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === AUDIO_MODE ? "true" : "false");
     });
-    AYAH_MENU_EL.querySelectorAll('[data-settings-group="font-size"] .mushaf-settings__chip').forEach((c) => {
+    dd.querySelectorAll('[data-settings-group="font-size"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === FONT_SIZE ? "true" : "false");
     });
+    // Sync volume slider
+    const volSlider = document.getElementById("mushafVolSlider");
+    if (volSlider) volSlider.value = String(Math.round(AUDIO_VOLUME * 100));
 }
 
 /* ============================================================

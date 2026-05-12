@@ -52,11 +52,12 @@
 }
 
 body.dark .mode-toggle__btn {
-    background: rgba(148, 163, 184, 0.12);
+    background: rgba(148, 163, 184, 0.15);
+    border-color: rgba(148, 163, 184, 0.2);
 }
 
 body.dark .mode-toggle__btn:hover {
-    background: rgba(148, 163, 184, 0.18);
+    background: rgba(148, 163, 184, 0.20);
 }
 
 .mode-toggle__labels {
@@ -82,20 +83,26 @@ body.dark .mode-toggle__btn:hover {
     padding: 0 6px;
 }
 
+/* Active label: dark text on the white pill knob */
 [data-app-mode="tafsir"] .mode-toggle__label--tafsir,
 [data-app-mode="mushaf"] .mode-toggle__label--mushaf {
     color: var(--accent-strong);
     font-weight: 800;
 }
 
-/* Fix 7: in dark mode the knob is near-white (#e5e7eb) and --accent-strong is
- * also near-white (#cbd5e1) — the active label vanishes onto the knob. Pin the
- * active label to a dark color in dark mode for proper contrast. */
-body.dark [data-app-mode="tafsir"] .mode-toggle__label--tafsir,
-body.dark [data-app-mode="mushaf"] .mode-toggle__label--mushaf {
-    color: #0b1326;
+/* Dark mode: inactive labels brighter, active label is
+ * pure black on the white pill for maximum contrast. */
+body.dark .mode-toggle__label {
+    color: #e2e8f0;
 }
 
+[data-app-mode="tafsir"] body.dark .mode-toggle__label--tafsir,
+[data-app-mode="mushaf"] body.dark .mode-toggle__label--mushaf {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+/* The pill-shaped knob behind the active label */
 .mode-toggle__knob {
     position: absolute;
     top: 3px;
@@ -110,9 +117,10 @@ body.dark [data-app-mode="mushaf"] .mode-toggle__label--mushaf {
     z-index: 1;
 }
 
+/* Dark mode: keep knob WHITE for contrast against dark bg */
 body.dark .mode-toggle__knob {
-    background: #e5e7eb;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    background: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 /* Tafsir mode: knob on the visual RIGHT (covers the Tafsir label
@@ -144,8 +152,8 @@ body.dark .mode-toggle__knob {
     display: block;
 }
 
-.mx-auto.max-w-4xl.has-mushaf > #tafsirSection,
-.mx-auto.max-w-4xl.has-mushaf > #versePanel {
+.mx-auto.max-w-4xl.has-mushaf>#tafsirSection,
+.mx-auto.max-w-4xl.has-mushaf>#versePanel {
     display: none !important;
 }
 
@@ -173,13 +181,13 @@ body.dark .mode-toggle__knob {
  * ============================================================ */
 .mushaf-surah-header {
     text-align: center;
-    margin: 24px auto 14px;
+    margin: 0 auto 22px;
     line-height: 1.15;
     transition: opacity 250ms ease, filter 250ms ease;
 }
 
 .mushaf-surah-header:first-child {
-    margin-top: 6px;
+    margin-top: 0;
 }
 
 .mushaf-surah-header__label {
@@ -188,7 +196,7 @@ body.dark .mode-toggle__knob {
     font-weight: 600;
     color: var(--muted);
     letter-spacing: 0.04em;
-    margin-bottom: 2px;
+    margin-bottom: 10px;
 }
 
 .mushaf-surah-header__name {
@@ -232,12 +240,9 @@ body.dark .mode-toggle__knob {
     --line-gap: 6px;
     --font-size: 32px;
     width: 100%;
-    padding: 4px 8px;
+    padding: 0 8px 8px;
     text-align: center;
     direction: rtl;
-    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-        opacity 160ms ease;
-    will-change: transform, opacity;
 }
 
 .mushaf-page--animating {
@@ -245,29 +250,33 @@ body.dark .mode-toggle__knob {
     inset: 0;
 }
 
-.mushaf-page--enter-right {
-    transform: translateX(24%);
-    opacity: 0;
+/* Keyframe fade: 0% → 100% opacity — guaranteed to run */
+@keyframes mushafFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
-.mushaf-page--enter-left {
-    transform: translateX(-24%);
-    opacity: 0;
+@keyframes mushafFadeOut {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
 }
 
-.mushaf-page--exit-right {
-    transform: translateX(24%);
-    opacity: 0;
+.mushaf-page--fade-in {
+    animation: mushafFadeIn 250ms ease-out both;
 }
 
-.mushaf-page--exit-left {
-    transform: translateX(-24%);
-    opacity: 0;
-}
-
-.mushaf-page--active {
-    transform: translateX(0);
-    opacity: 1;
+.mushaf-page--fade-out {
+    animation: mushafFadeOut 200ms ease-in both;
 }
 
 /* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
@@ -302,29 +311,32 @@ body.dark .mode-toggle__knob {
 
 .mushaf-ayah {
     cursor: pointer;
-    border-radius: 4px;
-    padding: 0 1px;
-    transition: background-color 200ms ease, color 200ms ease,
-        box-shadow 200ms ease, opacity 250ms ease, filter 250ms ease;
+    border-radius: 6px;
+    /* In RTL, the right side is the start of the ayah. We add 4px padding to the right
+       to extend the box slightly, while keeping 0px on the left to keep it tight. */
+    padding: 2px 4px 2px 0px;
+    transition: background 600ms ease, box-shadow 600ms ease, opacity 250ms ease, filter 250ms ease;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
 }
 
-.mushaf-ayah:hover {
-    background: var(--accent-soft);
-}
+/* Hover effect disabled per user request */
 
 .mushaf-ayah--target {
     background: var(--accent-soft);
-    box-shadow: 0 0 0 1px var(--accent-muted) inset;
+    box-shadow: 0 0 0 1px var(--accent-soft);
+    border-radius: 6px;
 }
 
 .mushaf-ayah--playing {
-    background: rgba(34, 197, 94, 0.16);
-    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.30) inset;
+    background: rgba(34, 197, 94, 0.14);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.14);
+    border-radius: 6px;
 }
 
 body.dark .mushaf-ayah--playing {
-    background: rgba(110, 231, 183, 0.18);
-    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.28) inset;
+    background: rgba(110, 231, 183, 0.16);
+    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.16);
 }
 
 .mushaf-word {
@@ -333,7 +345,9 @@ body.dark .mushaf-ayah--playing {
 
 .mushaf-end {
     display: inline-block;
-    margin: 0 2px;
+    /* In RTL, the right margin separates the symbol from the text.
+       Left margin is 0 to prevent the highlight box from extending too far left. */
+    margin: 0 4px 0 0;
 }
 
 /* ============================================================
@@ -657,6 +671,168 @@ body.dark .mushaf-playback-btn--primary {
 }
 
 /* ============================================================
+ * Mushaf toolbar — settings + play/stop at top of mushaf panel
+ * ============================================================ */
+.mushaf-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    direction: ltr;
+}
+
+.mushaf-toolbar__btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.mushaf-toolbar__btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, transform 200ms ease;
+    padding: 0;
+}
+
+.mushaf-toolbar__btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.mushaf-toolbar__btn:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.mushaf-toolbar__btn--settings:hover {
+    transform: rotate(30deg);
+}
+
+/* The play button gets a green tint when audio is active */
+.mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+body.dark .mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(110, 231, 183, 0.15);
+    color: #6ee7b7;
+    border-color: rgba(110, 231, 183, 0.25);
+}
+
+/* Dropdown panels shared styling */
+.mushaf-toolbar__dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14),
+        0 4px 12px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 40;
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+body.dark .mushaf-toolbar__dropdown {
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+.mushaf-toolbar__dropdown--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.mushaf-toolbar__dropdown--settings {
+    width: 300px;
+}
+
+/* Volume dropdown: appears when audio is playing */
+.mushaf-toolbar__dropdown--volume {
+    width: 220px;
+}
+
+/* Volume row inside dropdown */
+.mushaf-toolbar__vol-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mushaf-toolbar__vol-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 150ms ease;
+    padding: 0;
+}
+
+.mushaf-toolbar__vol-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mushaf-toolbar__vol-btn:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-toolbar__slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--line);
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+}
+
+.mushaf-toolbar__slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    border: 2px solid var(--card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.mushaf-toolbar__slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    border: 2px solid var(--card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+/* ============================================================
  * Mobile adjustments
  * ============================================================ */
 @media (max-width: 640px) {
@@ -693,7 +869,7 @@ body.dark .mushaf-playback-btn--primary {
         font-size: 12px;
     }
 
-    .mushaf-ayah-menu__settings {
+    .mushaf-toolbar__dropdown--settings {
         width: 260px;
     }
 

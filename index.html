@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ar" dir="rtl">
 
 <head>
@@ -1282,6 +1282,30 @@
       background: #a78bfa;
     }
 
+    /* Qasim - Amber/Orange */
+    .audio-player-wrapper.reciter-qasim .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-qasim .audio-main-btn:hover {
+      background: rgba(217, 119, 6, 0.12);
+      border-color: rgba(217, 119, 6, 0.35);
+      color: #d97706;
+    }
+
+    .reciter-qasim .audio-reciter-name {
+      color: #d97706;
+    }
+
+    body.dark .reciter-qasim .audio-reciter-name {
+      color: #fbbf24;
+    }
+
+    .reciter-qasim .audio-slider::-webkit-slider-thumb {
+      background: #d97706;
+    }
+
+    body.dark .reciter-qasim .audio-slider::-webkit-slider-thumb {
+      background: #fbbf24;
+    }
+
     /* Audio Seek Row */
 
     .audio-seek-row {
@@ -1811,8 +1835,8 @@
               <button type="button" class="mode-toggle__btn" data-mode-toggle aria-label="التبديل بين التفسير والمصحف">
                 <span class="mode-toggle__knob"></span>
                 <span class="mode-toggle__labels">
-                  <span class="mode-toggle__label mode-toggle__label--tafsir">وضع التفسير</span>
-                  <span class="mode-toggle__label mode-toggle__label--mushaf">وضع القراءة</span>
+                  <span class="mode-toggle__label mode-toggle__label--tafsir">تفسير</span>
+                  <span class="mode-toggle__label mode-toggle__label--mushaf">قراءة</span>
                 </span>
               </button>
             </div>

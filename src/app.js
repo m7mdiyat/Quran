@@ -389,9 +389,10 @@ function warmUpAPI() {
 const RECITERS = {
   alijaber: { name: 'علي جابر', path: 'alijaber', color: 'alijaber' },
   shuraim: { name: 'سعود الشريم', path: 'shuraim', color: 'shuraim' },
-  ayoub: { name: 'محمد أيوب', path: 'ayoub', color: 'ayoub' }
+  ayoub: { name: 'محمد أيوب', path: 'ayoub', color: 'ayoub' },
+  qasim: { name: 'عبدالمحسن القاسم', path: 'qasim', color: 'qasim' }
 };
-const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub'];
+const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim'];
 let CURRENT_RECITER = 'alijaber';
 
 // Initialize reciter from localStorage
