@@ -333,6 +333,13 @@ async function ensureMetaLoaded() {
     return META_READY;
 }
 
+export function preloadMushafData() {
+    ensureMetaLoaded().then(() => {
+        preloadFont("QCF4_Hafs_01");
+        preloadFont("QCF4_QBSML");
+    }).catch(() => { });
+}
+
 async function fetchPage(pageNo) {
     if (PAGE_CACHE.has(pageNo)) return PAGE_CACHE.get(pageNo);
     if (PAGE_INFLIGHT.has(pageNo)) return PAGE_INFLIGHT.get(pageNo);

@@ -28,7 +28,7 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
 /* Mushaf reading mode bridge */
-import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel } from "./mushaf.js";
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData } from "./mushaf.js";
 
 /* ---------------- DOM ---------------- */
 const textSearch = el("textSearch");
@@ -4035,6 +4035,15 @@ async function init() {
     // If URL contains an ayah, open it once tafsir/EN are ready enough
     if (urlAyah) setPrimaryAyah(urlAyah.s, urlAyah.a, { replaceUrl: true, track: false });
   })();
+
+  // Preload Mushaf data in the background if not currently in Mushaf mode
+  if (!window._mushafInit && !isMushafMode()) {
+    if (window.requestIdleCallback) {
+      requestIdleCallback(() => preloadMushafData(), { timeout: 2000 });
+    } else {
+      setTimeout(preloadMushafData, 1000);
+    }
+  }
 
   // Back/forward navigation
   window.addEventListener("popstate", () => {
