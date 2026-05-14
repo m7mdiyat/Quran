@@ -3802,6 +3802,13 @@ async function init() {
       // mode-fade-in) and skip scrollIntoView (jarring during a toggle).
       setPrimaryAyah(s, a, { scroll: false, animate: false });
     },
+    // مختصر التفاسير quick-view (Mushaf mode) reuses the compare pipeline:
+    // same endpoint, same localStorage cache, so the card and the full
+    // Tafsir-tab panel never double-fetch.
+    apiRoot: API_ROOT,
+    getCompareCache: (key) => getCompareCache(key),
+    setCompareCache: (key, text) => setCompareCache(key, text),
+    triggerCompare: () => handleCompareTafsirs(),
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;

@@ -30,13 +30,14 @@ const STORAGE = {
 const TOTAL_PAGES = 604;
 const LONG_PRESS_MS = 500;
 const HOVER_SHOW_MS = 150;
-const HOVER_HIDE_MS = 350; // grace period: lets cursor travel ayah → menu without losing it
+const HOVER_HIDE_MS = 800;   // grace period: keep the menu around long enough to aim at + click it
+const HOVER_SWITCH_MS = 400; // ayah→ayah: brief hold before cross-fading the menu over
+const MENU_FADE_MS = 170;     // > the CSS opacity transition, so the fade-out fully completes
 const SWIPE_THRESHOLD = 50;
 const MOVE_CANCEL_THRESHOLD = 10;
 
 /* SVG icon set — Lucide-derived, currentColor, stroke 1.8, 24px viewbox. */
 const ICONS = {
-    bookOpen: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3H8a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 4.5A1.5 1.5 0 0 0 20.5 3H16a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
     bookMarked: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4a2 2 0 0 1 2-2h11v18H7a2 2 0 0 0-2 2z"/><path d="M14 2v8l-2.5-1.5L9 10V2"/></svg>`,
     play: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M7 4.5v15a.75.75 0 0 0 1.15.633l12-7.5a.75.75 0 0 0 0-1.266l-12-7.5A.75.75 0 0 0 7 4.5z"/></svg>`,
     pause: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>`,
@@ -46,6 +47,8 @@ const ICONS = {
     volumeMute: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`,
     volumeLow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
     volumeHigh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+    sparkles: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>`,
+    close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
 };
 
 /* Data caches */
@@ -72,6 +75,12 @@ let ACTIVE_PAGE_EL = null;
 let AYAH_MENU_EL = null;
 let AYAH_MENU_VERSE = null;
 let AYAH_MENU_ANCHOR = null;      // the .mushaf-ayah currently anchoring the menu
+let MUKHTASAR_EL = null;
+let MUKHTASAR_BODY_EL = null;
+let MUKHTASAR_REF_EL = null;
+let MUKHTASAR_MORE_BTN = null;
+let MUKHTASAR_VERSE = null;       // "s:a" the quick-view card is currently showing
+let MUKHTASAR_REQ_ID = 0;         // guards against out-of-order fetch responses
 let NAV_PREV = null;
 let NAV_NEXT = null;
 let PLAYBACK_BAR_EL = null;
@@ -95,6 +104,8 @@ let CURRENT_RECITER_LOCAL = null;
 /* Hover/long-press timers */
 let HOVER_SHOW_TIMER = null;
 let HOVER_HIDE_TIMER = null;
+let MENU_SWITCH_TIMER = null; // the fade-out → reposition gap during an ayah→ayah switch
+let MENU_HOVERED = false;     // cursor is currently inside the menu box → pin it open
 let LONG_PRESS_TIMER = null;
 let LONG_PRESS_FIRED = false;
 let TOUCH_START = null; // {x, y, target}
@@ -318,6 +329,7 @@ function closePanel() {
     }
     stopMushafAudio();
     closeAyahMenu();
+    closeMukhtasarCard();
 }
 
 /* ============================================================
@@ -426,6 +438,10 @@ function buildShell() {
         ROOT_EL = document.getElementById("mushafRoot");
         PAGES_EL = document.getElementById("mushafPages");
         AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
+        MUKHTASAR_EL = document.getElementById("mushafMukhtasar");
+        MUKHTASAR_BODY_EL = document.getElementById("mushafMukhtasarBody");
+        MUKHTASAR_REF_EL = document.getElementById("mushafMukhtasarRef");
+        MUKHTASAR_MORE_BTN = document.getElementById("mushafMukhtasarMore");
         NAV_PREV = document.getElementById("mushafPrev");
         NAV_NEXT = document.getElementById("mushafNext");
         PLAYBACK_BAR_EL = null;
@@ -502,10 +518,23 @@ function buildShell() {
       <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
     </div>
 
-    <!-- Ayah menu: tafsir only (settings moved to toolbar) -->
+    <!-- Ayah menu: مختصر التفاسير quick-view -->
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
-        <button type="button" class="mushaf-ayah-menu__btn" data-act="tafsir" aria-label="افتح التفسير">${ICONS.bookOpen}</button>
+        <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--mukhtasar" data-act="mukhtasar" aria-label="مختصر التفاسير">${ICONS.sparkles}</button>
+      </div>
+    </div>
+
+    <!-- مختصر التفاسير quick-view card -->
+    <div class="mushaf-mukhtasar" id="mushafMukhtasar" role="dialog" aria-label="مختصر التفاسير" aria-hidden="true">
+      <div class="mushaf-mukhtasar__header">
+        <span class="mushaf-mukhtasar__title">${ICONS.sparkles}<span>مختصر التفاسير</span></span>
+        <button type="button" class="mushaf-mukhtasar__close" id="mushafMukhtasarClose" aria-label="إغلاق">${ICONS.close}</button>
+      </div>
+      <div class="mushaf-mukhtasar__ref" id="mushafMukhtasarRef"></div>
+      <div class="mushaf-mukhtasar__body" id="mushafMukhtasarBody"></div>
+      <div class="mushaf-mukhtasar__footer">
+        <button type="button" class="mushaf-mukhtasar__more" id="mushafMukhtasarMore">عرض التفسير الكامل</button>
       </div>
     </div>
   `;
@@ -514,6 +543,10 @@ function buildShell() {
     ROOT_EL = root;
     PAGES_EL = document.getElementById("mushafPages");
     AYAH_MENU_EL = document.getElementById("mushafAyahMenu");
+    MUKHTASAR_EL = document.getElementById("mushafMukhtasar");
+    MUKHTASAR_BODY_EL = document.getElementById("mushafMukhtasarBody");
+    MUKHTASAR_REF_EL = document.getElementById("mushafMukhtasarRef");
+    MUKHTASAR_MORE_BTN = document.getElementById("mushafMukhtasarMore");
     NAV_PREV = document.getElementById("mushafPrev");
     NAV_NEXT = document.getElementById("mushafNext");
     PLAYBACK_BAR_EL = null;
@@ -524,6 +557,7 @@ function buildShell() {
 
     wireNav();
     wireMenu();
+    wireMukhtasarCard();
     wirePageSwipe();
     wireCopy();
     wireToolbar();
@@ -571,7 +605,7 @@ function onKeyDown(e) {
     else if (e.key === "ArrowRight") { e.preventDefault(); goPrev(); }
     else if (e.key === "PageDown") { e.preventDefault(); goNext(); }
     else if (e.key === "PageUp") { e.preventDefault(); goPrev(); }
-    else if (e.key === "Escape") { closeAyahMenu(); }
+    else if (e.key === "Escape") { closeAyahMenu(); closeMukhtasarCard(); }
 }
 
 function wirePageSwipe() {
@@ -709,6 +743,9 @@ function findFirstVerseKeyForSurah(data, surahId) {
 
 function renderPage(data, direction = "none") {
     if (!PAGES_EL) return;
+
+    // The card/menu anchor to ayah elements in the outgoing page — drop them.
+    closeMukhtasarCard();
 
     ensureFontDeclared(data.font);
     for (const line of data.lines) {
@@ -925,10 +962,25 @@ function autoFitFontSize() {
  * ============================================================ */
 
 function wireAyahInteractions(pageEl) {
-    // Desktop: hover only opens the menu for ayahs in the TARGET surah.
-    // Clicking a non-target surah triggers a smooth focus switch (Fix 3),
-    // so non-target ayahs are interactive but don't get the action menu.
-    // Hover menu disabled — no popup on mouseover.
+    // Desktop: hovering a target-surah ayah opens the floating action menu
+    // (مختصر التفاسير + full tafsir). Dimmed (non-target) ayahs get no menu —
+    // clicking them triggers a smooth focus switch (Fix 3) instead.
+    pageEl.addEventListener("mouseover", (e) => {
+        const ayah = e.target.closest(".mushaf-ayah");
+        if (!ayah || isAyahDimmed(ayah)) return;
+        // Don't reopen the menu while the quick-view card is showing.
+        if (MUKHTASAR_EL?.classList.contains("mushaf-mukhtasar--open")) return;
+        scheduleMenuShow(ayah);
+    });
+    pageEl.addEventListener("mouseout", (e) => {
+        const ayah = e.target.closest(".mushaf-ayah");
+        if (!ayah) return;
+        // Staying within the same ayah, or moving onto the menu, must not hide.
+        const to = e.relatedTarget;
+        if (to && typeof to.closest === "function" &&
+            (to.closest(".mushaf-ayah") === ayah || to.closest(".mushaf-ayah-menu"))) return;
+        scheduleMenuHide();
+    });
 
     // Click → either play (target surah) or smooth focus-switch (dimmed surah).
     pageEl.addEventListener("click", (e) => {
@@ -1051,13 +1103,46 @@ async function transitionToTargetSurah(newSurahId) {
 
 function scheduleMenuShow(ayah) {
     clearTimeout(HOVER_HIDE_TIMER);
-    if (AYAH_MENU_ANCHOR === ayah && AYAH_MENU_EL?.classList.contains("mushaf-ayah-menu--open")) return;
+    const menuOpen = AYAH_MENU_EL?.classList.contains("mushaf-ayah-menu--open");
+    // Already showing for this ayah — cancel any pending switch-away and stay put.
+    if (menuOpen && AYAH_MENU_ANCHOR === ayah) {
+        clearTimeout(HOVER_SHOW_TIMER);
+        clearTimeout(MENU_SWITCH_TIMER);
+        return;
+    }
     clearTimeout(HOVER_SHOW_TIMER);
-    HOVER_SHOW_TIMER = setTimeout(() => showMenu(ayah), HOVER_SHOW_MS);
+    clearTimeout(MENU_SWITCH_TIMER);
+    // Fresh hover opens quickly; moving from one ayah to another holds for a
+    // beat (HOVER_SWITCH_MS) so a quick glide-through doesn't yank the menu.
+    const delay = menuOpen ? HOVER_SWITCH_MS : HOVER_SHOW_MS;
+    HOVER_SHOW_TIMER = setTimeout(() => transitionMenuTo(ayah), delay);
+}
+
+/* Move the menu to a new ayah. If a menu is already showing elsewhere, fade
+ * it out fully (100%→0%) before repositioning; showMenu then fades it back
+ * in (0%→100%) at the new ayah. A fresh open skips straight to the fade-in. */
+function transitionMenuTo(ayah) {
+    if (!AYAH_MENU_EL || !ayah) return;
+    const isOpen = AYAH_MENU_EL.classList.contains("mushaf-ayah-menu--open");
+    if (isOpen && AYAH_MENU_ANCHOR !== ayah) {
+        AYAH_MENU_EL.classList.remove("mushaf-ayah-menu--open");
+        AYAH_MENU_EL.setAttribute("aria-hidden", "true");
+        AYAH_MENU_VERSE = null;
+        AYAH_MENU_ANCHOR = null;
+        clearTimeout(MENU_SWITCH_TIMER);
+        MENU_SWITCH_TIMER = setTimeout(() => showMenu(ayah), MENU_FADE_MS);
+    } else {
+        showMenu(ayah);
+    }
 }
 
 function scheduleMenuHide() {
+    // Pinned: never schedule a hide while the cursor is inside the menu box.
+    // It only un-pins on the menu's own `mouseleave` (cursor fully exits the
+    // button) — or a switch to another ayah, which reschedules from there.
+    if (MENU_HOVERED) return;
     clearTimeout(HOVER_SHOW_TIMER);
+    clearTimeout(MENU_SWITCH_TIMER);
     clearTimeout(HOVER_HIDE_TIMER);
     HOVER_HIDE_TIMER = setTimeout(() => {
         // Switch to main view when closing so next open is fresh
@@ -1068,16 +1153,26 @@ function scheduleMenuHide() {
 
 function wireMenu() {
     if (!AYAH_MENU_EL) return;
-    AYAH_MENU_EL.addEventListener("mouseenter", () => clearTimeout(HOVER_HIDE_TIMER));
-    AYAH_MENU_EL.addEventListener("mouseleave", () => scheduleMenuHide());
+    // Cursor entered the menu/button box → pin it open, cancel every pending
+    // timer (hide, switch-away, show). It stays until `mouseleave` fires.
+    AYAH_MENU_EL.addEventListener("mouseenter", () => {
+        MENU_HOVERED = true;
+        clearTimeout(HOVER_HIDE_TIMER);
+        clearTimeout(MENU_SWITCH_TIMER);
+        clearTimeout(HOVER_SHOW_TIMER);
+    });
+    // Cursor fully left the menu box → un-pin and start the hide grace period.
+    AYAH_MENU_EL.addEventListener("mouseleave", () => {
+        MENU_HOVERED = false;
+        scheduleMenuHide();
+    });
     AYAH_MENU_EL.addEventListener("click", (e) => {
         const btn = e.target.closest("[data-act]");
         if (!btn || !AYAH_MENU_VERSE) return;
-        if (btn.dataset.act === "tafsir") {
-            const [s, a] = AYAH_MENU_VERSE.split(":").map(Number);
-            LAST_VIEWED_AYAH = { s, a };
-            setAppMode("tafsir");
+        if (btn.dataset.act === "mukhtasar") {
+            const verse = AYAH_MENU_VERSE;
             closeAyahMenu();
+            openMukhtasarCard(verse);
         }
     });
     document.addEventListener("click", (e) => {
@@ -1244,11 +1339,194 @@ function showMenu(ayahEl, { reposition = false } = {}) {
 
 function closeAyahMenu() {
     clearTimeout(HOVER_SHOW_TIMER);
+    clearTimeout(MENU_SWITCH_TIMER);
     clearTimeout(HOVER_HIDE_TIMER);
+    MENU_HOVERED = false;
     AYAH_MENU_EL?.classList.remove("mushaf-ayah-menu--open");
     AYAH_MENU_EL?.setAttribute("aria-hidden", "true");
     AYAH_MENU_VERSE = null;
     AYAH_MENU_ANCHOR = null;
+}
+
+/* ============================================================
+ * مختصر التفاسير — quick-view card
+ *
+ * Opened from the floating ayah menu (sparkles button). Shows a
+ * short excerpt of the AI tafsir-comparison ("مختصر التفاسير") for
+ * the ayah, pulled from the same `/compare-text` endpoint and
+ * localStorage cache the Tafsir tab uses — so opening the card
+ * warms the cache and "عرض التفسير الكامل" renders instantly.
+ * Stays inside the Mushaf experience (no mode change) until the
+ * user explicitly asks for the full tafsir.
+ * ============================================================ */
+
+function wireMukhtasarCard() {
+    if (!MUKHTASAR_EL) return;
+
+    // Keep the card alive while the cursor is over it (mirrors the menu).
+    MUKHTASAR_EL.addEventListener("mouseenter", () => clearTimeout(HOVER_HIDE_TIMER));
+
+    document.getElementById("mushafMukhtasarClose")
+        ?.addEventListener("click", () => closeMukhtasarCard());
+
+    MUKHTASAR_MORE_BTN?.addEventListener("click", async () => {
+        if (!MUKHTASAR_VERSE) return;
+        const [s, a] = MUKHTASAR_VERSE.split(":").map(Number);
+        LAST_VIEWED_AYAH = { s, a };
+        closeMukhtasarCard();
+        closeAyahMenu();
+        // Switch to the Tafsir tab for this ayah, then open the full
+        // "مختصر التفاسير" comparison panel. The cache is shared, so the
+        // text we already fetched renders without another round-trip.
+        await setAppMode("tafsir");
+        DEPS?.triggerCompare?.();
+    });
+
+    // Outside-click closes the card (but not clicks on the menu/ayah —
+    // those have their own flow).
+    document.addEventListener("click", (e) => {
+        if (!MUKHTASAR_EL || MUKHTASAR_EL.getAttribute("aria-hidden") === "true") return;
+        if (e.target.closest("#mushafMukhtasar")) return;
+        if (e.target.closest(".mushaf-ayah-menu")) return;
+        if (e.target.closest(".mushaf-ayah")) return;
+        closeMukhtasarCard();
+    });
+}
+
+/* Build the quick-view excerpt: from the first 2 non-empty paragraphs of the
+ * compare text, take the first sentence of each (everything up to the first
+ * "."), then join them into one block. "عرض التفسير الكامل" opens the rest in
+ * the Tafsir tab. Degrades gracefully for ayahs with fewer than 2 paragraphs. */
+function mukhtasarExcerpt(text) {
+    return String(text || "")
+        .split(/\n+/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => {
+            const sentence = p.split(".")[0].trim();
+            if (!sentence) return "";
+            // Re-attach the period the split removed, so each reads as a sentence.
+            return p.includes(".") ? `${sentence}.` : sentence;
+        })
+        .filter(Boolean)
+        .join(" ");
+}
+
+/* The compare text uses markdown-style **bold**. Render those as <strong>,
+ * HTML-escape everything else, and drop any stray unmatched markers. */
+function mukhtasarHtml(text) {
+    const escaped = String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    return escaped
+        .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*\*/g, "");
+}
+
+async function fetchMukhtasarText(s, a) {
+    const key = `${s}:${a}`;
+    const cached = DEPS?.getCompareCache?.(key);
+    if (cached) return { ok: true, text: cached };
+
+    const apiRoot = DEPS?.apiRoot;
+    if (!apiRoot) return { ok: false, reason: "error" };
+    if (!navigator.onLine) return { ok: false, reason: "offline" };
+
+    try {
+        const res = await fetch(`${apiRoot}/compare-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ surah: s, ayah: a }),
+        });
+        if (!res.ok) return { ok: false, reason: "error" };
+        const data = await res.json();
+        if (data.status === "ok" && data.comparison_text) {
+            DEPS?.setCompareCache?.(key, data.comparison_text);
+            return { ok: true, text: data.comparison_text };
+        }
+        if (data.status === "not_found") return { ok: false, reason: "not_found" };
+        return { ok: false, reason: "error" };
+    } catch {
+        return { ok: false, reason: navigator.onLine ? "error" : "offline" };
+    }
+}
+
+async function openMukhtasarCard(verseKey) {
+    if (!MUKHTASAR_EL || !verseKey) return;
+    const [s, a] = verseKey.split(":").map(Number);
+    if (!Number.isFinite(s) || !Number.isFinite(a)) return;
+
+    MUKHTASAR_VERSE = verseKey;
+    const reqId = ++MUKHTASAR_REQ_ID;
+
+    if (MUKHTASAR_REF_EL) {
+        MUKHTASAR_REF_EL.textContent = `${chapterArabicName(s)} — الآية ${toArabicDigits(a)}`;
+    }
+    if (MUKHTASAR_BODY_EL) {
+        MUKHTASAR_BODY_EL.innerHTML =
+            `<div class="mushaf-mukhtasar__loading"><span class="mushaf-spinner mushaf-spinner--sm"></span></div>`;
+    }
+    if (MUKHTASAR_MORE_BTN) MUKHTASAR_MORE_BTN.disabled = true;
+
+    MUKHTASAR_EL.setAttribute("aria-hidden", "false");
+    MUKHTASAR_EL.classList.add("mushaf-mukhtasar--open");
+    positionMukhtasarCard();
+
+    const result = await fetchMukhtasarText(s, a);
+    if (reqId !== MUKHTASAR_REQ_ID) return; // a newer open() superseded this one
+    if (!MUKHTASAR_BODY_EL) return;
+
+    if (result.ok) {
+        MUKHTASAR_BODY_EL.innerHTML = mukhtasarHtml(mukhtasarExcerpt(result.text));
+        if (MUKHTASAR_MORE_BTN) MUKHTASAR_MORE_BTN.disabled = false;
+    } else {
+        const msg = result.reason === "not_found"
+            ? "المختصر غير متوفر لهذه الآية بعد."
+            : result.reason === "offline"
+                ? "لا يوجد اتصال بالإنترنت."
+                : "تعذّر تحميل المختصر، حاول مرة أخرى.";
+        MUKHTASAR_BODY_EL.innerHTML = `<div class="mushaf-mukhtasar__msg">${msg}</div>`;
+        // "View more" still works for not_found — the full panel shows its
+        // own richer messaging — but is pointless when we're simply offline.
+        if (MUKHTASAR_MORE_BTN) MUKHTASAR_MORE_BTN.disabled = result.reason === "offline";
+    }
+    positionMukhtasarCard();
+}
+
+function positionMukhtasarCard() {
+    if (!MUKHTASAR_EL || !ROOT_EL || !MUKHTASAR_VERSE) return;
+    const anchor = ACTIVE_PAGE_EL?.querySelector(
+        `.mushaf-ayah[data-verse-key="${CSS.escape(MUKHTASAR_VERSE)}"]`);
+    if (!anchor) return;
+
+    const rect = anchor.getBoundingClientRect();
+    const rootRect = ROOT_EL.getBoundingClientRect();
+    const cardW = MUKHTASAR_EL.offsetWidth;
+    const cardH = MUKHTASAR_EL.offsetHeight;
+
+    let left = rect.left + rect.width / 2 - cardW / 2 - rootRect.left;
+    let top = rect.bottom + 10 - rootRect.top;
+
+    const maxLeft = rootRect.width - cardW - 10;
+    if (left < 10) left = 10;
+    if (left > maxLeft) left = Math.max(10, maxLeft);
+    // Flip above the ayah if there isn't room below.
+    if (top + cardH > rootRect.height - 10) {
+        const above = rect.top - cardH - 10 - rootRect.top;
+        top = above > 10 ? above : 10;
+    }
+    MUKHTASAR_EL.style.left = `${left}px`;
+    MUKHTASAR_EL.style.top = `${top}px`;
+}
+
+function closeMukhtasarCard() {
+    if (!MUKHTASAR_EL) return;
+    MUKHTASAR_REQ_ID++; // invalidate any in-flight fetch
+    MUKHTASAR_EL.classList.remove("mushaf-mukhtasar--open");
+    MUKHTASAR_EL.setAttribute("aria-hidden", "true");
+    MUKHTASAR_VERSE = null;
 }
 
 /* ============================================================
