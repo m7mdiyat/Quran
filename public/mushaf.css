@@ -1030,6 +1030,19 @@ body.dark .mushaf-toolbar__dropdown {
 }
 
 /* ============================================================
+ * Touch devices: suppress native text selection on long-press so
+ * only our custom tafsir menu appears (no blue selection handles).
+ * Scoped to @media (hover: none) so desktop copy-paste is unaffected.
+ * ============================================================ */
+@media (hover: none) {
+    .mushaf-ayah {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+}
+
+/* ============================================================
  * Mobile adjustments
  * ============================================================ */
 @media (max-width: 640px) {

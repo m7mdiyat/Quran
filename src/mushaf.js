@@ -1001,6 +1001,12 @@ function wireAyahInteractions(pageEl) {
         }
     });
 
+    // Prevent the native context menu (long-press selection UI) on ayahs so
+    // only our custom tafsir menu appears — no blue handles or copy popup.
+    pageEl.addEventListener("contextmenu", (e) => {
+        if (e.target.closest(".mushaf-ayah")) e.preventDefault();
+    });
+
     // Mobile: long-press shows menu (only for target ayahs); tap plays / switches.
     pageEl.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
