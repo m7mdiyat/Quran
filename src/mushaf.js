@@ -18,6 +18,50 @@
 
 "use strict";
 
+/* ============================================================
+ * QCF4 asset source + offline caching (Capacitor app only)
+ *
+ * Website (IS_APP === false): QCF4_BASE is "" so every asset URL stays
+ *   a same-origin path (/data/qcf4/…, /fonts/qcf4/…) — behaviour is
+ *   byte-for-byte identical to before.
+ * App (IS_APP === true): assets are fetched from GCS and stored in the
+ *   Cache API under "qcf4-v1". On first Mushaf open the full set is
+ *   downloaded once (~50MB); afterwards everything is served from cache,
+ *   so the Mushaf works fully offline.
+ * ============================================================ */
+const IS_APP = typeof window.Capacitor !== "undefined";
+const QCF4_BASE = IS_APP
+    ? "https://storage.googleapis.com/m7mdiyat-tafsir-data"
+    : "";
+const QCF4_CACHE_NAME = "qcf4-v1";
+const QCF4_READY_FLAG = "qcf4_ready_v1"; // localStorage marker: full set cached
+
+let _qcf4CachePromise = null;
+function qcf4Cache() {
+    if (!_qcf4CachePromise) _qcf4CachePromise = caches.open(QCF4_CACHE_NAME);
+    return _qcf4CachePromise;
+}
+
+/* Cache-first fetch for QCF4 assets. On the website this is a plain
+ * fetch(); in the app it checks the Cache API first, falling back to the
+ * network and storing the response for next time (offline support). */
+async function qcf4Fetch(url) {
+    if (!IS_APP || typeof caches === "undefined") return fetch(url);
+    const cache = await qcf4Cache();
+    const hit = await cache.match(url);
+    if (hit) return hit;
+    const res = await fetch(url);
+    if (res.ok) {
+        try { await cache.put(url, res.clone()); } catch { }
+    }
+    return res;
+}
+
+function qcf4IsReady() {
+    if (!IS_APP) return true;
+    try { return localStorage.getItem(QCF4_READY_FLAG) === "1"; } catch { return false; }
+}
+
 const STORAGE = {
     MODE: "app_mode",
     LAST_PAGE: "mushaf_last_page",
@@ -260,7 +304,7 @@ export function closeMushafPanel() {
 }
 
 export async function openMushafAtAyah(s, a, opts = {}) {
-    await ensureMetaLoaded();
+    await ensureMushafAssets();
     const key = `${s}:${a}`;
     const entry = VERSES_LOOKUP?.[key];
     const page = entry?.page || 1;
@@ -276,7 +320,7 @@ export async function openMushafAtAyah(s, a, opts = {}) {
 }
 
 export async function openMushafAtPage(p, opts = {}) {
-    await ensureMetaLoaded();
+    await ensureMushafAssets();
     p = Math.max(1, Math.min(TOTAL_PAGES, Number(p) || 1));
     CURRENT_TARGET_VERSE = null;
     // Target surah will be set to first surah on page after render.
@@ -290,7 +334,7 @@ export async function openMushafAtPage(p, opts = {}) {
 }
 
 export async function openMushafAtSurah(s, opts = {}) {
-    await ensureMetaLoaded();
+    await ensureMushafAssets();
     const ch = CHAPTERS?.find((c) => c.id === Number(s));
     const page = ch?.pages?.[0] || 1;
     CURRENT_TARGET_VERSE = `${s}:1`;
@@ -340,9 +384,9 @@ async function ensureMetaLoaded() {
     if (META_READY) return META_READY;
     META_READY = (async () => {
         const [verses, fontMap, index] = await Promise.all([
-            fetch("/data/qcf4/verses.json").then((r) => r.json()),
-            fetch("/data/qcf4/font-map.json").then((r) => r.json()),
-            fetch("/data/qcf4/index.json").then((r) => r.json()),
+            qcf4Fetch(`${QCF4_BASE}/data/qcf4/verses.json`).then((r) => r.json()),
+            qcf4Fetch(`${QCF4_BASE}/data/qcf4/font-map.json`).then((r) => r.json()),
+            qcf4Fetch(`${QCF4_BASE}/data/qcf4/index.json`).then((r) => r.json()),
         ]);
         VERSES_LOOKUP = verses;
         FONT_MAP = fontMap;
@@ -358,12 +402,91 @@ export function preloadMushafData() {
     }).catch(() => { });
 }
 
+/* Gate every Mushaf open. Website + already-cached app → the normal,
+ * memoised meta load. App on first launch → download the whole QCF4 set
+ * once, with a progress prompt inside the panel, before continuing. */
+async function ensureMushafAssets() {
+    if (!IS_APP || qcf4IsReady()) return ensureMetaLoaded();
+    return runFirstLaunchDownload();
+}
+
+function showDownloadOverlay() {
+    const el = document.getElementById("mushafDownload");
+    if (el) { el.classList.add("mushaf-download--visible"); el.setAttribute("aria-hidden", "false"); }
+}
+
+function hideDownloadOverlay() {
+    const el = document.getElementById("mushafDownload");
+    if (el) { el.classList.remove("mushaf-download--visible"); el.setAttribute("aria-hidden", "true"); }
+}
+
+function setDownloadProgress(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const fill = document.getElementById("mushafDownloadFill");
+    const label = document.getElementById("mushafDownloadPct");
+    if (fill) fill.style.width = `${pct}%`;
+    if (label) label.textContent = `${pct}%`;
+}
+
+/* Download every QCF4 file into the cache once: 3 meta JSON files, all 604
+ * page JSON files, and every woff2 font. Updates the progress bar as files
+ * land and only sets the ready flag if the whole set succeeds. */
+async function runFirstLaunchDownload() {
+    if (!ROOT_EL) buildShell();
+    openPanel();
+    // setAppMode may have staged the panel at opacity 0 for its fade-in; the
+    // download prompt must be visible now, so clear the fade classes.
+    ROOT_EL?.classList.remove("mode-fade-in", "mode-fade-out");
+    showDownloadOverlay();
+
+    // The 3 meta files come (and get cached) via ensureMetaLoaded; we need
+    // FONT_MAP to know which fonts exist.
+    await ensureMetaLoaded();
+
+    const fontFamilies = new Set(Object.values(FONT_MAP || {}));
+    fontFamilies.add("QCF4_QBSML"); // surah-header font (not present in font-map)
+
+    const urls = [];
+    for (let i = 1; i <= TOTAL_PAGES; i++) {
+        urls.push(`${QCF4_BASE}/data/qcf4/pages/${String(i).padStart(3, "0")}.json`);
+    }
+    for (const family of fontFamilies) {
+        const fileName = family === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${family}_W.woff2`;
+        urls.push(`${QCF4_BASE}/fonts/qcf4/${fileName}`);
+    }
+
+    const total = urls.length + 3; // + the 3 meta files already fetched above
+    let done = 3;
+    let failed = 0;
+    setDownloadProgress(done, total);
+
+    const queue = urls.slice();
+    const CONCURRENCY = 6;
+    async function worker() {
+        while (queue.length) {
+            const url = queue.shift();
+            try {
+                const res = await qcf4Fetch(url);
+                if (!res.ok) failed++;
+            } catch { failed++; }
+            done++;
+            setDownloadProgress(done, total);
+        }
+    }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+    if (failed === 0) {
+        try { localStorage.setItem(QCF4_READY_FLAG, "1"); } catch { }
+    }
+    hideDownloadOverlay();
+}
+
 async function fetchPage(pageNo) {
     if (PAGE_CACHE.has(pageNo)) return PAGE_CACHE.get(pageNo);
     if (PAGE_INFLIGHT.has(pageNo)) return PAGE_INFLIGHT.get(pageNo);
     const p = (async () => {
         const name = String(pageNo).padStart(3, "0");
-        const res = await fetch(`/data/qcf4/pages/${name}.json`);
+        const res = await qcf4Fetch(`${QCF4_BASE}/data/qcf4/pages/${name}.json`);
         if (!res.ok) throw new Error(`page ${pageNo} fetch failed: ${res.status}`);
         const data = await res.json();
         PAGE_CACHE.set(pageNo, data);
@@ -376,8 +499,12 @@ async function fetchPage(pageNo) {
 
 function ensureFontDeclared(fontFamily) {
     if (LOADED_FONTS.has(fontFamily)) return;
+    // In the app, fonts are loaded from the cache as ArrayBuffers and added
+    // to document.fonts (see loadFontAndWait) — a CSS @font-face rule would
+    // bypass the cache and fail offline, so skip it.
+    if (IS_APP) return;
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
-    const css = `@font-face { font-family: "${fontFamily}"; src: url("/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
+    const css = `@font-face { font-family: "${fontFamily}"; src: url("${QCF4_BASE}/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
     const style = document.createElement("style");
     style.dataset.qcf4Font = fontFamily;
     style.textContent = css;
@@ -412,9 +539,15 @@ function loadFontAndWait(fontFamily) {
     }
 
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
-    const face = new FontFace(fontFamily, `url("/fonts/qcf4/${fileName}") format("woff2")`);
-    
-    const p = face.load().then((f) => {
+    const url = `${QCF4_BASE}/fonts/qcf4/${fileName}`;
+
+    // App: load the woff2 bytes through the cache, then build the FontFace from
+    // the ArrayBuffer. Website: keep the original url()-sourced FontFace.
+    const facePromise = IS_APP
+        ? qcf4Fetch(url).then((r) => r.arrayBuffer()).then((buf) => new FontFace(fontFamily, buf).load())
+        : new FontFace(fontFamily, `url("${url}") format("woff2")`).load();
+
+    const p = facePromise.then((f) => {
         try { document.fonts.add(f); } catch { }
         LOADED_FONTS.add(fontFamily);
     }).catch((e) => {
@@ -512,6 +645,14 @@ function buildShell() {
     <div class="mushaf-stage">
       <div class="mushaf-loader" id="mushafLoader">
         <div class="mushaf-spinner"></div>
+      </div>
+      <!-- First-launch QCF4 download (app only) -->
+      <div class="mushaf-download" id="mushafDownload" aria-hidden="true">
+        <div class="mushaf-download__inner">
+          <div class="mushaf-download__title">سيتم تحميل بيانات المصحف للمرة الأولى (~50MB)</div>
+          <div class="mushaf-download__bar"><div class="mushaf-download__fill" id="mushafDownloadFill"></div></div>
+          <div class="mushaf-download__pct" id="mushafDownloadPct">0%</div>
+        </div>
       </div>
       <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
       <div class="mushaf-pages" id="mushafPages"></div>
