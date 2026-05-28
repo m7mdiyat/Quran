@@ -21,20 +21,34 @@
 /* ============================================================
  * QCF4 asset source + offline caching (Capacitor app only)
  *
- * Website (IS_APP === false): QCF4_BASE is "" so every asset URL stays
- *   a same-origin path (/data/qcf4/…, /fonts/qcf4/…) — behaviour is
- *   byte-for-byte identical to before.
- * App (IS_APP === true): assets are fetched from GCS and stored in the
+ * Website (isApp() === false): getQCF4Base() is "" so every asset URL
+ *   stays a same-origin path (/data/qcf4/…, /fonts/qcf4/…) — behaviour
+ *   is byte-for-byte identical to before.
+ * App (isApp() === true): assets are fetched from GCS and stored in the
  *   Cache API under "qcf4-v1". On first Mushaf open the full set is
  *   downloaded once (~50MB); afterwards everything is served from cache,
  *   so the Mushaf works fully offline.
+ *
+ * Detection is a CALL-TIME function, not a module-level constant:
+ * window.Capacitor is injected by the native bridge AFTER the page
+ * scripts evaluate, so a const captured at module load was always false
+ * in the app. The localhost + Android UA check is a fallback for the
+ * window before Capacitor is ready (the real website is served from
+ * m7mdiyat.com, never localhost, so it stays in website mode).
  * ============================================================ */
-const IS_APP = typeof window.Capacitor !== "undefined";
-const QCF4_BASE = IS_APP
-    ? "https://storage.googleapis.com/m7mdiyat-tafsir-data"
-    : "";
+const QCF4_GCS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data";
 const QCF4_CACHE_NAME = "qcf4-v1";
 const QCF4_READY_FLAG = "qcf4_ready_v1"; // localStorage marker: full set cached
+
+function isApp() {
+    if (typeof window === "undefined") return false;
+    return window.Capacitor !== undefined ||
+        (window.location.hostname === "localhost" && navigator.userAgent.includes("Android"));
+}
+
+function getQCF4Base() {
+    return isApp() ? QCF4_GCS_BASE : "";
+}
 
 let _qcf4CachePromise = null;
 function qcf4Cache() {
@@ -46,7 +60,7 @@ function qcf4Cache() {
  * fetch(); in the app it checks the Cache API first, falling back to the
  * network and storing the response for next time (offline support). */
 async function qcf4Fetch(url) {
-    if (!IS_APP || typeof caches === "undefined") return fetch(url);
+    if (!isApp() || typeof caches === "undefined") return fetch(url);
     const cache = await qcf4Cache();
     const hit = await cache.match(url);
     if (hit) return hit;
@@ -58,7 +72,7 @@ async function qcf4Fetch(url) {
 }
 
 function qcf4IsReady() {
-    if (!IS_APP) return true;
+    if (!isApp()) return true;
     try { return localStorage.getItem(QCF4_READY_FLAG) === "1"; } catch { return false; }
 }
 
@@ -98,7 +112,11 @@ const ICONS = {
 /* Data caches */
 const PAGE_CACHE = new Map();
 const PAGE_INFLIGHT = new Map();
-const LOADED_FONTS = new Set(["QCF4_QBSML", "QCF4_Hafs_01"]);
+// These two have a static @font-face in mushaf.css (same-origin src) and are
+// treated as already-loaded on the website. In the app that src isn't bundled,
+// so they must be loaded from GCS like every other font — see unsealAppFonts().
+const PREDECLARED_FONTS = ["QCF4_QBSML", "QCF4_Hafs_01"];
+const LOADED_FONTS = new Set(PREDECLARED_FONTS);
 let VERSES_LOOKUP = null;
 let FONT_MAP = null;
 let CHAPTERS = null;
@@ -383,15 +401,21 @@ function closePanel() {
 async function ensureMetaLoaded() {
     if (META_READY) return META_READY;
     META_READY = (async () => {
+        const base = getQCF4Base();
         const [verses, fontMap, index] = await Promise.all([
-            qcf4Fetch(`${QCF4_BASE}/data/qcf4/verses.json`).then((r) => r.json()),
-            qcf4Fetch(`${QCF4_BASE}/data/qcf4/font-map.json`).then((r) => r.json()),
-            qcf4Fetch(`${QCF4_BASE}/data/qcf4/index.json`).then((r) => r.json()),
+            qcf4Fetch(`${base}/data/qcf4/verses.json`).then((r) => r.json()),
+            qcf4Fetch(`${base}/data/qcf4/font-map.json`).then((r) => r.json()),
+            qcf4Fetch(`${base}/data/qcf4/index.json`).then((r) => r.json()),
         ]);
         VERSES_LOOKUP = verses;
         FONT_MAP = fontMap;
         CHAPTERS = index?.chapters || [];
     })();
+    // If the load fails (e.g. GCS briefly unreachable on first launch),
+    // clear the memoised promise so the next open retries instead of being
+    // stuck on a rejected promise — and so the rejection can't surface as an
+    // uncaught error at the (unrelated) current document URL.
+    META_READY.catch(() => { META_READY = null; });
     return META_READY;
 }
 
@@ -406,7 +430,8 @@ export function preloadMushafData() {
  * memoised meta load. App on first launch → download the whole QCF4 set
  * once, with a progress prompt inside the panel, before continuing. */
 async function ensureMushafAssets() {
-    if (!IS_APP || qcf4IsReady()) return ensureMetaLoaded();
+    unsealAppFonts(); // app-only: retire the static same-origin @font-face rules early
+    if (!isApp() || qcf4IsReady()) return ensureMetaLoaded();
     return runFirstLaunchDownload();
 }
 
@@ -446,36 +471,48 @@ async function runFirstLaunchDownload() {
     const fontFamilies = new Set(Object.values(FONT_MAP || {}));
     fontFamilies.add("QCF4_QBSML"); // surah-header font (not present in font-map)
 
+    const base = getQCF4Base();
     const urls = [];
     for (let i = 1; i <= TOTAL_PAGES; i++) {
-        urls.push(`${QCF4_BASE}/data/qcf4/pages/${String(i).padStart(3, "0")}.json`);
+        urls.push(`${base}/data/qcf4/pages/${String(i).padStart(3, "0")}.json`);
     }
     for (const family of fontFamilies) {
         const fileName = family === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${family}_W.woff2`;
-        urls.push(`${QCF4_BASE}/fonts/qcf4/${fileName}`);
+        urls.push(`${base}/fonts/qcf4/${fileName}`);
     }
 
     const total = urls.length + 3; // + the 3 meta files already fetched above
     let done = 3;
-    let failed = 0;
     setDownloadProgress(done, total);
 
-    const queue = urls.slice();
-    const CONCURRENCY = 6;
-    async function worker() {
-        while (queue.length) {
-            const url = queue.shift();
-            try {
-                const res = await qcf4Fetch(url);
-                if (!res.ok) failed++;
-            } catch { failed++; }
-            done++;
-            setDownloadProgress(done, total);
+    // Download a batch with bounded concurrency; return the URLs that failed.
+    async function downloadBatch(batch, countProgress) {
+        const queue = batch.slice();
+        const failures = [];
+        const CONCURRENCY = 6;
+        async function worker() {
+            while (queue.length) {
+                const url = queue.shift();
+                try {
+                    const res = await qcf4Fetch(url);
+                    if (!res.ok) failures.push(url);
+                } catch { failures.push(url); }
+                if (countProgress) setDownloadProgress(++done, total);
+            }
         }
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        return failures;
     }
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
-    if (failed === 0) {
+    // Initial pass over the whole set, then up to two retry passes over just
+    // the failures so a transient GCS hiccup doesn't permanently block the
+    // "ready" flag (which would re-show this prompt on the next launch).
+    let failures = await downloadBatch(urls, true);
+    for (let attempt = 0; attempt < 2 && failures.length; attempt++) {
+        failures = await downloadBatch(failures, false);
+    }
+
+    if (failures.length === 0) {
         try { localStorage.setItem(QCF4_READY_FLAG, "1"); } catch { }
     }
     hideDownloadOverlay();
@@ -486,7 +523,7 @@ async function fetchPage(pageNo) {
     if (PAGE_INFLIGHT.has(pageNo)) return PAGE_INFLIGHT.get(pageNo);
     const p = (async () => {
         const name = String(pageNo).padStart(3, "0");
-        const res = await qcf4Fetch(`${QCF4_BASE}/data/qcf4/pages/${name}.json`);
+        const res = await qcf4Fetch(`${getQCF4Base()}/data/qcf4/pages/${name}.json`);
         if (!res.ok) throw new Error(`page ${pageNo} fetch failed: ${res.status}`);
         const data = await res.json();
         PAGE_CACHE.set(pageNo, data);
@@ -497,14 +534,39 @@ async function fetchPage(pageNo) {
     finally { PAGE_INFLIGHT.delete(pageNo); }
 }
 
+/* App-only, one-time: the static @font-face rules for PREDECLARED_FONTS point
+ * at same-origin paths that aren't bundled in the app. Drop them from the
+ * "already loaded" set so the JS loader fetches them from GCS, and delete the
+ * static rules from the CSSOM so the dead same-origin src can't win font
+ * matching (it would 404 and, with font-display:block, hide the text). */
+let _appFontsUnsealed = false;
+function unsealAppFonts() {
+    if (_appFontsUnsealed || !isApp()) return;
+    _appFontsUnsealed = true;
+    for (const f of PREDECLARED_FONTS) LOADED_FONTS.delete(f);
+    for (const sheet of document.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules; } catch { continue; } // skip cross-origin sheets
+        if (!rules) continue;
+        for (let i = rules.length - 1; i >= 0; i--) {
+            const rule = rules[i];
+            if (rule.type !== CSSRule.FONT_FACE_RULE) continue;
+            const fam = (rule.style.getPropertyValue("font-family") || "").replace(/["']/g, "").trim();
+            if (PREDECLARED_FONTS.includes(fam)) {
+                try { sheet.deleteRule(i); } catch { }
+            }
+        }
+    }
+}
+
 function ensureFontDeclared(fontFamily) {
     if (LOADED_FONTS.has(fontFamily)) return;
     // In the app, fonts are loaded from the cache as ArrayBuffers and added
     // to document.fonts (see loadFontAndWait) — a CSS @font-face rule would
     // bypass the cache and fail offline, so skip it.
-    if (IS_APP) return;
+    if (isApp()) return;
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
-    const css = `@font-face { font-family: "${fontFamily}"; src: url("${QCF4_BASE}/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
+    const css = `@font-face { font-family: "${fontFamily}"; src: url("${getQCF4Base()}/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
     const style = document.createElement("style");
     style.dataset.qcf4Font = fontFamily;
     style.textContent = css;
@@ -516,6 +578,7 @@ const FONT_LOAD_PROMISES = new Map();
 
 function loadFontAndWait(fontFamily) {
     if (!fontFamily) return Promise.resolve();
+    unsealAppFonts();
     if (LOADED_FONTS.has(fontFamily)) return Promise.resolve();
     if (FONT_LOAD_PROMISES.has(fontFamily)) return FONT_LOAD_PROMISES.get(fontFamily);
 
@@ -539,11 +602,11 @@ function loadFontAndWait(fontFamily) {
     }
 
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
-    const url = `${QCF4_BASE}/fonts/qcf4/${fileName}`;
+    const url = `${getQCF4Base()}/fonts/qcf4/${fileName}`;
 
     // App: load the woff2 bytes through the cache, then build the FontFace from
     // the ArrayBuffer. Website: keep the original url()-sourced FontFace.
-    const facePromise = IS_APP
+    const facePromise = isApp()
         ? qcf4Fetch(url).then((r) => r.arrayBuffer()).then((buf) => new FontFace(fontFamily, buf).load())
         : new FontFace(fontFamily, `url("${url}") format("woff2")`).load();
 
