@@ -32,9 +32,11 @@
  * Detection is a CALL-TIME function, not a module-level constant:
  * window.Capacitor is injected by the native bridge AFTER the page
  * scripts evaluate, so a const captured at module load was always false
- * in the app. The localhost + Android UA check is a fallback for the
- * window before Capacitor is ready (the real website is served from
- * m7mdiyat.com, never localhost, so it stays in website mode).
+ * in the app. The fallback only covers the brief window before Capacitor
+ * is ready: the Android app is served from https://localhost with NO port,
+ * whereas the dev/preview server uses an explicit port (localhost:5173) and
+ * the real website uses m7mdiyat.com — so a phone on the WEBSITE (or the dev
+ * server) is never mistaken for the app, and no download screen appears.
  * ============================================================ */
 const QCF4_GCS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data";
 const QCF4_CACHE_NAME = "qcf4-v1";
@@ -42,8 +44,10 @@ const QCF4_READY_FLAG = "qcf4_ready_v1"; // localStorage marker: full set cached
 
 function isApp() {
     if (typeof window === "undefined") return false;
-    return window.Capacitor !== undefined ||
-        (window.location.hostname === "localhost" && navigator.userAgent.includes("Android"));
+    if (window.Capacitor !== undefined) return true;
+    return window.location.hostname === "localhost"
+        && window.location.port === ""
+        && navigator.userAgent.includes("Android");
 }
 
 function getQCF4Base() {
@@ -445,6 +449,105 @@ function hideDownloadOverlay() {
     if (el) { el.classList.remove("mushaf-download--visible"); el.setAttribute("aria-hidden", "true"); }
 }
 
+const DOWNLOAD_OFFLINE_MESSAGE = "لا يوجد اتصال بالإنترنت";
+let _qcf4OnlineArmed = false;
+
+// App-only: recitations stream from GCS (never cached), so playback needs a
+// connection. Surface that in the toolbar when a play attempt fails offline.
+const OFFLINE_AUDIO_MESSAGE = "الاستماع غير متاح بدون إنترنت";
+let _mushafAudioMsgTimer = null;
+function showMushafAudioOffline() {
+    if (!isApp()) return;
+    const el = document.getElementById("mushafAudioMsg");
+    if (!el) return;
+    el.textContent = OFFLINE_AUDIO_MESSAGE;
+    el.classList.add("mushaf-toolbar__msg--show");
+    clearTimeout(_mushafAudioMsgTimer);
+    _mushafAudioMsgTimer = setTimeout(() => el.classList.remove("mushaf-toolbar__msg--show"), 4000);
+}
+function hideMushafAudioOffline() {
+    const el = document.getElementById("mushafAudioMsg");
+    if (el) el.classList.remove("mushaf-toolbar__msg--show");
+    clearTimeout(_mushafAudioMsgTimer);
+}
+
+// Show the "no internet" error inside the download/loading screen, hide the
+// progress bar, and auto-retry the download once the connection returns.
+function showDownloadOffline() {
+    ensureDownloadFont();
+    showDownloadOverlay();
+    const title = document.getElementById("mushafDownloadTitle");
+    const bar = ROOT_EL?.querySelector("#mushafDownload .mushaf-download__bar");
+    const pct = document.getElementById("mushafDownloadPct");
+    if (title) { title.style.opacity = "1"; title.textContent = DOWNLOAD_OFFLINE_MESSAGE; }
+    if (bar) bar.style.display = "none";
+    if (pct) pct.style.display = "none";
+    if (!_qcf4OnlineArmed) {
+        _qcf4OnlineArmed = true;
+        const onOnline = () => {
+            window.removeEventListener("online", onOnline);
+            _qcf4OnlineArmed = false;
+            if (bar) bar.style.display = "";
+            if (pct) pct.style.display = "";
+            runFirstLaunchDownload();
+        };
+        window.addEventListener("online", onOnline);
+    }
+}
+
+const DOWNLOAD_MESSAGES = [
+    "جارٍ تجهيز ميزة التدبر",
+    "بعد اكتمال التحميل، لن تحتاج للإنترنت",
+    "استعدّ لتجربة تدبّر فريدة",
+    "لحظات تفصلك عن صفحات المصحف",
+    "تدبّر القرآن، متى شئت وأينما كنت",
+    "اقرأ، تدبّر، واغتنم الأجرَين",
+];
+const DOWNLOAD_FINAL_MESSAGE = "المصحف جاهز! اضغط مطولًا على الآية لتفسيرها";
+
+// App-only: pull IBM Plex Sans Arabic from Google Fonts for the download
+// screen. Injected here (not in CSS) so the website never fetches it.
+function ensureDownloadFont() {
+    if (document.getElementById("mushafDownloadFont")) return;
+    const link = document.createElement("link");
+    link.id = "mushafDownloadFont";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap";
+    document.head.appendChild(link);
+}
+
+// Cross-fade the title through DOWNLOAD_MESSAGES on a loop. Returns a stop().
+function startTitleRotation() {
+    const title = document.getElementById("mushafDownloadTitle");
+    if (!title) return () => { };
+    let idx = 0;
+    title.textContent = DOWNLOAD_MESSAGES[0];
+    title.style.opacity = "1";
+    const interval = setInterval(() => {
+        title.style.opacity = "0";
+        setTimeout(() => {
+            idx = (idx + 1) % DOWNLOAD_MESSAGES.length;
+            title.textContent = DOWNLOAD_MESSAGES[idx];
+            title.style.opacity = "1";
+        }, 400);
+    }, 2500);
+    return () => clearInterval(interval);
+}
+
+// Fade to the final tip and hold ~2s so the user can read it.
+function showFinalDownloadMessage() {
+    return new Promise((resolve) => {
+        const title = document.getElementById("mushafDownloadTitle");
+        if (!title) { resolve(); return; }
+        title.style.opacity = "0";
+        setTimeout(() => {
+            title.textContent = DOWNLOAD_FINAL_MESSAGE;
+            title.style.opacity = "1";
+            setTimeout(resolve, 2000);
+        }, 400);
+    });
+}
+
 function setDownloadProgress(done, total) {
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     const fill = document.getElementById("mushafDownloadFill");
@@ -462,11 +565,23 @@ async function runFirstLaunchDownload() {
     // setAppMode may have staged the panel at opacity 0 for its fade-in; the
     // download prompt must be visible now, so clear the fade classes.
     ROOT_EL?.classList.remove("mode-fade-in", "mode-fade-out");
+    ensureDownloadFont();
     showDownloadOverlay();
+
+    // No connection → show the error right in the loading screen and stop.
+    if (!navigator.onLine) { showDownloadOffline(); return; }
+
+    const stopRotation = startTitleRotation();
 
     // The 3 meta files come (and get cached) via ensureMetaLoaded; we need
     // FONT_MAP to know which fonts exist.
-    await ensureMetaLoaded();
+    try {
+        await ensureMetaLoaded();
+    } catch {
+        stopRotation();
+        showDownloadOffline();
+        return;
+    }
 
     const fontFamilies = new Set(Object.values(FONT_MAP || {}));
     fontFamilies.add("QCF4_QBSML"); // surah-header font (not present in font-map)
@@ -512,10 +627,18 @@ async function runFirstLaunchDownload() {
         failures = await downloadBatch(failures, false);
     }
 
+    stopRotation();
+
     if (failures.length === 0) {
         try { localStorage.setItem(QCF4_READY_FLAG, "1"); } catch { }
+        await showFinalDownloadMessage();
+        hideDownloadOverlay();
+    } else if (!navigator.onLine) {
+        // Connection dropped mid-download — show it on the loading screen.
+        showDownloadOffline();
+    } else {
+        hideDownloadOverlay();
     }
-    hideDownloadOverlay();
 }
 
 async function fetchPage(pageNo) {
@@ -703,6 +826,7 @@ function buildShell() {
           </div>
         </div>
       </div>
+      <span class="mushaf-toolbar__msg" id="mushafAudioMsg" aria-live="polite"></span>
     </div>
 
     <div class="mushaf-stage">
@@ -712,7 +836,7 @@ function buildShell() {
       <!-- First-launch QCF4 download (app only) -->
       <div class="mushaf-download" id="mushafDownload" aria-hidden="true">
         <div class="mushaf-download__inner">
-          <div class="mushaf-download__title">سيتم تحميل بيانات المصحف للمرة الأولى (~50MB)</div>
+          <div class="mushaf-download__title" id="mushafDownloadTitle">جارٍ تجهيز ميزة التدبر</div>
           <div class="mushaf-download__bar"><div class="mushaf-download__fill" id="mushafDownloadFill"></div></div>
           <div class="mushaf-download__pct" id="mushafDownloadPct">0%</div>
         </div>
@@ -1640,6 +1764,19 @@ async function fetchMukhtasarText(s, a) {
     const cached = DEPS?.getCompareCache?.(key);
     if (cached) return { ok: true, text: cached };
 
+    // App offline path: read the summary from the cached comparisons.json (the
+    // same file the Tafsir tab downloads). If the Tafsir set hasn't been
+    // downloaded yet, fall through to the API when online, or report offline.
+    if (DEPS?.tafsirOfflineReady?.()) {
+        const offline = await DEPS.getOfflineComparison?.(s, a);
+        if (offline) {
+            DEPS?.setCompareCache?.(key, offline);
+            return { ok: true, text: offline };
+        }
+        if (!navigator.onLine) return { ok: false, reason: "offline" };
+        // online → fall through to the live /compare-text call below
+    }
+
     const apiRoot = DEPS?.apiRoot;
     if (!apiRoot) return { ok: false, reason: "error" };
     if (!navigator.onLine) return { ok: false, reason: "offline" };
@@ -1831,7 +1968,7 @@ function playMushafAyah(verseKey) {
 
     // Reflect state on each play.
     setPlaybackPlayingState(true);
-    nextAudio.addEventListener("play", () => setPlaybackPlayingState(true));
+    nextAudio.addEventListener("play", () => { setPlaybackPlayingState(true); hideMushafAudioOffline(); });
     nextAudio.addEventListener("pause", () => {
         if (AUDIO_PLAYER === nextAudio && !nextAudio.ended) setPlaybackPlayingState(false);
     });
@@ -1853,10 +1990,11 @@ function playMushafAyah(verseKey) {
         }
         stopMushafAudio();
     });
-    nextAudio.addEventListener("error", () => stopMushafAudio());
+    nextAudio.addEventListener("error", () => { stopMushafAudio(); showMushafAudioOffline(); });
     nextAudio.play().catch((e) => {
         console.error("Mushaf audio play failed", e);
         stopMushafAudio();
+        showMushafAudioOffline();
     });
 
     // Eagerly fetch the successor while this ayah plays.

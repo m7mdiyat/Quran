@@ -147,7 +147,8 @@ let COMPARE_COLLAPSED = false;
 let COMPARE_STOPPED = false; // Track if comparison was stopped (for resume)
 const COMPARE_CACHE = new Map();
 const COMPARE_CACHE_PREFIX = "compare:full:";
-const OFFLINE_COMPARE_MESSAGE = "\u0641\u0639\u0651\u0644 \u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a \u0648\u062d\u0627\u0648\u0644 \u0645\u0631\u0629 \u0623\u062e\u0631\u0649";
+const OFFLINE_MESSAGE = "\u0644\u0627 \u064a\u0648\u062c\u062f \u0627\u062a\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062a\u0631\u0646\u062a";
+const OFFLINE_COMPARE_MESSAGE = OFFLINE_MESSAGE;
 const COMPARE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const TAFSIRS = {
@@ -362,6 +363,351 @@ function setTafsirCache(cacheKey, text) {
   try { localStorage.setItem(TAFSIR_CACHE_PREFIX + cacheKey, JSON.stringify(entry)); } catch { }
 }
 
+/* ===========================================================================
+ * Offline Tafsir (Android app only)
+ *
+ * Mirrors the Mushaf/QCF4 offline pattern (src/mushaf.js): on first launch the
+ * app downloads the full tafsir text + مختصر التفاسير summaries from GCS into
+ * the Cache API, sets a localStorage ready flag, and thereafter reads
+ * cache-first so the Tafsir tab works with no internet. The website
+ * (isApp() === false) never touches any of this — it keeps using the live API.
+ * =========================================================================== */
+const TAFSIR_GCS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data";
+const TAFSIR_CACHE_NAME = "tafsir-v1";
+const TAFSIR_READY_FLAG = "tafsir_ready_v1";
+// 7 tafsir books + the pre-generated مختصر التفاسير summaries. en.sahih.json and
+// quran.json are intentionally excluded: both are bundled with the app and
+// already parsed into EN_MAP / QURAN at startup, so they work offline already.
+const TAFSIR_OFFLINE_FILES = [
+  "tafseer_muyassar.json", "tafseer_saadi.json", "tafseer_tabari.json",
+  "tafseer_ibn_kathir.json", "tafseer_qurtubi.json", "tafseer_baghawi.json",
+  "tafseer_ibn_ashur.json", "comparisons.json",
+];
+
+/* True ONLY inside the Capacitor Android app. window.Capacitor is injected by
+ * the native bridge after the page loads, so this is evaluated at call time
+ * (mirrors isApp() in src/mushaf.js). The fallback only covers the brief window
+ * before Capacitor is ready: the app is served from https://localhost with NO
+ * port, while the dev/preview server uses an explicit port and the real website
+ * uses its own domain — so a web user on a phone never triggers the download. */
+function isApp() {
+  if (typeof window === "undefined") return false;
+  if (window.Capacitor !== undefined) return true;
+  return window.location.hostname === "localhost"
+    && window.location.port === ""
+    && navigator.userAgent.includes("Android");
+}
+
+function tafsirIsReady() {
+  if (!isApp()) return false;
+  try { return localStorage.getItem(TAFSIR_READY_FLAG) === "1"; } catch { return false; }
+}
+
+let _tafsirCachePromise = null;
+function tafsirAssetCache() {
+  if (!_tafsirCachePromise) _tafsirCachePromise = caches.open(TAFSIR_CACHE_NAME);
+  return _tafsirCachePromise;
+}
+
+/* Cache-first fetch for tafsir assets — on the website a plain fetch(); in the
+ * app it checks the Cache API first, falling back to the network and storing
+ * the response for next time. */
+async function tafsirAssetFetch(url) {
+  if (!isApp() || typeof caches === "undefined") return fetch(url);
+  const cache = await tafsirAssetCache();
+  const hit = await cache.match(url);
+  if (hit) return hit;
+  const res = await fetch(url);
+  if (res.ok) {
+    try { await cache.put(url, res.clone()); } catch { }
+  }
+  return res;
+}
+
+/* Download one file and confirm it is actually stored. Returns true ONLY when
+ * the body was successfully written to the cache. The previous version counted
+ * a file as done on res.ok alone and swallowed cache.put() errors — so when a
+ * large file failed to store (quota/eviction) it was silently skipped while the
+ * ready flag was still set, leaving the Tafsir tab hanging offline. */
+async function cacheTafsirFile(url) {
+  try {
+    const cache = await tafsirAssetCache();
+    const res = await fetch(url, { cache: "reload" });
+    if (!res.ok) return false;
+    await cache.put(url, res); // throws on quota failure → caught below
+    // Confirm the write actually landed (defends against silent eviction).
+    return !!(await cache.match(url));
+  } catch {
+    return false;
+  }
+}
+
+/* Belt-and-suspenders: which of these urls are NOT currently retrievable. */
+async function missingTafsirFiles(urls) {
+  const cache = await tafsirAssetCache();
+  const missing = [];
+  for (const u of urls) {
+    try { if (!(await cache.match(u))) missing.push(u); }
+    catch { missing.push(u); }
+  }
+  return missing;
+}
+
+/* Lazy per-book reader with a small LRU. The big books are 35/28/20/15 MB, so
+ * we never hold more than TAFSIR_BOOK_MAX parsed objects in memory at once. */
+const TAFSIR_BOOK_CACHE = new Map(); // key -> parsed { surah: { ayah: text } }
+const TAFSIR_BOOK_MAX = 3;
+async function loadTafsirBook(key) {
+  if (TAFSIR_BOOK_CACHE.has(key)) {
+    const v = TAFSIR_BOOK_CACHE.get(key); // LRU bump
+    TAFSIR_BOOK_CACHE.delete(key);
+    TAFSIR_BOOK_CACHE.set(key, v);
+    return v;
+  }
+  // Wrap the fetch: offline + cache-miss makes tafsirAssetFetch's network
+  // fallback reject, and an unhandled rejection here would freeze the Tafsir
+  // tab on "جاري التحميل…". Returning null lets the caller show a clean state.
+  let data = null;
+  try {
+    const res = await tafsirAssetFetch(`${TAFSIR_GCS_BASE}/tafseer_${key}.json`);
+    if (!res.ok) return null;
+    data = await res.json();
+  } catch { return null; }
+  if (!data) return null;
+  TAFSIR_BOOK_CACHE.set(key, data);
+  while (TAFSIR_BOOK_CACHE.size > TAFSIR_BOOK_MAX) {
+    TAFSIR_BOOK_CACHE.delete(TAFSIR_BOOK_CACHE.keys().next().value);
+  }
+  return data;
+}
+
+async function getOfflineTafsir(surah, ayah, key) {
+  const book = await loadTafsirBook(key);
+  return book?.[String(surah)]?.[String(ayah)] || null;
+}
+
+/* The مختصر التفاسير summaries: one ~20 MB file keyed by "surah:ayah". Parsed
+ * once and held (it's the single source for the quick-view + compare panel). */
+let COMPARISONS_DATA = null;
+async function loadComparisons() {
+  if (COMPARISONS_DATA) return COMPARISONS_DATA;
+  try {
+    const res = await tafsirAssetFetch(`${TAFSIR_GCS_BASE}/comparisons.json`);
+    if (!res.ok) return null;
+    COMPARISONS_DATA = await res.json();
+  } catch { return null; }
+  return COMPARISONS_DATA;
+}
+
+async function getOfflineComparison(surah, ayah) {
+  const data = await loadComparisons();
+  return data?.[`${surah}:${ayah}`] || null;
+}
+
+/* ---------------- First-launch download screen (app only) ----------------
+ * Visual twin of the Mushaf download screen (src/mushaf.js): same IBM Plex
+ * Sans Arabic title font, same cross-fade rotation, same progress bar. */
+
+// Same sparkles icon used on the مختصر التفاسير (compare) button.
+const TAFSIR_DL_SPARKLE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;display:inline-block;vertical-align:-3px;margin-inline-start:6px;"><path fill-rule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z" clip-rule="evenodd" /></svg>`;
+
+const TAFSIR_DL_MESSAGES = [
+  "جارٍ تجهيز ميزة التفسير",
+  "نُجهّز لك كنوز التفسير",
+  "جارٍ جمع أقوال المفسّرين",
+  `جارٍ تجهيز ميزة "مختصر التفاسير"${TAFSIR_DL_SPARKLE}`,
+];
+const TAFSIR_DL_FINAL = "جاهز! فسّر بدون إنترنت";
+
+// App-only: pull IBM Plex Sans Arabic from Google Fonts for the download
+// screen (injected here, not in CSS, so the website never fetches it).
+function ensureTafsirDownloadFont() {
+  if (document.getElementById("tafsirDownloadFont") || document.getElementById("mushafDownloadFont")) return;
+  const link = document.createElement("link");
+  link.id = "tafsirDownloadFont";
+  link.rel = "stylesheet";
+  link.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap";
+  document.head.appendChild(link);
+}
+
+function showTafsirDownloadOverlay() {
+  const el = document.getElementById("tafsirDownload");
+  if (el) { el.classList.add("mushaf-download--visible"); el.setAttribute("aria-hidden", "false"); }
+}
+
+function hideTafsirDownloadOverlay() {
+  const el = document.getElementById("tafsirDownload");
+  if (el) { el.classList.remove("mushaf-download--visible"); el.setAttribute("aria-hidden", "true"); }
+}
+
+// Cross-fade the title through TAFSIR_DL_MESSAGES on a loop. Returns a stop().
+// Uses innerHTML (not textContent) so the 4th message can carry the sparkle icon.
+function startTafsirTitleRotation() {
+  const title = document.getElementById("tafsirDownloadTitle");
+  if (!title) return () => { };
+  let idx = 0;
+  title.innerHTML = TAFSIR_DL_MESSAGES[0];
+  title.style.opacity = "1";
+  const interval = setInterval(() => {
+    title.style.opacity = "0";
+    setTimeout(() => {
+      idx = (idx + 1) % TAFSIR_DL_MESSAGES.length;
+      title.innerHTML = TAFSIR_DL_MESSAGES[idx];
+      title.style.opacity = "1";
+    }, 400);
+  }, 2500);
+  return () => clearInterval(interval);
+}
+
+// Fade to the final message and hold ~2s so the user can read it.
+function showTafsirFinalMessage() {
+  return new Promise((resolve) => {
+    const title = document.getElementById("tafsirDownloadTitle");
+    if (!title) { resolve(); return; }
+    title.style.opacity = "0";
+    setTimeout(() => {
+      title.innerHTML = TAFSIR_DL_FINAL;
+      title.style.opacity = "1";
+      setTimeout(resolve, 2000);
+    }, 400);
+  });
+}
+
+function setTafsirDownloadProgress(done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const fill = document.getElementById("tafsirDownloadFill");
+  const label = document.getElementById("tafsirDownloadPct");
+  if (fill) fill.style.width = `${pct}%`;
+  if (label) label.textContent = `${pct}%`;
+}
+
+/* Download the 8 tafsir files into the Cache API once. Each file is counted as
+ * done only when its body is actually written AND re-readable (cacheTafsirFile),
+ * not merely fetched — so quota/eviction failures can't leave a half-cached set
+ * behind a "ready" flag. A final verification pass confirms every file is
+ * retrievable before the flag is set; otherwise the screen re-appears next
+ * launch and the missing files are retried. Requests persistent storage first
+ * so the ~134 MB set isn't evicted. Guarded by an in-flight promise. */
+// Show the "no internet" error inside the download/loading screen itself, hide
+// the progress bar, and auto-retry once the connection returns.
+function showTafsirDownloadOffline() {
+  ensureTafsirDownloadFont();
+  showTafsirDownloadOverlay();
+  const title = document.getElementById("tafsirDownloadTitle");
+  const bar = document.querySelector("#tafsirDownload .mushaf-download__bar");
+  const pct = document.getElementById("tafsirDownloadPct");
+  if (title) { title.style.opacity = "1"; title.textContent = OFFLINE_MESSAGE; }
+  if (bar) bar.style.display = "none";
+  if (pct) pct.style.display = "none";
+  if (!TAFSIR_ONLINE_ARMED) {
+    TAFSIR_ONLINE_ARMED = true;
+    const onOnline = () => {
+      window.removeEventListener("online", onOnline);
+      TAFSIR_ONLINE_ARMED = false;
+      if (bar) bar.style.display = "";
+      if (pct) pct.style.display = "";
+      runTafsirFirstLaunchDownload();
+    };
+    window.addEventListener("online", onOnline);
+  }
+}
+let TAFSIR_ONLINE_ARMED = false;
+
+let TAFSIR_DL_INFLIGHT = null;
+function runTafsirFirstLaunchDownload() {
+  if (TAFSIR_DL_INFLIGHT) return TAFSIR_DL_INFLIGHT;
+  TAFSIR_DL_INFLIGHT = (async () => {
+    // Make sure the tab (and thus the overlay) is visible before showing it.
+    tafsirSection?.classList.remove("hidden");
+    ensureTafsirDownloadFont();
+    showTafsirDownloadOverlay();
+
+    // No connection → show the error right in the loading screen and stop.
+    if (!navigator.onLine) {
+      showTafsirDownloadOffline();
+      return;
+    }
+
+    const stopRotation = startTafsirTitleRotation();
+
+    // Ask for durable storage so the large cache isn't evicted under pressure
+    // and gets the bigger persistent quota. Best-effort; ignore the outcome.
+    try { await navigator.storage?.persist?.(); } catch { }
+
+    const urls = TAFSIR_OFFLINE_FILES.map((f) => `${TAFSIR_GCS_BASE}/${f}`);
+    const total = urls.length;
+    let done = 0;
+    setTafsirDownloadProgress(done, total);
+
+    // Download a batch; a file fails unless it is verifiably stored. Lower
+    // concurrency than QCF4 — these are multi-MB bodies, so 3 keeps peak memory
+    // sane on low-end devices while still overlapping network + disk writes.
+    async function downloadBatch(batch, countProgress) {
+      const queue = batch.slice();
+      const failures = [];
+      const CONCURRENCY = 3;
+      async function worker() {
+        while (queue.length) {
+          const url = queue.shift();
+          const stored = await cacheTafsirFile(url);
+          if (!stored) failures.push(url);
+          if (countProgress) setTafsirDownloadProgress(++done, total);
+        }
+      }
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+      return failures;
+    }
+
+    let failures = await downloadBatch(urls, true);
+    for (let attempt = 0; attempt < 2 && failures.length; attempt++) {
+      failures = await downloadBatch(failures, false);
+    }
+
+    // Final guard: only flag ready when every file is actually retrievable.
+    const missing = failures.length ? failures : await missingTafsirFiles(urls);
+    stopRotation();
+
+    if (missing.length === 0) {
+      try { localStorage.setItem(TAFSIR_READY_FLAG, "1"); } catch { }
+      await showTafsirFinalMessage();
+      hideTafsirDownloadOverlay();
+    } else {
+      try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
+      // If the connection dropped mid-download, surface it on the loading screen
+      // (and auto-retry when it returns). Otherwise just close — it retries next open.
+      if (!navigator.onLine) {
+        showTafsirDownloadOffline();
+      } else {
+        console.warn("[tafsir-offline] not ready — files missing from cache:", missing);
+        hideTafsirDownloadOverlay();
+      }
+    }
+  })().finally(() => { TAFSIR_DL_INFLIGHT = null; });
+  return TAFSIR_DL_INFLIGHT;
+}
+
+/* Entry point for the Tafsir tab (app only). Triggers the first-launch download
+ * when not ready, and otherwise verifies — once per session — that the cached
+ * set is still complete. This self-heals installs whose flag was set before the
+ * cache-verification fix, or whose large files were later evicted: if anything
+ * is missing and we're online, it re-runs the download; offline, it leaves the
+ * flag alone and lets the readers degrade gracefully. */
+let TAFSIR_INTEGRITY_OK = false;
+async function ensureTafsirOffline() {
+  if (!isApp()) return;
+  if (tafsirIsReady()) {
+    if (TAFSIR_INTEGRITY_OK) return;
+    const urls = TAFSIR_OFFLINE_FILES.map((f) => `${TAFSIR_GCS_BASE}/${f}`);
+    const missing = await missingTafsirFiles(urls);
+    if (missing.length === 0) { TAFSIR_INTEGRITY_OK = true; return; }
+    if (!navigator.onLine) return; // can't repair now; reads fall back cleanly
+    console.warn("[tafsir-offline] cache incomplete, re-downloading:", missing);
+    try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
+  }
+  await runTafsirFirstLaunchDownload();
+  if (tafsirIsReady()) TAFSIR_INTEGRITY_OK = true;
+}
+
 /* ---------------- API Warm-up ---------------- */
 function warmUpAPI() {
   if (API_WARMED_UP) return;
@@ -440,17 +786,18 @@ export function buildAudioUrl(reciter, filename) {
  * Update play/pause icons (desktop and mobile)
  */
 function updateAudioIcons(isPlaying) {
-  // Desktop icons
-  if (audioPlayIcon) audioPlayIcon.classList.toggle("hidden", isPlaying);
-  if (audioPauseIcon) audioPauseIcon.classList.toggle("hidden", !isPlaying);
-  // Mobile icons
-  const mobilePlayIcon = document.querySelector(".mobile-audio-btn .audio-play-icon");
-  const mobilePauseIcon = document.querySelector(".mobile-audio-btn .audio-pause-icon");
-  if (mobilePlayIcon) mobilePlayIcon.classList.toggle("hidden", isPlaying);
-  if (mobilePauseIcon) mobilePauseIcon.classList.toggle("hidden", !isPlaying);
-  // Dropdown play/pause icons
-  document.querySelectorAll('.dropdown-play-icon').forEach(el => el.classList.toggle("hidden", isPlaying));
-  document.querySelectorAll('.dropdown-pause-icon').forEach(el => el.classList.toggle("hidden", !isPlaying));
+  // Tafsir Mushaf-style toolbar play button
+  const tafsirPlayBtn = document.getElementById("tafsirPlayBtn");
+  if (tafsirPlayBtn) {
+    tafsirPlayBtn.setAttribute("data-playing", isPlaying ? "true" : "false");
+    tafsirPlayBtn.setAttribute("aria-label", isPlaying ? "إيقاف" : "تشغيل");
+  }
+  const tafsirPlayIcon = document.getElementById("tafsirPlayIcon");
+  const tafsirPauseIcon = document.getElementById("tafsirPauseIcon");
+  if (tafsirPlayIcon) tafsirPlayIcon.classList.toggle("hidden", isPlaying);
+  if (tafsirPauseIcon) tafsirPauseIcon.classList.toggle("hidden", !isPlaying);
+  // Smooth "now playing" highlight on the ayah text
+  tafsirAyahTag?.classList.toggle("is-playing", isPlaying);
 }
 
 
@@ -504,7 +851,8 @@ function skipAudio(seconds) {
  */
 function setAudioVolume(volume) {
   AUDIO_VOLUME = Math.max(0, Math.min(1, volume));
-  if (audioVolumeSlider) audioVolumeSlider.value = Math.round(AUDIO_VOLUME * 100);
+  const tafsirVolSlider = document.getElementById("tafsirVolSlider");
+  if (tafsirVolSlider) tafsirVolSlider.value = Math.round(AUDIO_VOLUME * 100);
   if (AUDIO_PLAYER) AUDIO_PLAYER.volume = AUDIO_VOLUME;
   try { localStorage.setItem("audioVolume", String(AUDIO_VOLUME)); } catch { }
 }
@@ -532,13 +880,10 @@ function cycleAudioSpeed() {
  * Update speed button labels across desktop and mobile
  */
 function updateSpeedUI() {
-  const label = AUDIO_SPEED === 1 ? '1x' : AUDIO_SPEED + 'x';
-  document.querySelectorAll('.audio-speed-label').forEach(el => {
-    el.textContent = label;
-  });
-  document.querySelectorAll('.audio-speed-btn').forEach(btn => {
-    btn.classList.toggle('speed-active', AUDIO_SPEED !== 1);
-  });
+  const speedBtn = document.getElementById('tafsirSpeedBtn');
+  if (speedBtn) speedBtn.textContent = `${AUDIO_SPEED}x`;
+  const speedSlider = document.getElementById('tafsirSpeedSlider');
+  if (speedSlider) speedSlider.value = String(AUDIO_SPEED);
 }
 
 /**
@@ -590,26 +935,10 @@ function setListeningMode(enabled) {
 }
 
 /**
- * Toggle listening mode on/off
- */
-function toggleListeningMode() {
-  setListeningMode(!LISTENING_MODE);
-}
-
-/**
- * Update listening mode UI across desktop and mobile buttons
+ * Update listening mode UI (reflected in the Tafsir settings panel pills)
  */
 function updateListeningModeUI() {
-  const desktopBtn = document.getElementById('listeningModeBtn');
-  const mobileBtn = document.querySelector('.mobile-listening-mode-btn');
-
-  // Update active state
-  desktopBtn?.classList.toggle('active', LISTENING_MODE);
-  mobileBtn?.classList.toggle('active', LISTENING_MODE);
-
-  // Update aria attributes
-  desktopBtn?.setAttribute('aria-pressed', LISTENING_MODE ? 'true' : 'false');
-  mobileBtn?.setAttribute('aria-pressed', LISTENING_MODE ? 'true' : 'false');
+  syncTafsirSettingsUI();
 }
 
 /**
@@ -635,6 +964,7 @@ function playCurrentAyah() {
     mobileAudioBtn?.classList.add("playing");
     updateAudioIcons(true);
     updateSeekSliderVisibility(true);
+    hideTafsirAudioOffline();
   });
 
   // Update seek slider as audio plays
@@ -670,12 +1000,35 @@ function playCurrentAyah() {
   AUDIO_PLAYER.addEventListener("error", (e) => {
     console.error("Audio error:", url, e);
     stopAudio();
+    showTafsirAudioOffline();
   });
 
   AUDIO_PLAYER.play().catch((err) => {
     console.error("Audio play failed:", err);
     stopAudio();
+    showTafsirAudioOffline();
   });
+}
+
+// App-only: recitations stream from GCS (never cached), so playback needs a
+// connection. Surface "الاستماع غير متاح بدون إنترنت" at the top of the Tafsir
+// tab when a play attempt fails (offline). navigator.onLine is unreliable in the
+// WebView, so this is driven by the actual playback error.
+const OFFLINE_AUDIO_MESSAGE = "الاستماع غير متاح بدون إنترنت";
+let _tafsirAudioMsgTimer = null;
+function showTafsirAudioOffline() {
+  if (!isApp()) return;
+  const el = document.getElementById("tafsirAudioMsg");
+  if (!el) return;
+  el.textContent = OFFLINE_AUDIO_MESSAGE;
+  el.hidden = false;
+  clearTimeout(_tafsirAudioMsgTimer);
+  _tafsirAudioMsgTimer = setTimeout(() => { el.hidden = true; }, 4000);
+}
+function hideTafsirAudioOffline() {
+  const el = document.getElementById("tafsirAudioMsg");
+  if (el) el.hidden = true;
+  clearTimeout(_tafsirAudioMsgTimer);
 }
 
 // Mobile audio button and volume controls
@@ -762,25 +1115,11 @@ function switchReciter(newReciter) {
 
 
 /**
- * Cycle to the next reciter in order
- */
-function cycleReciter() {
-  const idx = RECITER_ORDER.indexOf(CURRENT_RECITER);
-  const nextIdx = (idx + 1) % RECITER_ORDER.length;
-  switchReciter(RECITER_ORDER[nextIdx]);
-}
-
-/**
- * Update reciter UI elements (name labels and color themes)
+ * Update reciter UI elements (color themes + settings panel pills)
  */
 function updateReciterUI() {
   const reciter = RECITERS[CURRENT_RECITER];
   if (!reciter) return;
-
-  // Update desktop and mobile reciter name labels
-  document.querySelectorAll('.audio-reciter-name').forEach(el => {
-    el.textContent = reciter.name;
-  });
 
   // Update color classes on audio wrappers
   document.querySelectorAll('.audio-player-wrapper').forEach(wrapper => {
@@ -793,15 +1132,9 @@ function updateReciterUI() {
     RECITER_ORDER.forEach(r => slider.classList.remove(`reciter-${r}`));
     slider.classList.add(`reciter-${reciter.color}`);
   });
-}
 
-// Reciter switch button event listeners
-document.querySelectorAll('.reciter-switch-btn').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    cycleReciter();
-  });
-});
+  syncTafsirSettingsUI();
+}
 
 // Dropdown play button event listeners
 document.querySelectorAll('.dropdown-play-btn').forEach(btn => {
@@ -811,21 +1144,197 @@ document.querySelectorAll('.dropdown-play-btn').forEach(btn => {
   });
 });
 
+/* ---------------- Tafsir audio settings panel (cog) ---------------- */
+/** Populate the reciter pill rows (desktop + mobile) — matches Mushaf order. */
+function buildTafsirReciterChips() {
+  document.querySelectorAll('[data-tafsir-settings="reciter"]').forEach(row => {
+    row.innerHTML = RECITER_ORDER.map(key => {
+      const r = RECITERS[key];
+      return `<button type="button" class="mushaf-settings__chip" data-val="${key}">${r.name}</button>`;
+    }).join('');
+  });
+}
+
+/** Reflect current reciter + playback mode in the settings panel pills. */
+function syncTafsirSettingsUI() {
+  document.querySelectorAll('[data-tafsir-settings="reciter"] .mushaf-settings__chip').forEach(c => {
+    c.setAttribute('aria-checked', c.dataset.val === CURRENT_RECITER ? 'true' : 'false');
+  });
+  const mode = LISTENING_MODE ? 'continuous' : 'single';
+  document.querySelectorAll('[data-tafsir-settings="audio-mode"] .mushaf-settings__chip').forEach(c => {
+    c.setAttribute('aria-checked', c.dataset.val === mode ? 'true' : 'false');
+  });
+}
+
+// Chip clicks: reciter + playback mode (both drive the existing audio engine)
+document.querySelectorAll('[data-tafsir-settings-dropdown]').forEach(dd => {
+  dd.addEventListener('click', (e) => {
+    const chip = e.target.closest('.mushaf-settings__chip');
+    if (!chip) return;
+    const group = chip.closest('[data-tafsir-settings]')?.dataset.tafsirSettings;
+    if (group === 'reciter') switchReciter(chip.dataset.val);
+    else if (group === 'audio-mode') setListeningMode(chip.dataset.val === 'continuous');
+    syncTafsirSettingsUI();
+  });
+});
+
+// Cog open/close: click toggles, outside click closes
+document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
+  const btn = wrap.querySelector('[data-tafsir-settings-btn]');
+  const dd = wrap.querySelector('[data-tafsir-settings-dropdown]');
+  btn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (dd?.classList.toggle('mushaf-toolbar__dropdown--open')) syncTafsirSettingsUI();
+  });
+});
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
+    if (!wrap.contains(e.target)) {
+      wrap.querySelector('[data-tafsir-settings-dropdown]')?.classList.remove('mushaf-toolbar__dropdown--open');
+    }
+  });
+});
+
+/* ---------------- Tafsir play button + volume/speed dropdown ---------------- */
+(function wireTafsirPlayToolbar() {
+  const playWrap = document.getElementById('tafsirPlayWrap');
+  const playBtn = document.getElementById('tafsirPlayBtn');
+  const volDD = document.getElementById('tafsirVolDropdown');
+  const volSlider = document.getElementById('tafsirVolSlider');
+  const volDown = document.getElementById('tafsirVolDown');
+  const volUp = document.getElementById('tafsirVolUp');
+  const speedBtn = document.getElementById('tafsirSpeedBtn');
+  const speedSlider = document.getElementById('tafsirSpeedSlider');
+
+  // Play/stop the current ayah
+  playBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    playCurrentAyah();
+  });
+
+  // Volume/speed dropdown: open on hover, close on leave (with grace) or outside click
+  if (playWrap && volDD) {
+    let hideT = null;
+    playWrap.addEventListener('mouseenter', () => { clearTimeout(hideT); volDD.classList.add('mushaf-toolbar__dropdown--open'); });
+    playWrap.addEventListener('mouseleave', () => { clearTimeout(hideT); hideT = setTimeout(() => volDD.classList.remove('mushaf-toolbar__dropdown--open'), 350); });
+    document.addEventListener('click', (e) => { if (!playWrap.contains(e.target)) volDD.classList.remove('mushaf-toolbar__dropdown--open'); });
+  }
+
+  // Volume controls
+  if (volSlider) {
+    volSlider.value = String(Math.round(AUDIO_VOLUME * 100));
+    volSlider.addEventListener('input', () => setAudioVolume(Number(volSlider.value) / 100));
+  }
+  volDown?.addEventListener('click', () => setAudioVolume(AUDIO_VOLUME - 0.1));
+  volUp?.addEventListener('click', () => setAudioVolume(AUDIO_VOLUME + 0.1));
+
+  // Speed controls: slider is continuous, button cycles preset options
+  if (speedSlider) {
+    speedSlider.value = String(AUDIO_SPEED);
+    speedSlider.addEventListener('input', () => setAudioSpeed(Number(speedSlider.value)));
+  }
+  speedBtn?.addEventListener('click', (e) => { e.stopPropagation(); cycleAudioSpeed(); });
+})();
+
+/* ---------------- Tafsir description popover (info button next to the title) ---------------- */
+function closeTafsirDescPopover() {
+  const btn = document.getElementById('tafsirDescBtn');
+  const pop = document.getElementById('tafsirDesc');
+  pop?.classList.remove('is-open');
+  pop?.setAttribute('aria-hidden', 'true');
+  btn?.setAttribute('aria-expanded', 'false');
+}
+(function wireTafsirDescPopover() {
+  const btn = document.getElementById('tafsirDescBtn');
+  const pop = document.getElementById('tafsirDesc');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = pop.classList.toggle('is-open');
+    pop.setAttribute('aria-hidden', open ? 'false' : 'true');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!pop.contains(e.target) && !btn.contains(e.target)) closeTafsirDescPopover();
+  });
+})();
+
+/* ---------------- Custom tafsir dropdown ----------------
+ * The native <select> popup is rendered by the OS (tiny + detached + unstyleable),
+ * so we hide it and drive a custom, fully-styled dropdown that opens right under
+ * its trigger. The <select> stays the source of truth: picking an option sets
+ * its value and dispatches a `change` event, so all existing logic still runs. */
+let syncTafsirDropdownLabel = () => { };
+(function buildTafsirDropdown() {
+  const select = document.getElementById('tafsirSelect');
+  if (!select) return;
+  const wrap = select.closest('.tafsir-select-wrap') || select.parentElement;
+  if (!wrap) return;
+
+  select.classList.add('tafsir-select-native-hidden');
+
+  const dd = document.createElement('div');
+  dd.className = 'tafsir-dd';
+  dd.innerHTML = `
+    <button type="button" class="tafsir-dd__trigger" id="tafsirDDTrigger" aria-haspopup="listbox" aria-expanded="false">
+      <span class="tafsir-dd__label" id="tafsirDDLabel"></span>
+      <svg class="tafsir-dd__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+    </button>
+    <ul class="tafsir-dd__menu" id="tafsirDDMenu" role="listbox"></ul>`;
+  wrap.insertBefore(dd, select);
+
+  const trigger = dd.querySelector('#tafsirDDTrigger');
+  const label = dd.querySelector('#tafsirDDLabel');
+  const menu = dd.querySelector('#tafsirDDMenu');
+
+  function sync() {
+    const sel = select.options[select.selectedIndex];
+    if (label) label.textContent = sel ? sel.textContent : '';
+    menu.querySelectorAll('.tafsir-dd__option').forEach((li) => {
+      li.setAttribute('aria-selected', li.dataset.value === select.value ? 'true' : 'false');
+    });
+  }
+  syncTafsirDropdownLabel = sync;
+
+  function renderOptions() {
+    menu.innerHTML = '';
+    Array.from(select.options).forEach((opt) => {
+      const li = document.createElement('li');
+      li.className = 'tafsir-dd__option';
+      li.setAttribute('role', 'option');
+      li.dataset.value = opt.value;
+      li.textContent = opt.textContent;
+      li.setAttribute('aria-selected', opt.value === select.value ? 'true' : 'false');
+      li.addEventListener('click', () => {
+        if (select.value !== opt.value) {
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        sync();
+        close();
+      });
+      menu.appendChild(li);
+    });
+  }
+  function open() { renderOptions(); dd.classList.add('tafsir-dd--open'); trigger.setAttribute('aria-expanded', 'true'); }
+  function close() { dd.classList.remove('tafsir-dd--open'); trigger.setAttribute('aria-expanded', 'false'); }
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dd.classList.contains('tafsir-dd--open') ? close() : open();
+  });
+  document.addEventListener('click', (e) => { if (!dd.contains(e.target)) close(); });
+  select.addEventListener('change', sync);
+  sync();
+})();
+
+buildTafsirReciterChips();
+
 // Initialize reciter UI on page load
 document.addEventListener('DOMContentLoaded', updateReciterUI);
 // Also run immediately in case DOM is already loaded
 if (document.readyState !== 'loading') updateReciterUI();
-
-// Listening mode button event listeners
-document.getElementById('listeningModeBtn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleListeningMode();
-});
-
-document.querySelector('.mobile-listening-mode-btn')?.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleListeningMode();
-});
 
 // Speed control button event listeners
 document.querySelectorAll('.audio-speed-btn').forEach(btn => {
@@ -2064,7 +2573,7 @@ function showAyahContext(surahNo, ayahNo) {
   }
 
   const { start, end } = CONTEXT_STATE;
-  const mode = langSelect?.value || "ar";
+  const mode = langSelect?.value || "en";
 
   // Track language change
   const langChanged = CONTEXT_STATE.lang !== mode;
@@ -2108,12 +2617,7 @@ function showAyahContext(surahNo, ayahNo) {
 
       const enText = EN_MAP?.[String(surahNo)]?.[String(i)] || "";
 
-      if (mode === "ar") {
-        const arText = wrapTashkeelWords(escapeHtml(a.text));
-        div.innerHTML = `${numHtml} ${arText}`;
-        div.style.direction = "rtl";
-        div.style.textAlign = "right";
-      } else if (mode === "en") {
+      if (mode === "en") {
         div.innerHTML = `${numHtml} ${escapeHtml(enText || "—")}`;
         div.style.direction = "ltr";
         div.style.textAlign = "left";
@@ -2314,6 +2818,12 @@ function updateBasmalaUI(surahNo, ayahNo) {
 }
 
 async function updateTafsirUI(surahNo, ayahNo) {
+  // App: download the offline tafsir set on first launch, and verify/repair it
+  // once per session. No-op on the website.
+  if (isApp()) {
+    await ensureTafsirOffline();
+  }
+
   const reqId = ++TAFSIR_REQUEST_ID; // increment request ID
 
   // Cancel any in-flight background request
@@ -2332,6 +2842,10 @@ async function updateTafsirUI(surahNo, ayahNo) {
   if (tafsirDesc) {
     tafsirDesc.textContent = TAFSIR_DESCRIPTIONS[tafKey] || "—";
   }
+  // Close the description popover when the tafsir/ayah changes
+  closeTafsirDescPopover();
+  // Keep the custom dropdown label in sync (covers programmatic value changes)
+  syncTafsirDropdownLabel();
   if (tafsirMetaInterpreter) {
     tafsirMetaInterpreter.innerHTML = `<span class="dot"></span> ${escapeHtml(pack?.shortLabel || pack?.label || "نص التفسير")}`;
   }
@@ -2363,7 +2877,13 @@ async function updateTafsirUI(surahNo, ayahNo) {
 
   // Render selected tafsir immediately
   if (!selectedText) {
-    tafsirBox.innerHTML = `<div class="tafsir-empty">لا يوجد تفسير لهذا المفسّر لهذه الآية.</div>`;
+    // Distinguish "no connection" from "this ayah has no tafsir" using whether
+    // the lookup actually failed to reach a source (reliable in the WebView,
+    // unlike navigator.onLine). Only show the offline message when detected.
+    const emptyMsg = TAFSIR_FETCH_NETWORK_ERROR
+      ? OFFLINE_MESSAGE
+      : "لا يوجد تفسير لهذا المفسّر لهذه الآية.";
+    tafsirBox.innerHTML = `<div class="tafsir-empty">${emptyMsg}</div>`;
   } else {
     tafsirBox.innerHTML = formatTafsirText(selectedText, surahNo, ayahNo);
   }
@@ -2395,6 +2915,12 @@ async function loadPrimaryTafsir(surah, ayah, key = PRIMARY_TAFSIR) {
  * Uses AbortController to cancel if ayah changes
  */
 async function loadSecondaryTafsirs(surah, ayah, requestId) {
+  // App offline: skip the eager batch prefetch. Pulling all 6 secondary books
+  // would parse ~100 MB of JSON into memory at once; instead each book is read
+  // lazily (and LRU-cached) the first time the user switches to it in the
+  // dropdown — see getOfflineTafsir in fetchTafsirFromAPI.
+  if (tafsirIsReady()) return;
+
   // Create AbortController for this request
   SECONDARY_TAFSIR_ABORT = new AbortController();
   const signal = SECONDARY_TAFSIR_ABORT.signal;
@@ -2865,11 +3391,33 @@ async function runCompare(payload, abortController) {
   setCompareStatus("", "", { loading: false });
   return { ok: true, offline: false };
 }
+/* Show the مختصر التفاسير loading spinner briefly, then render — so instant
+ * (cached / offline) results still get the same loading feedback as the live
+ * web fetch instead of popping in abruptly. Bails if the ayah changed meanwhile. */
+async function renderCompareWithSpinner(text, ayahKey) {
+  setComparePanelVisible(true);
+  setCompareExpanded(false);
+  setCompareCollapsed(false);
+  setCompareStopVisible(false);
+  setCompareStatus("جاري إنشاء المقارنة...", "", { loading: true });
+  if (tafsirCompareContent) tafsirCompareContent.textContent = "";
+  updateCompareButtonState();
+
+  await new Promise((r) => setTimeout(r, 700));
+  // If the user navigated to another ayah during the delay, don't render stale text.
+  if (!CURRENT || `${CURRENT.s}:${CURRENT.a}` !== ayahKey) return;
+
+  setCompareStatus("", "");
+  renderCompareText(text);
+  updateCompareButtonState();
+}
+
 async function handleCompareTafsirs() {
   // Fade out audio smoothly when opening tafsir summary
   if (AUDIO_PLAYING) fadeOutAndStopAudio(600);
 
-  if (!navigator.onLine) {
+  // Offline website (or app not yet downloaded): nothing to show.
+  if (!navigator.onLine && !tafsirIsReady()) {
     if (COMPARE_ABORT) {
       COMPARE_ABORT.abort();
       COMPARE_ABORT = null;
@@ -2891,13 +3439,30 @@ async function handleCompareTafsirs() {
   const ayahKey = `${surahNo}:${ayahNo}`;
   const cached = getCompareCache(ayahKey);
   if (cached) {
-    setComparePanelVisible(true);
-    setCompareExpanded(false);
-    setCompareCollapsed(false);
-    setCompareStatus("", "");
-    renderCompareText(cached);
-    updateCompareButtonState();
+    await renderCompareWithSpinner(cached, ayahKey);
     return;
+  }
+
+  // App offline path: read the pre-generated summary from the cached
+  // comparisons.json instead of calling /compare-text.
+  if (tafsirIsReady()) {
+    const summary = await getOfflineComparison(surahNo, ayahNo);
+    if (summary) {
+      setCompareCache(ayahKey, summary);
+      await renderCompareWithSpinner(summary, ayahKey);
+      return;
+    }
+    // No summary cached for this ayah. When offline, stop here; when online,
+    // fall through to the live /compare-text call below.
+    if (!navigator.onLine) {
+      setComparePanelVisible(true);
+      setCompareExpanded(false);
+      setCompareCollapsed(false);
+      setCompareStopVisible(false);
+      setCompareStatus(OFFLINE_MESSAGE, "error");
+      updateCompareButtonState();
+      return;
+    }
   }
 
   if (typeof window.gtag === "function") {
@@ -2978,7 +3543,12 @@ async function handleCompareTafsirs() {
       return;
     }
     console.error("Compare-text fetch error:", err);
-    if (!navigator.onLine) {
+    // A thrown fetch (TypeError / "Failed to fetch") means no connection —
+    // navigator.onLine is unreliable in the WebView, so detect it from the error.
+    const noConnection = !navigator.onLine
+      || err instanceof TypeError
+      || /Failed to fetch|NetworkError|Load failed/i.test(String(err));
+    if (noConnection) {
       setCompareStatus(OFFLINE_COMPARE_MESSAGE, "error");
     } else {
       setCompareStatus("تعذر إجراء المقارنة الآن، حاول مرة أخرى.", "error");
@@ -3643,13 +4213,30 @@ function debounce(fn, ms = 140) {
 
 /* ---------------- Init loaders ---------------- */
 /* ---------------- API Loaders ---------------- */
+/* Set by fetchTafsirFromAPI: true when the last lookup failed to reach any
+ * source (offline cache-miss + the network fetch threw / wasn't ok). Lets the
+ * UI tell "no connection" apart from "this ayah genuinely has no tafsir".
+ * navigator.onLine is unreliable in the WebView, so we trust the fetch result. */
+let TAFSIR_FETCH_NETWORK_ERROR = false;
+
 async function fetchTafsirFromAPI(surah, ayah, key) {
   if (!surah || !ayah || !key) return null;
+  TAFSIR_FETCH_NETWORK_ERROR = false;
   const cacheKey = `${surah}:${ayah}:${key}`;
 
   // Check localStorage-backed cache first
   const cached = getTafsirCache(cacheKey);
   if (cached) return cached;
+
+  // App offline path: read the tafsir text from the cached GCS JSON.
+  if (tafsirIsReady()) {
+    const offline = await getOfflineTafsir(surah, ayah, key);
+    if (offline) { setTafsirCache(cacheKey, offline); return offline; }
+    // Offline read missed (this book/ayah isn't in the cache). We can only
+    // recover over the network — tentatively flag a connectivity problem; a
+    // successful fetch below clears it.
+    TAFSIR_FETCH_NETWORK_ERROR = true;
+  }
 
   try {
     // Determine endpoint: /tafsir is separate from /ai
@@ -3665,10 +4252,13 @@ async function fetchTafsirFromAPI(surah, ayah, key) {
 
     if (!res.ok) {
       console.warn("Tafsir fetch failed", res.status);
+      TAFSIR_FETCH_NETWORK_ERROR = true;
       return null;
     }
 
     const data = await res.json();
+    // Got a real response → not a connectivity problem, even if empty.
+    TAFSIR_FETCH_NETWORK_ERROR = false;
     // Expected: { status: "ok", tafsirs: { key: "text" } }
     const text = data?.tafsirs?.[key] || null;
 
@@ -3676,6 +4266,8 @@ async function fetchTafsirFromAPI(surah, ayah, key) {
     if (text) setTafsirCache(cacheKey, text);
     return text;
   } catch (e) {
+    // fetch threw → no connection (or DNS/TLS failure).
+    TAFSIR_FETCH_NETWORK_ERROR = true;
     console.error("Tafsir fetch error:", e);
     return null;
   }
@@ -3809,6 +4401,10 @@ async function init() {
     getCompareCache: (key) => getCompareCache(key),
     setCompareCache: (key, text) => setCompareCache(key, text),
     triggerCompare: () => handleCompareTafsirs(),
+    // Offline (app): lets the Mushaf long-press مختصر التفاسير read the same
+    // cached comparisons.json the Tafsir tab downloaded.
+    tafsirOfflineReady: () => tafsirIsReady(),
+    getOfflineComparison: (s, a) => getOfflineComparison(s, a),
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
@@ -3948,6 +4544,32 @@ async function init() {
   prevAyahBtn?.addEventListener("click", () => stepAyah(-1));
   nextAyahBtn?.addEventListener("click", () => stepAyah(1));
   playAyahBtn?.addEventListener("click", playCurrentAyah);
+
+  // Phone (web + app): tap the ayah text to play its recitation; tap again to stop.
+  // Enabled in the app and on touch devices, so a desktop mouse-click (e.g.
+  // selecting text) isn't hijacked. (pointer:coarse can report false in the
+  // Android WebView, so we also accept isApp()/maxTouchPoints.)
+  tafsirAyahTag?.addEventListener("click", () => {
+    const touchOrApp = isApp()
+      || (navigator.maxTouchPoints || 0) > 0
+      || (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    if (!touchOrApp) return;
+    playCurrentAyah();
+  });
+
+  // Web: ← / → arrow keys move between ayahs while the Tafsir view is on screen.
+  // RTL convention (matches the Mushaf): ArrowLeft = next, ArrowRight = previous.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!CURRENT) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    // only when the Tafsir section is actually visible (not in Mushaf mode / pre-selection)
+    if (!tafsirSection || tafsirSection.offsetParent === null) return;
+    e.preventDefault();
+    stepAyah(e.key === "ArrowLeft" ? 1 : -1);
+  });
   compareTafsirsBtn?.addEventListener("click", handleCompareTafsirs);
   compareCloseBtn?.addEventListener("click", () => resetComparePanel({ hide: true }));
   compareStopBtn?.addEventListener("click", () => {

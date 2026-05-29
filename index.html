@@ -806,47 +806,15 @@
       display: none;
     }
 
-    @media (max-width: 640px) {
-      .audio-player-wrapper.desktop-only {
-        display: none !important;
-      }
-
-      /* Mobile audio row - right aligned, shown only on mobile */
-      .mobile-audio-row {
-        display: none;
-      }
-
-      .mobile-audio-row {
-        display: flex !important;
-        justify-content: flex-start;
-        margin-top: 16px;
-        margin-bottom: 4px;
-        padding-left: 8px;
-      }
-
-      .audio-player-wrapper.mobile-only {
-        display: flex !important;
-      }
-
-      .audio-player-wrapper.mobile-only .audio-dropdown {
-        top: 50%;
-        left: auto;
-        right: 100%;
-        transform: translateY(-50%) translateX(-8px);
-        padding-top: 0;
-        padding-right: 8px;
-      }
-
-      .audio-player-wrapper.mobile-only:hover .audio-dropdown,
-      .audio-player-wrapper.mobile-only .audio-dropdown:hover {
-        transform: translateY(-50%) translateX(-8px);
-      }
+    /* Anchor the first-launch download overlay (position:absolute; inset:0) to the tab */
+    #tafsirSection {
+      position: relative;
     }
 
-    @media (min-width: 641px) {
-      .mobile-audio-row {
-        display: none !important;
-      }
+    /* Tafsir audio toolbar (Mushaf-style): sits to the right of the compare button */
+    .tafsir-audio-toolbar {
+      margin-bottom: 0;
+      align-self: center;
     }
 
     .audio-main-btn {
@@ -1653,20 +1621,6 @@
         /* Prevent flexbox overflow issues */
       }
 
-      /* Specific fix for the Description Text to show fully */
-      #tafsirDesc {
-        white-space: normal !important;
-        /* Allow text to wrap to new lines */
-        overflow: visible !important;
-        /* Show all content */
-        text-overflow: clip !important;
-        /* Remove ellipsis (...) */
-        height: auto !important;
-        /* Let height grow automatically */
-        line-height: 1.6 !important;
-        /* Nice readable line spacing */
-        max-width: 100% !important;
-      }
 
       /* 3. CONTROLS CONTAINER: Stable & Ordered */
       .tafsir-controls {
@@ -1752,6 +1706,155 @@
       align-items: center;
     }
 
+    /* The actions wrapper (مختصر + dropdown) is transparent everywhere except the
+       mobile pill layout, so existing desktop flex/order rules keep applying to
+       the button and dropdown directly — desktop stays exactly as before. */
+    .tafsir-actions {
+      display: contents;
+    }
+
+    .tafsir-actions__divider {
+      display: none;
+    }
+
+    @media (min-width: 640px) {
+      .tafsir-controls>.tafsir-actions {
+        display: contents !important;
+      }
+
+      .tafsir-actions>.tafsir-select-wrap {
+        order: 3 !important;
+      }
+    }
+
+    /* Mobile/app only — match the reference layout:
+         Row 1 (header): ⚙ settings (left) · centered identity · ▶ play (right)
+         Row 2: one tinted pill → مختصر التفاسير (left) | divider | dropdown (right)
+       `display: contents` on .tafsir-controls AND the audio toolbar flattens
+       them so the settings/play wraps and the actions pill become direct grid
+       items. RTL → the first grid column is on the right. */
+    @media (max-width: 640px) {
+      .tafsir-top-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas:
+          "play identity settings"
+          "actions actions actions";
+        column-gap: 10px;
+        row-gap: 16px;
+        align-items: center;
+      }
+
+      .tafsir-top-row .tafsir-controls,
+      .tafsir-top-row .tafsir-audio-toolbar {
+        display: contents;
+      }
+
+      /* centered identity (ayah ref + title + ⓘ) */
+      .tafsir-top-row .tafsir-meta {
+        grid-area: identity;
+        width: auto;
+        min-width: 0;
+        text-align: center;
+      }
+
+      .tafsir-top-row #tafsirHeader {
+        text-align: center;
+      }
+
+      .tafsir-top-row .tafsir-title-row {
+        justify-content: center;
+      }
+
+      /* ⚙ on the left edge, ▶ on the right edge */
+      .tafsir-top-row #tafsirPlayWrap {
+        grid-area: play;
+        justify-self: start;
+        /* RTL: start = right */
+      }
+
+      .tafsir-top-row #tafsirSettingsWrap {
+        grid-area: settings;
+        justify-self: end;
+        /* RTL: end = left */
+      }
+
+      /* keep the play/volume dropdown anchored inside the card (it sits at the
+         right edge, so open it leftwards) */
+      #tafsirVolDropdown {
+        left: auto;
+        right: 0;
+      }
+
+      /* the combined control pill — subtle blue-tinted container */
+      .tafsir-actions {
+        grid-area: actions;
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        gap: 8px;
+        padding: 7px;
+        border-radius: 1.1rem;
+        background: rgba(38, 68, 205, 0.05);
+        border: 1px solid rgba(38, 68, 205, 0.12);
+      }
+
+      body.dark .tafsir-actions {
+        background: rgba(38, 68, 205, 0.13);
+        border-color: rgba(99, 130, 246, 0.2);
+      }
+
+      .tafsir-actions .tafsir-select-wrap {
+        order: 1;
+        /* right */
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+      }
+
+      /* divider replaced by the gap between the two pills */
+      .tafsir-actions__divider {
+        display: none;
+      }
+
+      .tafsir-actions #compareTafsirsBtn {
+        order: 2;
+        /* left */
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+        margin: 0;
+        padding: 0.6rem 0.5rem;
+        border-radius: 0.85rem;
+        font-size: 0.9rem;
+      }
+
+      /* dropdown reads as a crisp white pill with an accent chevron */
+      .tafsir-actions .tafsir-dd__trigger {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 0.85rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+        color: #1e293b;
+        font-weight: 800;
+      }
+
+      body.dark .tafsir-actions .tafsir-dd__trigger {
+        background: rgba(30, 41, 59, 0.96);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #e2e8f0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+
+      .tafsir-actions .tafsir-dd__chevron {
+        color: #2644cd;
+      }
+
+      body.dark .tafsir-actions .tafsir-dd__chevron {
+        color: #60a5fa;
+      }
+    }
+
     #tafsirSelect {
       text-align: center;
       text-align-last: center;
@@ -1759,8 +1862,309 @@
       padding-inline-start: 18px;
     }
 
+    /* Custom tafsir dropdown — replaces the native <select> popup (which the OS
+       renders tiny/detached and can't be styled). The native <select> stays in
+       the DOM (hidden) as the state source. */
+    .tafsir-select-native-hidden {
+      display: none !important;
+    }
+
+    .tafsir-dd {
+      position: relative;
+      width: 100%;
+    }
+
+    .tafsir-dd__trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      border-radius: 1rem;
+      padding: 0.75rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #0f172a;
+      cursor: pointer;
+    }
+
+    body.dark .tafsir-dd__trigger {
+      background: rgba(30, 41, 59, 0.9);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+    }
+
+    .tafsir-dd__chevron {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      transition: transform .2s ease;
+    }
+
+    .tafsir-dd--open .tafsir-dd__chevron {
+      transform: rotate(180deg);
+    }
+
+    .tafsir-dd__menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 60;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      /* at least as wide as the trigger, but grow to fit the longest name */
+      min-width: 100%;
+      width: max-content;
+      max-width: min(280px, 80vw);
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+      max-height: 60vh;
+      overflow: auto;
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+
+    body.dark .tafsir-dd__menu {
+      background: #1e293b;
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .tafsir-dd--open .tafsir-dd__menu {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .tafsir-dd__option {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.6;
+      color: #0f172a;
+      cursor: pointer;
+      text-align: center;
+      transition: background .12s ease, color .12s ease;
+    }
+
+    .tafsir-dd__option:hover {
+      background: rgba(11, 107, 220, 0.08);
+    }
+
+    .tafsir-dd__option[aria-selected="true"] {
+      background: rgba(11, 107, 220, 0.12);
+      color: #0b6bdc;
+    }
+
+    body.dark .tafsir-dd__option {
+      color: #f1f5f9;
+    }
+
+    body.dark .tafsir-dd__option:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    body.dark .tafsir-dd__option[aria-selected="true"] {
+      background: rgba(96, 165, 250, 0.18);
+      color: #93c5fd;
+    }
+
+    /* Desktop: slightly smaller dropdown, aligned with the مختصر button,
+       nudged right + a touch down. */
+    @media (min-width: 640px) {
+      .tafsir-dd {
+        width: 154px;
+        align-self: center;
+        transform: translate(8px, -3px);
+      }
+
+      .tafsir-dd__trigger {
+        padding: 0.8rem 1rem;
+        font-size: 0.95rem;
+      }
+    }
+
     #compareTafsirsBtn {
       font-size: 0.95rem;
+    }
+
+    /* Touch devices: the ayah text is tappable to play/pause its recitation */
+    @media (pointer: coarse) {
+      #tafsirAyahTag {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+    }
+
+    /* App-only "audio needs internet" notice at the top of the Tafsir tab */
+    .tafsir-audio-msg {
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto 10px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      color: #b91c1c;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    body.dark .tafsir-audio-msg {
+      background: rgba(248, 113, 113, 0.14);
+      border-color: rgba(248, 113, 113, 0.28);
+      color: #fca5a5;
+    }
+
+    .tafsir-audio-msg[hidden] {
+      display: none;
+    }
+
+    /* "Now playing" state for the ayah text: a quick, clean settle on start —
+       no color change, no continuous motion. */
+    #tafsirAyahTag.is-playing {
+      animation: ayahPlayIn .3s ease-out;
+    }
+
+    @keyframes ayahPlayIn {
+      from {
+        opacity: .6;
+        transform: scale(.99);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #tafsirAyahTag.is-playing {
+        animation: none;
+      }
+    }
+
+    /* ============================================================
+     * Tafsir controls — static, professional solid-blue buttons
+     * (Tafsir tab only; Mushaf page untouched).
+     * ============================================================ */
+
+    /* Primary مختصر التفاسير — royal blue (#2644cd) */
+    #compareTafsirsBtn {
+      background: #2644cd;
+      border: none;
+      box-shadow: 0 2px 8px rgba(38, 68, 205, 0.34);
+      transition: background .18s ease, box-shadow .18s ease;
+    }
+
+    #compareTafsirsBtn:not(:disabled):hover {
+      background: #213bb2;
+      box-shadow: 0 4px 12px rgba(38, 68, 205, 0.4);
+    }
+
+    #compareTafsirsBtn:not(:disabled):active {
+      background: #1c3296;
+    }
+
+    #compareTafsirsBtn:disabled {
+      box-shadow: none;
+    }
+
+    /* Audio toolbar buttons (⚙ / ▶) — neutral; play is solid blue. No motion. */
+    .tafsir-audio-toolbar .mushaf-toolbar__btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 13px;
+      background: #f1f5f9;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      color: #475569;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+
+    .tafsir-audio-toolbar .mushaf-toolbar__btn:hover {
+      background: #e7edf5;
+      color: #1e293b;
+    }
+
+    /* keep the gear static (no rotate) for a clean professional feel */
+    .tafsir-audio-toolbar .mushaf-toolbar__btn--settings:hover {
+      transform: none;
+    }
+
+    .tafsir-audio-toolbar #tafsirPlayBtn {
+      background: #2644cd;
+      border-color: rgba(38, 68, 205, 0.5);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(38, 68, 205, 0.36);
+    }
+
+    .tafsir-audio-toolbar #tafsirPlayBtn:hover {
+      background: #213bb2;
+      color: #ffffff;
+    }
+
+    .tafsir-audio-toolbar #tafsirPlayBtn[data-playing="true"] {
+      background: #1c3296;
+      border-color: rgba(28, 50, 150, 0.65);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(38, 68, 205, 0.44);
+    }
+
+    body.dark .tafsir-audio-toolbar .mushaf-toolbar__btn {
+      background: #1e293b;
+      border-color: rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    }
+
+    body.dark .tafsir-audio-toolbar .mushaf-toolbar__btn:hover {
+      background: #273449;
+      color: #f1f5f9;
+    }
+
+    body.dark .tafsir-audio-toolbar #tafsirPlayBtn,
+    body.dark .tafsir-audio-toolbar #tafsirPlayBtn:hover {
+      background: #2644cd;
+      color: #ffffff;
+    }
+
+    body.dark .tafsir-audio-toolbar #tafsirPlayBtn[data-playing="true"] {
+      background: #213bb2;
+      color: #ffffff;
+    }
+
+    /* Desktop: vertically center the ⚙/▶ toolbar against the taller pills,
+       make the buttons a touch bigger, and nudge slightly right + up. */
+    @media (min-width: 640px) {
+      .tafsir-audio-toolbar {
+        align-self: center;
+        transform: translate(8px, -2px);
+      }
+
+      .tafsir-audio-toolbar .mushaf-toolbar__btn {
+        width: 44px;
+        height: 44px;
+      }
+
+      .tafsir-audio-toolbar .mushaf-toolbar__btn svg {
+        width: 20px;
+        height: 20px;
+      }
     }
 
     .compare-scroll {
@@ -1786,10 +2190,69 @@
       transition: opacity .24s ease, transform .24s ease;
     }
 
-    #tafsirDesc {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    /* Tafsir title + info button. The description is now a click-to-open
+       popover anchored to this row instead of always-visible text. */
+    .tafsir-title-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tafsir-desc-btn {
+      display: inline-grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted, #64748b);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color .15s ease, background .15s ease;
+    }
+
+    .tafsir-desc-btn:hover,
+    .tafsir-desc-btn[aria-expanded="true"] {
+      color: var(--accent-strong, #0b6bdc);
+      background: rgba(148, 163, 184, 0.14);
+    }
+
+    .tafsir-desc-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    #tafsirDesc.tafsir-desc-pop {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 50;
+      max-width: min(280px, 78vw);
+      width: max-content;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--card, #ffffff);
+      border: 1px solid var(--line, rgba(15, 23, 42, 0.1));
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1.6;
+      color: var(--muted, #64748b);
+      text-align: right;
+      white-space: normal;
+      opacity: 0;
+      transform: translateY(-4px);
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+
+    #tafsirDesc.tafsir-desc-pop.is-open {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
     }
 
     .fade-in.show {
@@ -1836,7 +2299,7 @@
                 <span class="mode-toggle__knob"></span>
                 <span class="mode-toggle__labels">
                   <span class="mode-toggle__label mode-toggle__label--tafsir">تفسير</span>
-                  <span class="mode-toggle__label mode-toggle__label--mushaf">قراءة</span>
+                  <span class="mode-toggle__label mode-toggle__label--mushaf">تدبر</span>
                 </span>
               </button>
             </div>
@@ -1864,110 +2327,106 @@
         <div class="mt-6">
           <div class="mx-auto max-w-4xl">
             <div id="tafsirSection" class="glass hidden rounded-3xl p-6">
+              <!-- First-launch tafsir download (app only) — reuses the Mushaf download-screen
+                   styling for visual consistency. -->
+              <div class="mushaf-download" id="tafsirDownload" aria-hidden="true">
+                <div class="mushaf-download__inner">
+                  <div class="mushaf-download__title" id="tafsirDownloadTitle">جارٍ تجهيز ميزة التفسير</div>
+                  <div class="mushaf-download__bar">
+                    <div class="mushaf-download__fill" id="tafsirDownloadFill"></div>
+                  </div>
+                  <div class="mushaf-download__pct" id="tafsirDownloadPct">0%</div>
+                </div>
+              </div>
+              <!-- App-only "audio needs internet" notice (top of the tab) -->
+              <div id="tafsirAudioMsg" class="tafsir-audio-msg" aria-live="polite" hidden></div>
               <!-- Controls layout: tafsir menu up, compare centered, nav centered -->
               <div class="w-full tafsir-top-row">
                 <div class="w-full sm:w-auto text-right tafsir-meta">
                   <div id="tafsirHeader" class="text-xs font-extrabold text-slate-500">اختر آية من نتائج البحث</div>
-                  <div id="tafsirTitle" class="mt-2 text-xl font-extrabold tracking-tight">&mdash;</div>
-                  <div id="tafsirDesc" class="mt-2 text-xs font-semibold text-slate-500">&mdash;</div>
+                  <div id="tafsirTitleRow" class="tafsir-title-row mt-2">
+                    <div id="tafsirTitle" class="text-xl font-extrabold tracking-tight">&mdash;</div>
+                    <button type="button" id="tafsirDescBtn" class="tafsir-desc-btn" aria-label="عن هذا التفسير"
+                      aria-expanded="false">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4" />
+                        <path d="M12 8h.01" />
+                      </svg>
+                    </button>
+                    <div id="tafsirDesc" class="tafsir-desc-pop" role="tooltip" aria-hidden="true">&mdash;</div>
+                  </div>
                   <div id="tafsirMetaAyah" class="hidden mt-2 text-xs font-bold text-slate-500">&mdash;</div>
                 </div>
                 <div class="w-full sm:w-auto tafsir-controls">
-                  <!-- Audio Player Control with Hover Dropdown (Desktop only) -->
-                  <div class="audio-player-wrapper desktop-only" id="audioPlayerWrapper">
-                    <button type="button" id="playAyahBtn" class="audio-main-btn" title="استمع للآية">
-                      <!-- Play icon (shown when not playing) -->
-                      <svg id="audioPlayIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                        stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-                      </svg>
-                      <!-- Pause icon (shown when playing) -->
-                      <svg id="audioPauseIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                        stroke-width="2" stroke="currentColor" class="hidden">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                      </svg>
-                    </button>
-                    <!-- Hover dropdown panel -->
-                    <div class="audio-dropdown" id="audioDropdown">
-                      <div class="audio-dropdown-content">
-                        <div class="audio-reciter-row">
-                          <span class="audio-reciter-name">علي جابر</span>
-                          <!-- Listening Mode Button -->
-                          <button type="button" id="listeningModeBtn" class="listening-mode-btn audio-vol-btn"
-                            title="وضع الإستماع" aria-pressed="false">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                            </svg>
-                          </button>
-                          <!-- Speed control button -->
-                          <button type="button" class="audio-speed-btn audio-vol-btn" title="سرعة التشغيل">
-                            <span class="audio-speed-label">1x</span>
-                          </button>
-                          <!-- Switch reciter button -->
-                          <button type="button" class="reciter-switch-btn" title="القارئ التالي">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            </svg>
-                          </button>
-                          <!-- Play/Pause button -->
-                          <button type="button" class="dropdown-play-btn audio-vol-btn" title="تشغيل">
-                            <svg class="dropdown-play-icon" xmlns="http://www.w3.org/2000/svg" fill="none"
-                              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                            </svg>
-                            <svg class="dropdown-pause-icon hidden" xmlns="http://www.w3.org/2000/svg" fill="none"
-                              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                            </svg>
-                          </button>
+                  <!-- Audio toolbar: settings cog + play button (Mushaf-style) -->
+                  <div class="mushaf-toolbar tafsir-audio-toolbar" id="tafsirAudioToolbar">
+                    <div class="mushaf-toolbar__btn-wrap" id="tafsirSettingsWrap" data-tafsir-settings-wrap>
+                      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings"
+                        data-tafsir-settings-btn aria-label="إعدادات الصوت">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                          stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                      </button>
+                      <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--settings"
+                        data-tafsir-settings-dropdown>
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">القارئ</div>
+                          <div class="mushaf-settings__row mushaf-settings__row--pills" data-tafsir-settings="reciter">
+                          </div>
                         </div>
-
-                        <div class="audio-controls">
-
-                          <button type="button" id="audioVolumeDown" class="audio-vol-btn" title="خفض الصوت">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
-                            </svg>
-                          </button>
-                          <input type="range" id="audioVolumeSlider" min="0" max="100" value="80" class="audio-slider">
-                          <button type="button" id="audioVolumeUp" class="audio-vol-btn" title="رفع الصوت">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                            </svg>
-                          </button>
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">طريقة التشغيل</div>
+                          <div class="mushaf-settings__row" data-tafsir-settings="audio-mode">
+                            <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
+                            <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
+                          </div>
                         </div>
-                        <!-- Audio Seek Slider -->
-                        <div class="audio-seek-row hidden" id="audioSeekRow">
-                          <div class="audio-controls">
-                            <button type="button" id="audioSeekBack" class="audio-vol-btn" title="تراجع 5 ثوانٍ">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M3 8.688c0-.864.933-1.405 1.683-.977l7.108 4.062a1.125 1.125 0 010 1.953l-7.108 4.062A1.125 1.125 0 013 16.811V8.688zM12.75 8.688c0-.864.933-1.405 1.683-.977l7.108 4.062a1.125 1.125 0 010 1.953l-7.108 4.062a1.125 1.125 0 01-1.683-.977V8.688z" />
-                              </svg>
-                            </button>
-                            <input type="range" id="audioSeekSlider" min="0" max="100" value="0" class="audio-slider">
-                            <button type="button" id="audioSeekForward" class="audio-vol-btn" title="تقدم 5 ثوانٍ">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M21 16.811c0 .864-.933 1.405-1.683.977l-7.108-4.062a1.125 1.125 0 010-1.953l7.108-4.062A1.125 1.125 0 0121 8.688v8.123zM11.25 16.811c0 .864-.933 1.405-1.683.977l-7.108-4.062a1.125 1.125 0 010-1.953l7.108-4.062a1.125 1.125 0 011.683.977v8.123z" />
-                              </svg>
-                            </button>
+                      </div>
+                    </div>
+                    <div class="mushaf-toolbar__btn-wrap" id="tafsirPlayWrap">
+                      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="tafsirPlayBtn"
+                        data-playing="false" aria-label="تشغيل/إيقاف">
+                        <svg id="tafsirPlayIcon" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                          <path d="M7 4.5v15a.75.75 0 0 0 1.15.633l12-7.5a.75.75 0 0 0 0-1.266l-12-7.5A.75.75 0 0 0 7 4.5z" />
+                        </svg>
+                        <svg id="tafsirPauseIcon" class="hidden" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                          <rect x="6" y="4.5" width="4" height="15" rx="1" /><rect x="14" y="4.5" width="4" height="15"
+                            rx="1" />
+                        </svg>
+                      </button>
+                      <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="tafsirVolDropdown">
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">مستوى الصوت</div>
+                          <div class="mushaf-toolbar__vol-row">
+                            <button type="button" class="mushaf-toolbar__vol-btn" id="tafsirVolDown" aria-label="خفض"><svg
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19.5 12h-15" />
+                              </svg></button>
+                            <input type="range" id="tafsirVolSlider" min="0" max="100" value="80"
+                              class="mushaf-toolbar__slider">
+                            <button type="button" class="mushaf-toolbar__vol-btn" id="tafsirVolUp" aria-label="رفع"><svg
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 4.5v15m7.5-7.5h-15" />
+                              </svg></button>
+                          </div>
+                        </div>
+                        <div class="mushaf-settings__section" style="margin-top: 4px;">
+                          <div class="mushaf-settings__label">السرعة</div>
+                          <div class="mushaf-toolbar__vol-row" style="gap: 8px;">
+                            <button type="button" class="mushaf-settings__chip" id="tafsirSpeedBtn"
+                              style="min-width: 3.5rem; padding: 0.25rem 0.5rem; flex-shrink: 0;"
+                              aria-label="تغيير السرعة">1x</button>
+                            <input type="range" id="tafsirSpeedSlider" min="0.5" max="2" step="0.05" value="1"
+                              class="mushaf-toolbar__slider">
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
+                  <div class="tafsir-actions">
                   <button type="button" id="compareTafsirsBtn" disabled
                     class="w-full px-4 py-3 rounded-2xl bg-blue-600 text-white font-extrabold text-sm hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed tafsir-compare-btn flex items-center justify-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
@@ -1978,7 +2437,8 @@
                     </svg>
                     مختصر التفاسير
                   </button>
-                  <div class="w-full sm:w-auto flex justify-center">
+                  <span class="tafsir-actions__divider" aria-hidden="true"></span>
+                  <div class="w-full sm:w-auto flex justify-center tafsir-select-wrap">
                     <select id="tafsirSelect"
                       class="w-full bg-white/70 border border-slate-900/10 rounded-2xl px-1 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition tafsir-select">
                       <option value="muyassar">التفسير الميسّر</option>
@@ -1989,6 +2449,7 @@
                       <option value="baghawi">تفسير البغوي</option>
                       <option value="ibn_ashur">تفسير ابن عاشور</option>
                     </select>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -2025,103 +2486,6 @@
 
                     <div class="compare-scroll mt-4">
                       <div id="tafsirCompareContent" class="text-[15px] leading-7 text-slate-800"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Mobile-only audio button row - positioned right -->
-                <div class="mobile-audio-row">
-                  <div class="audio-player-wrapper mobile-only" id="audioPlayerWrapperMobile">
-                    <button type="button" class="audio-main-btn mobile-audio-btn" title="استمع للآية">
-                      <svg class="audio-play-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                        stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-                      </svg>
-                      <svg class="audio-pause-icon hidden" xmlns="http://www.w3.org/2000/svg" fill="none"
-                        viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                      </svg>
-                    </button>
-                    <!-- Mobile hover dropdown -->
-                    <div class="audio-dropdown">
-                      <div class="audio-dropdown-content">
-                        <div class="audio-reciter-row">
-                          <span class="audio-reciter-name">علي جابر</span>
-                          <!-- Mobile Listening Mode Button -->
-                          <button type="button" class="listening-mode-btn mobile-listening-mode-btn audio-vol-btn"
-                            title="وضع الإستماع" aria-pressed="false">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
-                            </svg>
-                          </button>
-                          <!-- Speed control button -->
-                          <button type="button" class="audio-speed-btn audio-vol-btn" title="سرعة التشغيل">
-                            <span class="audio-speed-label">1x</span>
-                          </button>
-                          <!-- Switch reciter button -->
-                          <button type="button" class="reciter-switch-btn" title="القارئ التالي">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                            </svg>
-                          </button>
-                          <!-- Play/Pause button -->
-                          <button type="button" class="dropdown-play-btn audio-vol-btn" title="تشغيل">
-                            <svg class="dropdown-play-icon" xmlns="http://www.w3.org/2000/svg" fill="none"
-                              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                            </svg>
-                            <svg class="dropdown-pause-icon hidden" xmlns="http://www.w3.org/2000/svg" fill="none"
-                              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                            </svg>
-                          </button>
-                        </div>
-
-
-                        <div class="audio-controls">
-
-                          <button type="button" class="audio-vol-btn mobile-vol-down" title="خفض الصوت">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
-                            </svg>
-                          </button>
-                          <input type="range" class="audio-slider mobile-vol-slider" min="0" max="100" value="80">
-                          <button type="button" class="audio-vol-btn mobile-vol-up" title="رفع الصوت">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                              stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                            </svg>
-                          </button>
-                        </div>
-                        <!-- Mobile Audio Seek Slider -->
-                        <div class="audio-seek-row hidden mobile-seek-row">
-                          <div class="audio-controls">
-                            <button type="button" class="audio-vol-btn mobile-seek-back" title="تراجع 5 ثوانٍ">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M21 16.811c0 .864-.933 1.405-1.683.977l-7.108-4.062a1.125 1.125 0 010-1.953l7.108-4.062A1.125 1.125 0 0121 8.688v8.123zM11.25 16.811c0 .864-.933 1.405-1.683.977l-7.108-4.062a1.125 1.125 0 010-1.953l7.108-4.062a1.125 1.125 0 011.683.977v8.123z" />
-                              </svg>
-                            </button>
-                            <input type="range" class="audio-slider mobile-seek-slider" min="0" max="100" value="0">
-                            <button type="button" class="audio-vol-btn mobile-seek-forward" title="تقدم 5 ثوانٍ">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M3 8.688c0-.864.933-1.405 1.683-.977l7.108 4.062a1.125 1.125 0 010 1.953l-7.108 4.062A1.125 1.125 0 013 16.811V8.688zM12.75 8.688c0-.864.933-1.405 1.683-.977l7.108 4.062a1.125 1.125 0 010 1.953l-7.108 4.062a1.125 1.125 0 01-1.683-.977V8.688z" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -2169,13 +2533,12 @@
                   <div class="flex items-center gap-2">
                     <select id="langSelect"
                       class="bg-white/70 border border-slate-900/10 rounded-2xl px-4 py-2 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition">
-                      <option value="ar">العربية</option>
-                      <option value="en">English (Khattab)</option>
-                      <option value="both">العربية + English</option>
+                      <option value="en" selected>English</option>
+                      <option value="both">English + العربية</option>
                     </select>
                     <button type="button" id="toggleVersesBtn" aria-expanded="false"
                       class="px-4 py-2 rounded-2xl bg-blue-600 text-white font-extrabold text-sm hover:opacity-90 transition">
-                      سياق الآيات
+                      ترجمة الآيات
                     </button>
                   </div>
                 </div>
