@@ -2330,6 +2330,352 @@
       opacity: 1;
       transform: translateY(0);
     }
+
+    /* ====================================================================
+     * Offline downloads panel (APP ONLY — button revealed by JS via isApp())
+     * ==================================================================== */
+
+    .offline-menu-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff, #f8fafc);
+      border: 1px solid rgba(15, 23, 42, .12);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+      color: #334155;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+
+    .offline-menu-btn:hover {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-color: rgba(15, 23, 42, .2);
+      color: #f1f5f9;
+      transform: translateY(-1px);
+    }
+
+    body.dark .offline-menu-btn {
+      background: linear-gradient(135deg, #232933, #1f252e);
+      border-color: rgba(148, 163, 184, .2);
+      color: #e2e8f0;
+    }
+
+    body.dark .offline-menu-btn:hover {
+      background: linear-gradient(135deg, #ffffff, #f1f5f9);
+      border-color: rgba(148, 163, 184, .3);
+      color: #1e293b;
+    }
+
+    .offline-menu-btn svg { width: 18px; height: 18px; }
+
+    /* Backdrop + centered card */
+    .offline-sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      direction: rtl;
+    }
+
+    .offline-sheet--open { display: flex; }
+
+    .offline-sheet__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, .42);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      animation: offline-sheet-fade 180ms ease forwards;
+    }
+
+    .offline-sheet__card {
+      position: relative;
+      width: min(440px, 100%);
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      background: rgba(247, 251, 255, .96);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 22px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
+      animation: offline-sheet-pop 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    body.dark .offline-sheet__card {
+      background: rgba(35, 41, 51, .98);
+      border-color: rgba(148, 163, 184, .18);
+      color: #e2e8f0;
+    }
+
+    @keyframes offline-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes offline-sheet-pop {
+      from { opacity: 0; transform: translateY(8px) scale(.98) }
+      to { opacity: 1; transform: translateY(0) scale(1) }
+    }
+
+    .offline-sheet__close {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      border: none;
+      background: rgba(15, 23, 42, .06);
+      color: #475569;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+
+    .offline-sheet__close:hover { background: rgba(15, 23, 42, .12); }
+    .offline-sheet__close svg { width: 16px; height: 16px; }
+
+    body.dark .offline-sheet__close {
+      background: rgba(148, 163, 184, .14);
+      color: #cbd5e1;
+    }
+
+    body.dark .offline-sheet__close:hover { background: rgba(148, 163, 184, .24); }
+
+    .offline-sheet__head { text-align: center; margin-bottom: 18px; padding-top: 4px; }
+
+    .offline-sheet__icon {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 10px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(29, 143, 255, .15), rgba(29, 143, 255, .05));
+      color: #1d8fff;
+    }
+
+    .offline-sheet__icon svg { width: 28px; height: 28px; }
+
+    .offline-sheet__title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+    }
+
+    .offline-sheet__desc {
+      margin: 6px 0 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted, #64748b);
+      line-height: 1.7;
+    }
+
+    .offline-sheet__rows { display: flex; flex-direction: column; gap: 12px; }
+
+    .offline-row {
+      background: rgba(255, 255, 255, .7);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 16px;
+      padding: 14px 14px 14px;
+    }
+
+    body.dark .offline-row {
+      background: rgba(255, 255, 255, .03);
+      border-color: rgba(148, 163, 184, .16);
+    }
+
+    .offline-row__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .offline-row__title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+    }
+
+    .offline-row__size {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted, #64748b);
+      background: rgba(15, 23, 42, .05);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    body.dark .offline-row__size { background: rgba(148, 163, 184, .14); }
+
+    .offline-row__desc {
+      font-size: 12.5px;
+      color: var(--muted, #64748b);
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .offline-row__status { min-height: 38px; }
+
+    /* States */
+    .offline-row__progress { display: flex; flex-direction: column; gap: 8px; }
+    .offline-row__progress .mushaf-download__bar { margin: 0; }
+    .offline-row__progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .offline-row__progress-msg {
+      color: var(--text, #0b1326);
+      font-weight: 600;
+      line-height: 1.5;
+      min-height: 1.5em;
+      transition: opacity .25s ease;
+    }
+    .offline-row__progress-pct {
+      color: var(--muted, #64748b);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .03em;
+    }
+
+    .offline-row__pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: flex-start;
+    }
+    .offline-row__pill svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .offline-row__pill--warn {
+      background: rgba(245, 158, 11, .12);
+      color: #b45309;
+    }
+    body.dark .offline-row__pill--warn { background: rgba(245, 158, 11, .14); color: #fbbf24; }
+    .offline-row__pill--err {
+      background: rgba(239, 68, 68, .12);
+      color: #b91c1c;
+      justify-content: space-between;
+    }
+    body.dark .offline-row__pill--err { background: rgba(239, 68, 68, .14); color: #fca5a5; }
+
+    .offline-row__done {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .offline-row__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, .14);
+      color: #047857;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+    body.dark .offline-row__badge { background: rgba(16, 185, 129, .16); color: #6ee7b7; }
+    .offline-row__badge svg { width: 14px; height: 14px; }
+
+    .offline-row__done-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .offline-row__confirm {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(245, 158, 11, .08);
+      border: 1px solid rgba(245, 158, 11, .25);
+    }
+    body.dark .offline-row__confirm { background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .3); }
+    .offline-row__confirm-text {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text, #0b1326);
+      line-height: 1.6;
+    }
+    .offline-row__confirm-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+
+    /* Buttons */
+    .offline-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .offline-btn svg { width: 15px; height: 15px; }
+
+    .offline-btn--primary {
+      width: 100%;
+      background: linear-gradient(135deg, #1d8fff, #1976d2);
+      color: #ffffff;
+      box-shadow: 0 4px 10px rgba(29, 143, 255, .26);
+    }
+    .offline-btn--primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(29, 143, 255, .32);
+    }
+
+    .offline-btn--ghost {
+      background: rgba(15, 23, 42, .05);
+      color: var(--text, #0b1326);
+    }
+    .offline-btn--ghost:hover { background: rgba(15, 23, 42, .1); }
+    body.dark .offline-btn--ghost {
+      background: rgba(148, 163, 184, .12);
+      color: #e2e8f0;
+    }
+    body.dark .offline-btn--ghost:hover { background: rgba(148, 163, 184, .2); }
+
+    .offline-btn--danger {
+      background: rgba(239, 68, 68, .15);
+      color: #b91c1c;
+    }
+    .offline-btn--danger:hover { background: rgba(239, 68, 68, .22); }
+    body.dark .offline-btn--danger { background: rgba(239, 68, 68, .2); color: #fecaca; }
+    body.dark .offline-btn--danger:hover { background: rgba(239, 68, 68, .28); }
+
+    .offline-btn--danger-text { color: #b91c1c; }
+    body.dark .offline-btn--danger-text { color: #fecaca; }
   </style>
 </head>
 
@@ -2337,7 +2683,14 @@
   <div id="netBadge" class="hidden">بدون إنترنت</div>
   <!-- Minimal top bar -->
   <header class="site-header sticky top-0 z-40 border-b border-black/5">
-    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-end">
+    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-end gap-2">
+      <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
+        style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
+        </svg>
+      </button>
       <button id="themeToggle" type="button"
         class="theme-toggle px-4 py-2 rounded-2xl border shadow-sm font-extrabold text-sm">فاتح</button>
       <span id="themeLabel" class="sr-only">theme</span>
@@ -2398,17 +2751,6 @@
         <div class="mt-6">
           <div class="mx-auto max-w-4xl">
             <div id="tafsirSection" class="glass hidden rounded-3xl p-6">
-              <!-- First-launch tafsir download (app only) — reuses the Mushaf download-screen
-                   styling for visual consistency. -->
-              <div class="mushaf-download" id="tafsirDownload" aria-hidden="true">
-                <div class="mushaf-download__inner">
-                  <div class="mushaf-download__title" id="tafsirDownloadTitle">جارٍ تجهيز ميزة التفسير</div>
-                  <div class="mushaf-download__bar">
-                    <div class="mushaf-download__fill" id="tafsirDownloadFill"></div>
-                  </div>
-                  <div class="mushaf-download__pct" id="tafsirDownloadPct">0%</div>
-                </div>
-              </div>
               <!-- App-only "audio needs internet" notice (top of the tab) -->
               <div id="tafsirAudioMsg" class="tafsir-audio-msg" aria-live="polite" hidden></div>
               <!-- Controls layout: tafsir menu up, compare centered, nav centered -->

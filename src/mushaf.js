@@ -522,27 +522,14 @@ export function preloadMushafData() {
     }).catch(() => { });
 }
 
-/* Gate every Mushaf open. Website + already-cached app → the normal,
- * memoised meta load. App on first launch → download the whole QCF4 set
- * once, with a progress prompt inside the panel, before continuing. */
+/* Gate every Mushaf open. Always loads the small meta set (~3 JSONs); the bulk
+ * QCF4 download is now user-initiated via the offline panel, so an app user
+ * who never taps "download" simply streams pages from GCS on demand — same as
+ * the website. */
 async function ensureMushafAssets() {
     unsealAppFonts(); // app-only: retire the static same-origin @font-face rules early
-    if (!isApp() || qcf4IsReady()) return ensureMetaLoaded();
-    return runFirstLaunchDownload();
+    return ensureMetaLoaded();
 }
-
-function showDownloadOverlay() {
-    const el = document.getElementById("mushafDownload");
-    if (el) { el.classList.add("mushaf-download--visible"); el.setAttribute("aria-hidden", "false"); }
-}
-
-function hideDownloadOverlay() {
-    const el = document.getElementById("mushafDownload");
-    if (el) { el.classList.remove("mushaf-download--visible"); el.setAttribute("aria-hidden", "true"); }
-}
-
-const DOWNLOAD_OFFLINE_MESSAGE = "لا يوجد اتصال بالإنترنت";
-let _qcf4OnlineArmed = false;
 
 // App-only: recitations stream from GCS (never cached), so playback needs a
 // connection. Surface that in the toolbar when a play attempt fails offline.
@@ -563,31 +550,16 @@ function hideMushafAudioOffline() {
     clearTimeout(_mushafAudioMsgTimer);
 }
 
-// Show the "no internet" error inside the download/loading screen, hide the
-// progress bar, and auto-retry the download once the connection returns.
-function showDownloadOffline() {
-    ensureDownloadFont();
-    showDownloadOverlay();
-    const title = document.getElementById("mushafDownloadTitle");
-    const bar = ROOT_EL?.querySelector("#mushafDownload .mushaf-download__bar");
-    const pct = document.getElementById("mushafDownloadPct");
-    if (title) { title.style.opacity = "1"; title.textContent = DOWNLOAD_OFFLINE_MESSAGE; }
-    if (bar) bar.style.display = "none";
-    if (pct) pct.style.display = "none";
-    if (!_qcf4OnlineArmed) {
-        _qcf4OnlineArmed = true;
-        const onOnline = () => {
-            window.removeEventListener("online", onOnline);
-            _qcf4OnlineArmed = false;
-            if (bar) bar.style.display = "";
-            if (pct) pct.style.display = "";
-            runFirstLaunchDownload();
-        };
-        window.addEventListener("online", onOnline);
-    }
-}
+/* ============================================================
+ * QCF4 offline download — user-initiated from the offline panel.
+ *
+ * Pub/sub: the panel subscribes on open to receive the live state
+ * (idle / downloading / done / offline / error) and replay the
+ * current progress. Closing the panel doesn't pause the download —
+ * it keeps running and the flag is set on success regardless.
+ * ============================================================ */
 
-const DOWNLOAD_MESSAGES = [
+const QCF4_DL_MESSAGES = [
     "جارٍ تجهيز ميزة التدبر",
     "بعد اكتمال التحميل، لن تحتاج للإنترنت",
     "استعدّ لتجربة تدبّر فريدة",
@@ -595,142 +567,150 @@ const DOWNLOAD_MESSAGES = [
     "تدبّر القرآن، متى شئت وأينما كنت",
     "اقرأ، تدبّر، واغتنم الأجرَين",
 ];
-const DOWNLOAD_FINAL_MESSAGE = "المصحف جاهز! اضغط مطولًا على الآية لتفسيرها";
+const QCF4_DL_FINAL_MESSAGE = "المصحف جاهز! اضغط مطولًا على الآية لتفسيرها";
 
-// App-only: pull IBM Plex Sans Arabic from Google Fonts for the download
-// screen. Injected here (not in CSS) so the website never fetches it.
-function ensureDownloadFont() {
-    if (document.getElementById("mushafDownloadFont")) return;
-    const link = document.createElement("link");
-    link.id = "mushafDownloadFont";
-    link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap";
-    document.head.appendChild(link);
+let QCF4_STATE = { status: "idle", pct: 0, done: 0, total: 0, message: "" };
+const QCF4_LISTENERS = new Set();
+let QCF4_DL_INFLIGHT = null;
+let _qcf4OnlineArmed = false;
+
+function setQcf4State(patch) {
+    QCF4_STATE = { ...QCF4_STATE, ...patch };
+    for (const fn of QCF4_LISTENERS) { try { fn(QCF4_STATE); } catch { } }
 }
 
-// Cross-fade the title through DOWNLOAD_MESSAGES on a loop. Returns a stop().
-function startTitleRotation() {
-    const title = document.getElementById("mushafDownloadTitle");
-    if (!title) return () => { };
-    let idx = 0;
-    title.textContent = DOWNLOAD_MESSAGES[0];
-    title.style.opacity = "1";
-    const interval = setInterval(() => {
-        title.style.opacity = "0";
-        setTimeout(() => {
-            idx = (idx + 1) % DOWNLOAD_MESSAGES.length;
-            title.textContent = DOWNLOAD_MESSAGES[idx];
-            title.style.opacity = "1";
-        }, 400);
-    }, 2500);
-    return () => clearInterval(interval);
+export function getQcf4State() {
+    if (qcf4IsReady()) return { status: "done" };
+    return { ...QCF4_STATE };
 }
 
-// Fade to the final tip and hold ~2s so the user can read it.
-function showFinalDownloadMessage() {
-    return new Promise((resolve) => {
-        const title = document.getElementById("mushafDownloadTitle");
-        if (!title) { resolve(); return; }
-        title.style.opacity = "0";
-        setTimeout(() => {
-            title.textContent = DOWNLOAD_FINAL_MESSAGE;
-            title.style.opacity = "1";
-            setTimeout(resolve, 2000);
-        }, 400);
-    });
+export function subscribeQcf4(fn) {
+    QCF4_LISTENERS.add(fn);
+    try { fn(getQcf4State()); } catch { }
+    return () => QCF4_LISTENERS.delete(fn);
 }
 
-function setDownloadProgress(done, total) {
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    const fill = document.getElementById("mushafDownloadFill");
-    const label = document.getElementById("mushafDownloadPct");
-    if (fill) fill.style.width = `${pct}%`;
-    if (label) label.textContent = `${pct}%`;
+export function isQcf4Ready() { return qcf4IsReady(); }
+export const QCF4_TOTAL_MB = 189;
+
+/* Wipe the QCF4 cache and ready flag so the offline panel can offer
+ * "delete to free space". Resets the meta promise so subsequent reads
+ * re-populate the cache lazily. Safe to call when already-clean. */
+export async function deleteQcf4Cache() {
+    try { localStorage.removeItem(QCF4_READY_FLAG); } catch { }
+    try { await caches.delete(QCF4_CACHE_NAME); } catch { }
+    _qcf4CachePromise = null;
+    META_READY = null;
+    FONT_MAP = null;
+    CHAPTERS = null;
+    VERSES_LOOKUP = null;
+    PAGE_CACHE.clear();
+    setQcf4State({ status: "idle", pct: 0, done: 0, total: 0, message: "" });
 }
 
-/* Download every QCF4 file into the cache once: 3 meta JSON files, all 604
- * page JSON files, and every woff2 font. Updates the progress bar as files
- * land and only sets the ready flag if the whole set succeeds. */
-async function runFirstLaunchDownload() {
-    if (!ROOT_EL) buildShell();
-    openPanel();
-    // setAppMode may have staged the panel at opacity 0 for its fade-in; the
-    // download prompt must be visible now, so clear the fade classes.
-    ROOT_EL?.classList.remove("mode-fade-in", "mode-fade-out");
-    ensureDownloadFont();
-    showDownloadOverlay();
+/* Download all QCF4 assets into the cache: 3 meta JSONs, 604 page JSONs, all
+ * woff2 fonts. The cache.put happens inside qcf4Fetch — we count a file done
+ * once qcf4Fetch returns a successful response. Cache hits on already-fetched
+ * pages (from normal browsing) make the download appear to resume instantly. */
+export async function downloadQcf4Assets() {
+    if (QCF4_DL_INFLIGHT) return QCF4_DL_INFLIGHT;
 
-    // No connection → show the error right in the loading screen and stop.
-    if (!navigator.onLine) { showDownloadOffline(); return; }
-
-    const stopRotation = startTitleRotation();
-
-    // The 3 meta files come (and get cached) via ensureMetaLoaded; we need
-    // FONT_MAP to know which fonts exist.
-    try {
-        await ensureMetaLoaded();
-    } catch {
-        stopRotation();
-        showDownloadOffline();
-        return;
+    if (!navigator.onLine) {
+        setQcf4State({ status: "offline", message: "لا يوجد اتصال بالإنترنت" });
+        armQcf4OnlineRetry();
+        return { ok: false, offline: true };
     }
 
-    const fontFamilies = new Set(Object.values(FONT_MAP || {}));
-    fontFamilies.add("QCF4_QBSML"); // surah-header font (not present in font-map)
+    QCF4_DL_INFLIGHT = (async () => {
+        setQcf4State({ status: "downloading", pct: 0, done: 0, total: 1, message: QCF4_DL_MESSAGES[0] });
 
-    const base = getQCF4Base();
-    const urls = [];
-    for (let i = 1; i <= TOTAL_PAGES; i++) {
-        urls.push(`${base}/data/qcf4/pages/${String(i).padStart(3, "0")}.json`);
-    }
-    for (const family of fontFamilies) {
-        const fileName = family === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${family}_W.woff2`;
-        urls.push(`${base}/fonts/qcf4/${fileName}`);
-    }
+        // Rotate the Arabic encouragement messages every 2.5s.
+        let msgIdx = 0;
+        const rotation = setInterval(() => {
+            msgIdx = (msgIdx + 1) % QCF4_DL_MESSAGES.length;
+            setQcf4State({ message: QCF4_DL_MESSAGES[msgIdx] });
+        }, 2500);
 
-    const total = urls.length + 3; // + the 3 meta files already fetched above
-    let done = 3;
-    setDownloadProgress(done, total);
-
-    // Download a batch with bounded concurrency; return the URLs that failed.
-    async function downloadBatch(batch, countProgress) {
-        const queue = batch.slice();
-        const failures = [];
-        const CONCURRENCY = 6;
-        async function worker() {
-            while (queue.length) {
-                const url = queue.shift();
-                try {
-                    const res = await qcf4Fetch(url);
-                    if (!res.ok) failures.push(url);
-                } catch { failures.push(url); }
-                if (countProgress) setDownloadProgress(++done, total);
-            }
+        try {
+            await ensureMetaLoaded();
+        } catch {
+            clearInterval(rotation);
+            setQcf4State({ status: "offline", message: "لا يوجد اتصال بالإنترنت" });
+            armQcf4OnlineRetry();
+            return { ok: false, offline: true };
         }
-        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-        return failures;
-    }
 
-    // Initial pass over the whole set, then up to two retry passes over just
-    // the failures so a transient GCS hiccup doesn't permanently block the
-    // "ready" flag (which would re-show this prompt on the next launch).
-    let failures = await downloadBatch(urls, true);
-    for (let attempt = 0; attempt < 2 && failures.length; attempt++) {
-        failures = await downloadBatch(failures, false);
-    }
+        const fontFamilies = new Set(Object.values(FONT_MAP || {}));
+        fontFamilies.add("QCF4_QBSML"); // surah-header font (not present in font-map)
 
-    stopRotation();
+        const base = getQCF4Base();
+        const urls = [];
+        for (let i = 1; i <= TOTAL_PAGES; i++) {
+            urls.push(`${base}/data/qcf4/pages/${String(i).padStart(3, "0")}.json`);
+        }
+        for (const family of fontFamilies) {
+            const fileName = family === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${family}_W.woff2`;
+            urls.push(`${base}/fonts/qcf4/${fileName}`);
+        }
 
-    if (failures.length === 0) {
-        try { localStorage.setItem(QCF4_READY_FLAG, "1"); } catch { }
-        await showFinalDownloadMessage();
-        hideDownloadOverlay();
-    } else if (!navigator.onLine) {
-        // Connection dropped mid-download — show it on the loading screen.
-        showDownloadOffline();
-    } else {
-        hideDownloadOverlay();
-    }
+        const total = urls.length + 3; // + the 3 meta files already fetched above
+        let done = 3;
+        setQcf4State({ done, total, pct: Math.round((done / total) * 100) });
+
+        async function downloadBatch(batch, countProgress) {
+            const queue = batch.slice();
+            const failures = [];
+            const CONCURRENCY = 6;
+            async function worker() {
+                while (queue.length) {
+                    const url = queue.shift();
+                    try {
+                        const res = await qcf4Fetch(url);
+                        if (!res.ok) failures.push(url);
+                    } catch { failures.push(url); }
+                    if (countProgress) {
+                        done++;
+                        setQcf4State({ done, total, pct: Math.round((done / total) * 100) });
+                    }
+                }
+            }
+            await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+            return failures;
+        }
+
+        // Initial pass, then up to two retry passes for transient GCS hiccups.
+        let failures = await downloadBatch(urls, true);
+        for (let attempt = 0; attempt < 2 && failures.length; attempt++) {
+            failures = await downloadBatch(failures, false);
+        }
+
+        clearInterval(rotation);
+
+        if (failures.length === 0) {
+            try { localStorage.setItem(QCF4_READY_FLAG, "1"); } catch { }
+            setQcf4State({ status: "done", pct: 100, message: QCF4_DL_FINAL_MESSAGE });
+            return { ok: true };
+        }
+        if (!navigator.onLine) {
+            setQcf4State({ status: "offline", message: "لا يوجد اتصال بالإنترنت" });
+            armQcf4OnlineRetry();
+            return { ok: false, offline: true };
+        }
+        setQcf4State({ status: "error", message: "تعذّر تحميل بعض الملفات" });
+        return { ok: false, missing: failures };
+    })().finally(() => { QCF4_DL_INFLIGHT = null; });
+    return QCF4_DL_INFLIGHT;
+}
+
+function armQcf4OnlineRetry() {
+    if (_qcf4OnlineArmed) return;
+    _qcf4OnlineArmed = true;
+    const onOnline = () => {
+        window.removeEventListener("online", onOnline);
+        _qcf4OnlineArmed = false;
+        downloadQcf4Assets();
+    };
+    window.addEventListener("online", onOnline);
 }
 
 async function fetchPage(pageNo) {
@@ -924,14 +904,6 @@ function buildShell() {
     <div class="mushaf-stage">
       <div class="mushaf-loader" id="mushafLoader">
         <div class="mushaf-spinner"></div>
-      </div>
-      <!-- First-launch QCF4 download (app only) -->
-      <div class="mushaf-download" id="mushafDownload" aria-hidden="true">
-        <div class="mushaf-download__inner">
-          <div class="mushaf-download__title" id="mushafDownloadTitle">جارٍ تجهيز ميزة التدبر</div>
-          <div class="mushaf-download__bar"><div class="mushaf-download__fill" id="mushafDownloadFill"></div></div>
-          <div class="mushaf-download__pct" id="mushafDownloadPct">0%</div>
-        </div>
       </div>
       <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
       <div class="mushaf-pages" id="mushafPages"></div>

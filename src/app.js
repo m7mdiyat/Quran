@@ -507,9 +507,10 @@ async function getOfflineComparison(surah, ayah) {
   return data?.[`${surah}:${ayah}`] || null;
 }
 
-/* ---------------- First-launch download screen (app only) ----------------
- * Visual twin of the Mushaf download screen (src/mushaf.js): same IBM Plex
- * Sans Arabic title font, same cross-fade rotation, same progress bar. */
+/* ---------------- Tafsir offline download (app only, user-initiated) -------
+ * Pub/sub: the offline panel subscribes to receive live progress, then renders
+ * its row state. Closing the panel doesn't pause the download — the in-flight
+ * promise + flag are managed independently of the UI. */
 
 // Same sparkles icon used on the مختصر التفاسير (compare) button.
 const TAFSIR_DL_SPARKLE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;display:inline-block;vertical-align:-3px;margin-inline-start:6px;"><path fill-rule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z" clip-rule="evenodd" /></svg>`;
@@ -522,139 +523,86 @@ const TAFSIR_DL_MESSAGES = [
 ];
 const TAFSIR_DL_FINAL = "جاهز! فسّر بدون إنترنت";
 
-// App-only: pull IBM Plex Sans Arabic from Google Fonts for the download
-// screen (injected here, not in CSS, so the website never fetches it).
-function ensureTafsirDownloadFont() {
-  if (document.getElementById("tafsirDownloadFont") || document.getElementById("mushafDownloadFont")) return;
-  const link = document.createElement("link");
-  link.id = "tafsirDownloadFont";
-  link.rel = "stylesheet";
-  link.href = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap";
-  document.head.appendChild(link);
-}
-
-function showTafsirDownloadOverlay() {
-  const el = document.getElementById("tafsirDownload");
-  if (el) { el.classList.add("mushaf-download--visible"); el.setAttribute("aria-hidden", "false"); }
-}
-
-function hideTafsirDownloadOverlay() {
-  const el = document.getElementById("tafsirDownload");
-  if (el) { el.classList.remove("mushaf-download--visible"); el.setAttribute("aria-hidden", "true"); }
-}
-
-// Cross-fade the title through TAFSIR_DL_MESSAGES on a loop. Returns a stop().
-// Uses innerHTML (not textContent) so the 4th message can carry the sparkle icon.
-function startTafsirTitleRotation() {
-  const title = document.getElementById("tafsirDownloadTitle");
-  if (!title) return () => { };
-  let idx = 0;
-  title.innerHTML = TAFSIR_DL_MESSAGES[0];
-  title.style.opacity = "1";
-  const interval = setInterval(() => {
-    title.style.opacity = "0";
-    setTimeout(() => {
-      idx = (idx + 1) % TAFSIR_DL_MESSAGES.length;
-      title.innerHTML = TAFSIR_DL_MESSAGES[idx];
-      title.style.opacity = "1";
-    }, 400);
-  }, 2500);
-  return () => clearInterval(interval);
-}
-
-// Fade to the final message and hold ~2s so the user can read it.
-function showTafsirFinalMessage() {
-  return new Promise((resolve) => {
-    const title = document.getElementById("tafsirDownloadTitle");
-    if (!title) { resolve(); return; }
-    title.style.opacity = "0";
-    setTimeout(() => {
-      title.innerHTML = TAFSIR_DL_FINAL;
-      title.style.opacity = "1";
-      setTimeout(resolve, 2000);
-    }, 400);
-  });
-}
-
-function setTafsirDownloadProgress(done, total) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const fill = document.getElementById("tafsirDownloadFill");
-  const label = document.getElementById("tafsirDownloadPct");
-  if (fill) fill.style.width = `${pct}%`;
-  if (label) label.textContent = `${pct}%`;
-}
-
-/* Download the 8 tafsir files into the Cache API once. Each file is counted as
- * done only when its body is actually written AND re-readable (cacheTafsirFile),
- * not merely fetched — so quota/eviction failures can't leave a half-cached set
- * behind a "ready" flag. A final verification pass confirms every file is
- * retrievable before the flag is set; otherwise the screen re-appears next
- * launch and the missing files are retried. Requests persistent storage first
- * so the ~134 MB set isn't evicted. Guarded by an in-flight promise. */
-// Show the "no internet" error inside the download/loading screen itself, hide
-// the progress bar, and auto-retry once the connection returns.
-function showTafsirDownloadOffline() {
-  ensureTafsirDownloadFont();
-  showTafsirDownloadOverlay();
-  const title = document.getElementById("tafsirDownloadTitle");
-  const bar = document.querySelector("#tafsirDownload .mushaf-download__bar");
-  const pct = document.getElementById("tafsirDownloadPct");
-  if (title) { title.style.opacity = "1"; title.textContent = OFFLINE_MESSAGE; }
-  if (bar) bar.style.display = "none";
-  if (pct) pct.style.display = "none";
-  if (!TAFSIR_ONLINE_ARMED) {
-    TAFSIR_ONLINE_ARMED = true;
-    const onOnline = () => {
-      window.removeEventListener("online", onOnline);
-      TAFSIR_ONLINE_ARMED = false;
-      if (bar) bar.style.display = "";
-      if (pct) pct.style.display = "";
-      runTafsirFirstLaunchDownload();
-    };
-    window.addEventListener("online", onOnline);
-  }
-}
+let TAFSIR_STATE = { status: "idle", pct: 0, done: 0, total: 0, message: "" };
+const TAFSIR_LISTENERS = new Set();
+let TAFSIR_DL_INFLIGHT = null;
 let TAFSIR_ONLINE_ARMED = false;
 
-let TAFSIR_DL_INFLIGHT = null;
-function runTafsirFirstLaunchDownload() {
+function setTafsirState(patch) {
+  TAFSIR_STATE = { ...TAFSIR_STATE, ...patch };
+  for (const fn of TAFSIR_LISTENERS) { try { fn(TAFSIR_STATE); } catch { } }
+}
+
+export function getTafsirDlState() {
+  if (tafsirIsReady()) return { status: "done" };
+  return { ...TAFSIR_STATE };
+}
+
+export function subscribeTafsirDl(fn) {
+  TAFSIR_LISTENERS.add(fn);
+  try { fn(getTafsirDlState()); } catch { }
+  return () => TAFSIR_LISTENERS.delete(fn);
+}
+
+export function isTafsirReady() { return tafsirIsReady(); }
+export const TAFSIR_TOTAL_MB = 134;
+
+/* Wipe the tafsir cache + flag so the panel can offer "delete to free space".
+ * Also resets the in-memory book LRU + comparisons cache so subsequent reads
+ * go to the network and don't return stale parsed data. */
+export async function deleteTafsirCache() {
+  try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
+  try { await caches.delete(TAFSIR_CACHE_NAME); } catch { }
+  _tafsirCachePromise = null;
+  COMPARISONS_DATA = null;
+  TAFSIR_BOOK_CACHE.clear();
+  setTafsirState({ status: "idle", pct: 0, done: 0, total: 0, message: "" });
+}
+
+/* Download the 8 tafsir files (7 books + comparisons.json) into the Cache API.
+ * A file is counted as done only when its body is actually written AND
+ * re-readable (cacheTafsirFile) — so quota/eviction failures can't leave a
+ * half-cached set behind a "ready" flag. A final verification pass confirms
+ * every file is retrievable before the flag is set. */
+export async function downloadTafsirAssets() {
   if (TAFSIR_DL_INFLIGHT) return TAFSIR_DL_INFLIGHT;
+
+  if (!navigator.onLine) {
+    setTafsirState({ status: "offline", message: OFFLINE_MESSAGE });
+    armTafsirOnlineRetry();
+    return { ok: false, offline: true };
+  }
+
   TAFSIR_DL_INFLIGHT = (async () => {
-    // Make sure the tab (and thus the overlay) is visible before showing it.
-    tafsirSection?.classList.remove("hidden");
-    ensureTafsirDownloadFont();
-    showTafsirDownloadOverlay();
+    setTafsirState({ status: "downloading", pct: 0, done: 0, total: TAFSIR_OFFLINE_FILES.length, message: TAFSIR_DL_MESSAGES[0] });
 
-    // No connection → show the error right in the loading screen and stop.
-    if (!navigator.onLine) {
-      showTafsirDownloadOffline();
-      return;
-    }
+    let msgIdx = 0;
+    const rotation = setInterval(() => {
+      msgIdx = (msgIdx + 1) % TAFSIR_DL_MESSAGES.length;
+      setTafsirState({ message: TAFSIR_DL_MESSAGES[msgIdx] });
+    }, 2500);
 
-    const stopRotation = startTafsirTitleRotation();
-
-    // Ask for durable storage so the large cache isn't evicted under pressure
-    // and gets the bigger persistent quota. Best-effort; ignore the outcome.
+    // Ask for durable storage so the ~134MB cache isn't evicted under pressure.
     try { await navigator.storage?.persist?.(); } catch { }
 
     const urls = TAFSIR_OFFLINE_FILES.map((f) => `${TAFSIR_GCS_BASE}/${f}`);
     const total = urls.length;
     let done = 0;
-    setTafsirDownloadProgress(done, total);
+    setTafsirState({ done, total, pct: 0 });
 
-    // Download a batch; a file fails unless it is verifiably stored. Lower
-    // concurrency than QCF4 — these are multi-MB bodies, so 3 keeps peak memory
-    // sane on low-end devices while still overlapping network + disk writes.
     async function downloadBatch(batch, countProgress) {
       const queue = batch.slice();
       const failures = [];
-      const CONCURRENCY = 3;
+      const CONCURRENCY = 3; // multi-MB bodies; keep peak memory sane on low-end devices
       async function worker() {
         while (queue.length) {
           const url = queue.shift();
           const stored = await cacheTafsirFile(url);
           if (!stored) failures.push(url);
-          if (countProgress) setTafsirDownloadProgress(++done, total);
+          if (countProgress) {
+            done++;
+            setTafsirState({ done, total, pct: Math.round((done / total) * 100) });
+          }
         }
       }
       await Promise.all(Array.from({ length: CONCURRENCY }, worker));
@@ -668,47 +616,35 @@ function runTafsirFirstLaunchDownload() {
 
     // Final guard: only flag ready when every file is actually retrievable.
     const missing = failures.length ? failures : await missingTafsirFiles(urls);
-    stopRotation();
+    clearInterval(rotation);
 
     if (missing.length === 0) {
       try { localStorage.setItem(TAFSIR_READY_FLAG, "1"); } catch { }
-      await showTafsirFinalMessage();
-      hideTafsirDownloadOverlay();
-    } else {
-      try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
-      // If the connection dropped mid-download, surface it on the loading screen
-      // (and auto-retry when it returns). Otherwise just close — it retries next open.
-      if (!navigator.onLine) {
-        showTafsirDownloadOffline();
-      } else {
-        console.warn("[tafsir-offline] not ready — files missing from cache:", missing);
-        hideTafsirDownloadOverlay();
-      }
+      setTafsirState({ status: "done", pct: 100, message: TAFSIR_DL_FINAL });
+      return { ok: true };
     }
+    try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
+    if (!navigator.onLine) {
+      setTafsirState({ status: "offline", message: OFFLINE_MESSAGE });
+      armTafsirOnlineRetry();
+      return { ok: false, offline: true };
+    }
+    console.warn("[tafsir-offline] not ready — files missing from cache:", missing);
+    setTafsirState({ status: "error", message: "تعذّر تحميل بعض الملفات" });
+    return { ok: false, missing };
   })().finally(() => { TAFSIR_DL_INFLIGHT = null; });
   return TAFSIR_DL_INFLIGHT;
 }
 
-/* Entry point for the Tafsir tab (app only). Triggers the first-launch download
- * when not ready, and otherwise verifies — once per session — that the cached
- * set is still complete. This self-heals installs whose flag was set before the
- * cache-verification fix, or whose large files were later evicted: if anything
- * is missing and we're online, it re-runs the download; offline, it leaves the
- * flag alone and lets the readers degrade gracefully. */
-let TAFSIR_INTEGRITY_OK = false;
-async function ensureTafsirOffline() {
-  if (!isApp()) return;
-  if (tafsirIsReady()) {
-    if (TAFSIR_INTEGRITY_OK) return;
-    const urls = TAFSIR_OFFLINE_FILES.map((f) => `${TAFSIR_GCS_BASE}/${f}`);
-    const missing = await missingTafsirFiles(urls);
-    if (missing.length === 0) { TAFSIR_INTEGRITY_OK = true; return; }
-    if (!navigator.onLine) return; // can't repair now; reads fall back cleanly
-    console.warn("[tafsir-offline] cache incomplete, re-downloading:", missing);
-    try { localStorage.removeItem(TAFSIR_READY_FLAG); } catch { }
-  }
-  await runTafsirFirstLaunchDownload();
-  if (tafsirIsReady()) TAFSIR_INTEGRITY_OK = true;
+function armTafsirOnlineRetry() {
+  if (TAFSIR_ONLINE_ARMED) return;
+  TAFSIR_ONLINE_ARMED = true;
+  const onOnline = () => {
+    window.removeEventListener("online", onOnline);
+    TAFSIR_ONLINE_ARMED = false;
+    downloadTafsirAssets();
+  };
+  window.addEventListener("online", onOnline);
 }
 
 /* ---------------- API Warm-up ---------------- */
@@ -3017,12 +2953,6 @@ function updateBasmalaUI(surahNo, ayahNo) {
 }
 
 async function updateTafsirUI(surahNo, ayahNo) {
-  // App: download the offline tafsir set on first launch, and verify/repair it
-  // once per session. No-op on the website.
-  if (isApp()) {
-    await ensureTafsirOffline();
-  }
-
   const reqId = ++TAFSIR_REQUEST_ID; // increment request ID
 
   // Cancel any in-flight background request
@@ -4567,6 +4497,14 @@ async function init() {
   updateCompareButtonState();
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
+
+  // App-only: lazy-load the offline-downloads panel so the web bundle stays clean.
+  // The panel reveals its header icon on init; web users never see it.
+  if (isApp()) {
+    import("./offline-panel.js")
+      .then((m) => m.initOfflinePanel())
+      .catch((e) => console.error("offline-panel init failed", e));
+  }
 
   // Lock search until core files load
   if (textSearch) {
