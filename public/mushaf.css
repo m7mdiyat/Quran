@@ -620,7 +620,9 @@ body.dark .mushaf-ayah-menu {
  * مختصر التفاسير — quick-view card
  * ============================================================ */
 .mushaf-mukhtasar {
-    position: absolute;
+    /* Lives on <body> when open so it can be dragged freely across the
+       whole page; position:fixed anchors it to the viewport. */
+    position: fixed;
     width: min(340px, calc(100vw - 32px));
     padding: 14px 16px 12px;
     border-radius: 16px;
@@ -630,16 +632,18 @@ body.dark .mushaf-ayah-menu {
         0 3px 10px rgba(15, 23, 42, 0.1);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    z-index: 40;
+    z-index: 1000;
     opacity: 0;
-    transform: translateY(6px) scale(0.97);
     pointer-events: none;
-    transition: opacity 170ms ease, transform 170ms ease;
+    /* Fade only — NO transform on open. If we animate transform here,
+       grabbing the card mid-transition makes the --dragging class snap
+       it to translateY(0), which visually yanks the card upward by
+       however many pixels were left in the animation. */
+    transition: opacity 170ms ease;
 }
 
 .mushaf-mukhtasar--open {
     opacity: 1;
-    transform: translateY(0) scale(1);
     pointer-events: auto;
 }
 
@@ -652,6 +656,38 @@ body.dark .mushaf-mukhtasar {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    /* The header acts as the drag handle. Hide text-selection and stop the
+       browser from claiming touch gestures so a touch-drag actually moves
+       the card instead of scrolling/zooming the page. The close button
+       opts back into pointer/touch behaviour via its own rule below.
+       Two-line cursor declaration: older WebKit falls through to the first
+       valid value (-webkit-grab); modern engines pick the standard `grab`. */
+    cursor: -webkit-grab;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+/* The title span inherits cursor from the header, but the chip/icon
+   children sometimes get a different default — pin grab here too. */
+.mushaf-mukhtasar__title,
+.mushaf-mukhtasar__title * {
+    cursor: inherit;
+}
+
+.mushaf-mukhtasar--dragging,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__header,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__title,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__title * {
+    cursor: -webkit-grabbing;
+    cursor: grabbing;
+}
+
+/* While the card is being dragged, suppress the open-state transition so
+   the position updates don't lag behind the pointer. */
+.mushaf-mukhtasar--dragging {
+    transition: none !important;
 }
 
 .mushaf-mukhtasar__title {
@@ -680,6 +716,10 @@ body.dark .mushaf-mukhtasar {
     color: var(--muted);
     cursor: pointer;
     transition: background 150ms ease, color 150ms ease;
+    /* Restore normal pointer/touch behaviour so taps register cleanly even
+       though the surrounding header is a drag handle. */
+    touch-action: auto;
+    user-select: auto;
 }
 
 .mushaf-mukhtasar__close:hover {
@@ -706,6 +746,9 @@ body.dark .mushaf-mukhtasar {
     max-height: 220px;
     overflow-y: auto;
     text-align: justify;
+    /* Stop scroll chaining: when the inner Mukhtasar text hits its top/bottom,
+       don't bubble the remaining wheel/touch delta to the page underneath. */
+    overscroll-behavior: contain;
 }
 
 .mushaf-mukhtasar__loading {

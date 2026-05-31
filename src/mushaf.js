@@ -18,6 +18,8 @@
 
 "use strict";
 
+import { surahAudio } from "./surahAudio.js";
+
 /* ============================================================
  * QCF4 asset source + offline caching (Capacitor app only)
  *
@@ -163,7 +165,6 @@ let AUDIO_MODE = "single";
 let AUDIO_VOLUME = 0.8;          // 0..1
 let AUDIO_SPEED = 1;             // 0.5..2
 let MUTED_PREV_VOLUME = 0.8;     // volume to restore when un-muting
-let PRELOADED_AUDIO = null;      // { key, el } — eager next-ayah audio for continuous mode
 let FONT_SIZE = "m";             // "s" (صغير) | "m" (عادي, default) — old "l" is migrated to "m"
 let CURRENT_RECITER_LOCAL = null;
 
@@ -194,12 +195,17 @@ export function initMushaf(deps) {
         }
         const am = localStorage.getItem(STORAGE.AUDIO_MODE);
         if (am === "single" || am === "continuous") AUDIO_MODE = am;
-        const vol = parseFloat(localStorage.getItem(STORAGE.VOLUME));
+        // Volume + speed: prefer the shared 'audioVolume' / 'audioSpeed' keys
+        // (also used by app.js) so both modes load the same value. Fall back
+        // to the legacy mushaf_* keys for users who only saved from Mushaf.
+        const vol = parseFloat(localStorage.getItem("audioVolume"))
+                 || parseFloat(localStorage.getItem(STORAGE.VOLUME));
         if (Number.isFinite(vol) && vol >= 0 && vol <= 1) {
             AUDIO_VOLUME = vol;
             if (vol > 0) MUTED_PREV_VOLUME = vol;
         }
-        const speed = parseFloat(localStorage.getItem(STORAGE.SPEED));
+        const speed = parseFloat(localStorage.getItem("audioSpeed"))
+                   || parseFloat(localStorage.getItem(STORAGE.SPEED));
         if (Number.isFinite(speed) && speed >= 0.5 && speed <= 2) {
             AUDIO_SPEED = speed;
         }
@@ -240,20 +246,80 @@ export function isMushafMode() {
 }
 
 /**
+ * Sync the Mushaf-side speed/volume cache + UI from an outside change.
+ * Called by app.js when the Tafsir tab adjusts speed/volume, so the Mushaf
+ * slider/button shows the same value when the user switches over. Does NOT
+ * touch the engine (the engine's _speed was already updated by the caller).
+ */
+export function syncSpeed(s) {
+    AUDIO_SPEED = Math.max(0.5, Math.min(2, Number(s) || 1));
+    if (AUDIO_PLAYER) AUDIO_PLAYER.playbackRate = AUDIO_SPEED;
+    const slider = document.getElementById("mushafSpeedSlider");
+    if (slider) slider.value = String(AUDIO_SPEED);
+    const btn = document.getElementById("mushafSpeedBtn");
+    if (btn) btn.textContent = `${AUDIO_SPEED}x`;
+}
+
+export function syncVolume(v) {
+    AUDIO_VOLUME = Math.max(0, Math.min(1, Number(v) || 0));
+    if (AUDIO_VOLUME > 0) MUTED_PREV_VOLUME = AUDIO_VOLUME;
+    if (AUDIO_PLAYER) AUDIO_PLAYER.volume = AUDIO_VOLUME;
+    const slider = document.getElementById("mushafVolSlider");
+    if (slider) slider.value = String(Math.round(AUDIO_VOLUME * 100));
+    updateVolumeIcon();
+}
+
+/**
+ * Sync Mushaf-side play mode (single/continuous) from an outside change.
+ * Called by app.js when the Tafsir tab flips the listening-mode chip, so
+ * both chips reflect the same setting. Also updates the live engine's
+ * continuous flag if it's running, so a running continuous→single (or
+ * back) flip from Tafsir applies to the engine even while Mushaf is
+ * hidden.
+ */
+export function syncAudioMode(mode) {
+    const newMode = mode === "continuous" ? "continuous" : "single";
+    if (AUDIO_MODE === newMode) return;
+    AUDIO_MODE = newMode;
+    try { localStorage.setItem(STORAGE.AUDIO_MODE, AUDIO_MODE); } catch { }
+    syncSettingsUI();
+    if (surahAudio.isActive()) surahAudio.setContinuous(AUDIO_MODE === "continuous");
+}
+
+/**
  * Toggle mode. Pure routing-preference except for two side effects:
  *   - Toggle OFF while panel is visible → hide panel, restore tafsir
  *     for the last viewed ayah, replaceState the URL to /S/A.
  *   - Toggle ON while a selected ayah exists (from either mode) →
  *     open the panel inline at that ayah.
  */
+let MODE_TRANSITIONING = false;
+
 export async function setAppMode(mode) {
     const wanted = mode === "mushaf" ? "mushaf" : "tafsir";
     if ((wanted === "mushaf") === MUSHAF_MODE) return;
+    // Reject overlapping toggles. Without this, two clicks in quick
+    // succession (or a click during the 180ms fade) race each other and the
+    // panels end up in a half-applied state.
+    if (MODE_TRANSITIONING) return;
+    MODE_TRANSITIONING = true;
+    try {
 
-    // Fix 6: stop any audio playing in BOTH modes before switching. The user
-    // is changing context — audio should not bleed across the toggle.
-    stopMushafAudio();
-    try { DEPS?.stopAudio?.(); } catch { }
+    // Audio preservation across the toggle:
+    //   - engine playing → keep it (handoff to resumeXxxFromEngine).
+    //   - per-ayah Audio playing in EITHER mode → leave it alone so the
+    //     ayah finishes naturally. Single-mode reciting should only stop
+    //     when the ayah ends, not when the user changes the view.
+    //   - nothing playing → tear down stale highlight / data-audio-active
+    //     so we don't carry visual residue across an idle toggle.
+    const engineLive = surahAudio.isActive();
+    const tafsirPerAyahLive = !!DEPS?.hasPerAyahAudio?.();
+    const mushafPerAyahLive = !!AUDIO_PLAYER;
+    const anyAudioLive = engineLive || tafsirPerAyahLive || mushafPerAyahLive;
+    if (!anyAudioLive) {
+        stopMushafAudio();
+        try { DEPS?.stopAudio?.(); } catch { }
+    }
 
     MUSHAF_MODE = wanted === "mushaf";
     document.documentElement.setAttribute("data-app-mode", wanted);
@@ -261,14 +327,28 @@ export async function setAppMode(mode) {
 
     if (wanted === "tafsir") {
         if (PANEL_OPEN) {
-            const target = LAST_VIEWED_AYAH || DEPS?.getCurrentAyah?.();
+            const target = engineLive
+                ? { s: surahAudio.getSurah(), a: surahAudio.getActiveAyah() }
+                : (LAST_VIEWED_AYAH || DEPS?.getCurrentAyah?.());
             await fadeOutPanel(ROOT_EL);
             // Stage the tafsir view at opacity 0 BEFORE unhiding it so the
             // transition from hidden→opacity-1 doesn't flash at full opacity.
             const tafsirEl = DEPS?.tafsirSectionEl;
             if (tafsirEl) tafsirEl.classList.add("mode-fade-in");
-            closePanel();
-            if (target && DEPS?.openTafsirForAyah) {
+            // Don't tear down ANY live playback during the close —
+            // resumeTafsirFromEngine needs the engine intact; a Mushaf-side
+            // per-ayah Audio should also keep playing until the ayah ends.
+            closePanel({ keepAudio: anyAudioLive });
+            if (engineLive && target && DEPS?.resumeTafsirFromEngine) {
+                // Tear down Mushaf-side visual state (highlight, attr) without
+                // touching the engine, then rebind engine→Tafsir handlers.
+                if (AUDIO_VERSE) clearHighlight(AUDIO_VERSE);
+                AUDIO_VERSE = null;
+                document.documentElement.removeAttribute("data-audio-active");
+                setPlaybackPlayingState(false);
+                DEPS.resumeTafsirFromEngine();
+                history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
+            } else if (target && DEPS?.openTafsirForAyah) {
                 DEPS.openTafsirForAyah(target.s, target.a);
                 history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
             }
@@ -279,8 +359,10 @@ export async function setAppMode(mode) {
 
     // wanted === "mushaf" — open the panel at the currently selected ayah.
     // ALWAYS prefer the tafsir's current ayah so switching modes shows the same ayah.
-    const fromTafsir = DEPS?.getCurrentAyah?.();
-    const target = fromTafsir || LAST_VIEWED_AYAH || null;
+    // When engine is live, follow IT instead so we land on the actively-playing ayah.
+    const target = engineLive
+        ? { s: surahAudio.getSurah(), a: surahAudio.getActiveAyah() }
+        : (DEPS?.getCurrentAyah?.() || LAST_VIEWED_AYAH || null);
     if (target) {
         const tafsirEl = DEPS?.tafsirSectionEl;
         if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
@@ -289,10 +371,17 @@ export async function setAppMode(mode) {
         // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
         ROOT_EL?.classList.add("mode-fade-in");
         // noScroll: the mode toggle must not move the viewport (Fix 3).
-        await openMushafAtAyah(target.s, target.a, { noScroll: true });
+        if (engineLive) {
+            await resumeMushafFromEngine();
+        } else {
+            await openMushafAtAyah(target.s, target.a, { noScroll: true });
+        }
         commitFadeIn(ROOT_EL);
     }
     // If no ayah has ever been selected, do nothing — wait for first click.
+    } finally {
+        MODE_TRANSITIONING = false;
+    }
 }
 
 /* Fix 4: fade helpers used by setAppMode. We don't tear down the existing
@@ -384,7 +473,7 @@ function openPanel() {
     if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.add("hidden");
 }
 
-function closePanel() {
+function closePanel({ keepAudio = false } = {}) {
     if (!PANEL_OPEN) return;
     PANEL_OPEN = false;
     ROOT_EL?.classList.remove("is-open");
@@ -393,7 +482,10 @@ function closePanel() {
     if (DEPS?.tafsirSectionEl) {
         if (DEPS?.hasCurrentAyah?.()) DEPS.tafsirSectionEl.classList.remove("hidden");
     }
-    stopMushafAudio();
+    // keepAudio: setAppMode hands the live engine over to Tafsir without
+    // stopping audio. The default closePanel still tears audio down so the
+    // panel-close case (toggle off, etc.) behaves as before.
+    if (!keepAudio) stopMushafAudio();
     closeAyahMenu();
     closeMukhtasarCard();
 }
@@ -1611,26 +1703,30 @@ function applyVolume(v, { persist = false, trackUnmute = true } = {}) {
     AUDIO_VOLUME = Math.max(0, Math.min(1, v));
     if (trackUnmute && AUDIO_VOLUME > 0) MUTED_PREV_VOLUME = AUDIO_VOLUME;
     if (AUDIO_PLAYER) AUDIO_PLAYER.volume = AUDIO_VOLUME;
-    if (PRELOADED_AUDIO?.el) PRELOADED_AUDIO.el.volume = AUDIO_VOLUME;
+    surahAudio.setVolume(AUDIO_VOLUME);
     if (persist) {
         try { localStorage.setItem(STORAGE.VOLUME, String(AUDIO_VOLUME)); } catch { }
     }
     updateVolumeIcon();
+    // Push to the Tafsir side so its slider + module-level cache stay in sync.
+    DEPS?.onVolumeChanged?.(AUDIO_VOLUME);
 }
 
 function applySpeed(s, { persist = false } = {}) {
     AUDIO_SPEED = Math.max(0.5, Math.min(2, s));
     if (AUDIO_PLAYER) AUDIO_PLAYER.playbackRate = AUDIO_SPEED;
-    if (PRELOADED_AUDIO?.el) PRELOADED_AUDIO.el.playbackRate = AUDIO_SPEED;
-    
+    surahAudio.setSpeed(AUDIO_SPEED);
+
     const slider = document.getElementById("mushafSpeedSlider");
     if (slider) slider.value = String(AUDIO_SPEED);
     const btn = document.getElementById("mushafSpeedBtn");
     if (btn) btn.textContent = `${AUDIO_SPEED}x`;
-    
+
     if (persist) {
         try { localStorage.setItem(STORAGE.SPEED, String(AUDIO_SPEED)); } catch { }
     }
+    // Push to the Tafsir side so its slider/button + module-level cache stay in sync.
+    DEPS?.onSpeedChanged?.(AUDIO_SPEED);
 }
 
 function updateVolumeIcon() {
@@ -1702,6 +1798,8 @@ function wireMukhtasarCard() {
 
     document.getElementById("mushafMukhtasarClose")
         ?.addEventListener("click", () => closeMukhtasarCard());
+
+    wireMukhtasarDrag();
 
     MUKHTASAR_MORE_BTN?.addEventListener("click", async () => {
         if (!MUKHTASAR_VERSE) return;
@@ -1805,6 +1903,14 @@ async function openMukhtasarCard(verseKey) {
     const [s, a] = verseKey.split(":").map(Number);
     if (!Number.isFinite(s) || !Number.isFinite(a)) return;
 
+    // Move the card to <body> so it can be dragged anywhere on the page.
+    // The mushaf root and the parent #tafsirSection both have .glass /
+    // backdrop-filter, which would otherwise become the containing block
+    // for position:fixed and trap the card inside them.
+    if (MUKHTASAR_EL.parentElement !== document.body) {
+        document.body.appendChild(MUKHTASAR_EL);
+    }
+
     MUKHTASAR_VERSE = verseKey;
     const reqId = ++MUKHTASAR_REQ_ID;
 
@@ -1843,25 +1949,27 @@ async function openMukhtasarCard(verseKey) {
 }
 
 function positionMukhtasarCard() {
-    if (!MUKHTASAR_EL || !ROOT_EL || !MUKHTASAR_VERSE) return;
+    if (!MUKHTASAR_EL || !MUKHTASAR_VERSE) return;
     const anchor = ACTIVE_PAGE_EL?.querySelector(
         `.mushaf-ayah[data-verse-key="${CSS.escape(MUKHTASAR_VERSE)}"]`);
     if (!anchor) return;
 
     const rect = anchor.getBoundingClientRect();
-    const rootRect = ROOT_EL.getBoundingClientRect();
     const cardW = MUKHTASAR_EL.offsetWidth;
     const cardH = MUKHTASAR_EL.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
 
-    let left = rect.left + rect.width / 2 - cardW / 2 - rootRect.left;
-    let top = rect.bottom + 10 - rootRect.top;
+    // Anchor below the ayah, viewport-relative (the card is position:fixed
+    // and lives on <body>, so no offset-parent subtraction needed).
+    let left = rect.left + rect.width / 2 - cardW / 2;
+    let top = rect.bottom + 10;
 
-    const maxLeft = rootRect.width - cardW - 10;
     if (left < 10) left = 10;
-    if (left > maxLeft) left = Math.max(10, maxLeft);
+    if (left + cardW > vw - 10) left = Math.max(10, vw - cardW - 10);
     // Flip above the ayah if there isn't room below.
-    if (top + cardH > rootRect.height - 10) {
-        const above = rect.top - cardH - 10 - rootRect.top;
+    if (top + cardH > vh - 10) {
+        const above = rect.top - cardH - 10;
         top = above > 10 ? above : 10;
     }
     MUKHTASAR_EL.style.left = `${left}px`;
@@ -1877,17 +1985,120 @@ function closeMukhtasarCard() {
 }
 
 /* ============================================================
+ * Drag-to-move for the مختصر التفاسير card. Pointer events cover
+ * mouse + touch + pen. The header is the drag handle; the close
+ * button and the "عرض التفسير الكامل" button are excluded so they
+ * still behave as buttons. The card is constrained to ROOT_EL so
+ * it can't be dragged off-screen.
+ * ============================================================ */
+function wireMukhtasarDrag() {
+    if (!MUKHTASAR_EL) return;
+    const header = MUKHTASAR_EL.querySelector(".mushaf-mukhtasar__header");
+    if (!header) return;
+
+    let dragging = false;
+    let activePointer = null;
+    let startX = 0, startY = 0;
+    let startLeft = 0, startTop = 0;
+
+    header.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".mushaf-mukhtasar__close")) return;
+        if (e.button !== undefined && e.button !== 0) return;
+
+        dragging = true;
+        activePointer = e.pointerId;
+
+        // position:fixed + <body> parent means getBoundingClientRect IS the
+        // viewport position. No offset-parent math needed.
+        const cardRect = MUKHTASAR_EL.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = cardRect.left;
+        startTop = cardRect.top;
+
+        MUKHTASAR_EL.classList.add("mushaf-mukhtasar--dragging");
+        try { header.setPointerCapture(e.pointerId); } catch { }
+        e.preventDefault();
+    });
+
+    header.addEventListener("pointermove", (e) => {
+        if (!dragging || e.pointerId !== activePointer) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const cardW = MUKHTASAR_EL.offsetWidth;
+        const cardH = MUKHTASAR_EL.offsetHeight;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let left = startLeft + dx;
+        let top = startTop + dy;
+
+        // Soft viewport constraint: keep at least a strip of the header
+        // visible on every edge so the user can always grab it back. The
+        // card can drift partly off-screen otherwise — total freedom.
+        const edge = 40;
+        if (left + cardW < edge) left = edge - cardW;
+        if (left > vw - edge) left = vw - edge;
+        if (top < 0) top = 0;
+        if (top > vh - edge) top = vh - edge;
+
+        MUKHTASAR_EL.style.left = `${left}px`;
+        MUKHTASAR_EL.style.top = `${top}px`;
+    });
+
+    const endDrag = (e) => {
+        if (!dragging) return;
+        if (e && e.pointerId !== undefined && e.pointerId !== activePointer) return;
+        dragging = false;
+        activePointer = null;
+        MUKHTASAR_EL.classList.remove("mushaf-mukhtasar--dragging");
+        try { if (e?.pointerId !== undefined) header.releasePointerCapture(e.pointerId); } catch { }
+    };
+    header.addEventListener("pointerup", endDrag);
+    header.addEventListener("pointercancel", endDrag);
+}
+
+/* ============================================================
  * Audio playback (click on ayah toggles; settings live in menu)
  * ============================================================ */
 
 function toggleAudioForAyah(verseKey) {
     if (!verseKey) return;
-    // Sync selected ayah to URL + state so tafsir tab picks it up
+    // Sync selected ayah to the URL. Mushaf mode MUST use the mushaf URL
+    // shape (/read/ayah/S/A) — writing the bare /S/A form on a Mushaf-mode
+    // click meant that refreshing the page parsed the URL as a Tafsir
+    // route and dumped the user into the Tafsir tab even though the saved
+    // app_mode was "mushaf" (the toggle showed تدبر while the body showed
+    // Tafsir). The Tafsir→handoff path in setAppMode rewrites the URL to
+    // /S/A when the user explicitly switches to Tafsir.
     const [vs, va] = verseKey.split(":").map(Number);
     if (Number.isFinite(vs) && Number.isFinite(va)) {
         LAST_VIEWED_AYAH = { s: vs, a: va };
-        history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: verseKey }, "", `/${vs}/${va}`);
+        history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: verseKey }, "", `/read/ayah/${vs}/${va}`);
     }
+
+    /* ── Continuous mode → full-surah engine ── */
+    if (AUDIO_MODE === "continuous") {
+        const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+        const engineLoaded = surahAudio.isActive() && surahAudio.getSurah() === vs && surahAudio.getReciter() === reciter;
+        if (engineLoaded && AUDIO_VERSE === verseKey) {
+            // Same ayah → pause/resume
+            if (surahAudio.isPlaying()) { surahAudio.pause(); }
+            else { surahAudio.resume(); }
+            return;
+        }
+        if (engineLoaded) {
+            // Different ayah, same surah → fast-path seek
+            updateMushafAyahHighlight(verseKey);
+            surahAudio.play({ surah: vs, ayah: va, reciter }).catch(() => { });
+            return;
+        }
+        startMushafSurahEngine(vs, va, verseKey, reciter);
+        return;
+    }
+
+    /* ── Single mode → per-ayah Audio (existing behavior) ── */
     if (AUDIO_VERSE === verseKey && AUDIO_PLAYER) {
         // Same ayah currently selected: toggle play/pause
         if (AUDIO_PLAYER.paused) {
@@ -1903,6 +2114,133 @@ function toggleAudioForAyah(verseKey) {
     playMushafAyah(verseKey);
 }
 
+/**
+ * Swap the visible playing-highlight to verseKey. No audio side effects.
+ */
+function updateMushafAyahHighlight(verseKey) {
+    if (AUDIO_VERSE && AUDIO_VERSE !== verseKey) clearHighlight(AUDIO_VERSE);
+    AUDIO_VERSE = verseKey;
+    document.documentElement.setAttribute("data-audio-active", "1");
+    highlightAyah(verseKey, "playing");
+}
+
+/**
+ * Engine callback bundle for Mushaf mode. Pulled out so setAppMode can
+ * re-bind these when handing the live engine from Tafsir → Mushaf
+ * without stopping audio.
+ */
+function mushafEngineCallbacks() {
+    return {
+        onPlay: () => { setPlaybackPlayingState(true); hideMushafAudioOffline(); },
+        onPause: () => setPlaybackPlayingState(false),
+        onAyahChange: async (newAyah, newSurah) => {
+            const newKey = `${newSurah}:${newAyah}`;
+            if (AUDIO_VERSE && AUDIO_VERSE !== newKey) clearHighlight(AUDIO_VERSE);
+            AUDIO_VERSE = newKey;
+            LAST_VIEWED_AYAH = { s: newSurah, a: newAyah };
+            // Mushaf URL shape — same reason as the click-handler write above.
+            // Refreshing mid-playback must land back in Mushaf, not Tafsir.
+            history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: newKey }, "", `/read/ayah/${newSurah}/${newAyah}`);
+            const nextPage = VERSES_LOOKUP?.[newKey]?.page;
+            if (nextPage && nextPage !== CURRENT_PAGE) {
+                await goToPage(nextPage, { direction: "none" });
+                history.replaceState({ mushaf: true, page: nextPage }, "", `/read/page/${nextPage}`);
+            }
+            highlightAyah(newKey, "playing");
+        },
+        onEnded: () => stopMushafAudio(),
+        onStop: () => {
+            if (AUDIO_VERSE) clearHighlight(AUDIO_VERSE);
+            AUDIO_VERSE = null;
+            document.documentElement.removeAttribute("data-audio-active");
+            setPlaybackPlayingState(false);
+        },
+        onError: (err) => {
+            console.error("Mushaf surah engine error:", err);
+            stopMushafAudio();
+            showMushafAudioOffline();
+        },
+    };
+}
+
+/**
+ * Cold-start the full-surah engine for the requested ayah. Handles per-ayah
+ * highlight swaps and automatic page turns when the audio crosses page
+ * boundaries.
+ */
+function startMushafSurahEngine(surahNo, ayahNo, verseKey, reciter) {
+    // Tear down the per-ayah player if any
+    if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } AUDIO_PLAYER = null; }
+
+    updateMushafAyahHighlight(verseKey);
+    setPlaybackPlayingState(true);
+
+    surahAudio.play({
+        surah: surahNo,
+        ayah: ayahNo,
+        reciter,
+        continuous: AUDIO_MODE === "continuous",
+        volume: AUDIO_VOLUME,
+        speed: AUDIO_SPEED,
+        callbacks: mushafEngineCallbacks(),
+    }).catch((err) => {
+        console.error("Mushaf surah engine play failed:", err);
+        stopMushafAudio();
+        showMushafAudioOffline();
+    });
+}
+
+/**
+ * Re-bind the live engine to Mushaf's UI handlers and sync the visual state
+ * to the engine's current ayah. Called by setAppMode when handing the
+ * engine Tafsir→Mushaf without stopping audio.
+ */
+async function resumeMushafFromEngine() {
+    const s = surahAudio.getSurah();
+    const a = surahAudio.getActiveAyah();
+    if (!s || !a) return;
+    const verseKey = `${s}:${a}`;
+    LAST_VIEWED_AYAH = { s, a };
+
+    // Open the panel at the engine's current ayah (skip scroll, skip URL push).
+    await ensureMushafAssets();
+    const page = VERSES_LOOKUP?.[verseKey]?.page || 1;
+    CURRENT_TARGET_VERSE = verseKey;
+    TARGET_SURAH = s;
+    openPanel();
+    await goToPage(page, { direction: "none", noScroll: true });
+    updateMushafSeo({ page, verse: verseKey });
+    // The previous mode was Tafsir, so the URL is currently /S/A. Replace
+    // it with the Mushaf shape so a refresh-in-Mushaf lands back in Mushaf.
+    history.replaceState({ mushaf: true, page, target: verseKey }, "", `/read/ayah/${s}/${a}`);
+
+    // Drop any leftover per-ayah Audio that's still around.
+    if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } AUDIO_PLAYER = null; }
+
+    // Sync Mushaf-side state to whatever the engine is actually playing.
+    AUDIO_SPEED = surahAudio.getSpeed();
+    AUDIO_VOLUME = surahAudio.getVolume();
+    const speedSlider = document.getElementById("mushafSpeedSlider");
+    if (speedSlider) speedSlider.value = String(AUDIO_SPEED);
+    const speedBtn = document.getElementById("mushafSpeedBtn");
+    if (speedBtn) speedBtn.textContent = `${AUDIO_SPEED}x`;
+    const volSlider = document.getElementById("mushafVolSlider");
+    if (volSlider) volSlider.value = String(Math.round(AUDIO_VOLUME * 100));
+
+    updateMushafAyahHighlight(verseKey);
+    setPlaybackPlayingState(surahAudio.isPlaying());
+    // Mirror the engine's continuous flag onto the Mushaf chip — covers the
+    // case where Tafsir kicked off single-mode engine playback (rare but
+    // possible) so Mushaf's chip doesn't lie about what's playing.
+    const desiredMode = surahAudio.getContinuous() ? "continuous" : "single";
+    if (AUDIO_MODE !== desiredMode) {
+        AUDIO_MODE = desiredMode;
+        try { localStorage.setItem(STORAGE.AUDIO_MODE, AUDIO_MODE); } catch { }
+        syncSettingsUI();
+    }
+    surahAudio.setCallbacks(mushafEngineCallbacks());
+}
+
 function buildAyahAudioUrl(s, a) {
     const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
     const reciterPath = DEPS?.reciters?.[reciter]?.path || reciter;
@@ -1912,46 +2250,11 @@ function buildAyahAudioUrl(s, a) {
     return `${base}${reciterPath}/${ss}/${ss}${aa}.mp3`;
 }
 
-/* Fix 2: fetch+decode the next ayah's audio while the current one plays so
- * the cross-ayah gap in continuous mode is bounded by play()'s decode-already-
- * cached path (~10-50ms) instead of a cold fetch (~200-500ms). */
-function preloadAyahAudio(verseKey) {
-    if (!verseKey) return;
-    if (PRELOADED_AUDIO?.key === verseKey) return;
-    discardPreloadedAudio();
-    const [s, a] = verseKey.split(":").map(Number);
-    const url = buildAyahAudioUrl(s, a);
-    const el = new Audio();
-    el.preload = "auto";
-    el.volume = AUDIO_VOLUME;
-    el.playbackRate = AUDIO_SPEED;
-    el.src = url;
-    try { el.load(); } catch { }
-    PRELOADED_AUDIO = { key: verseKey, el };
-}
-
-function discardPreloadedAudio() {
-    if (!PRELOADED_AUDIO) return;
-    try {
-        PRELOADED_AUDIO.el.pause();
-        PRELOADED_AUDIO.el.removeAttribute("src");
-        PRELOADED_AUDIO.el.load();
-    } catch { }
-    PRELOADED_AUDIO = null;
-}
-
 function playMushafAyah(verseKey) {
     if (!verseKey) return;
 
-    // Pick up the preloaded element if it matches; otherwise build fresh.
-    let nextAudio;
-    if (PRELOADED_AUDIO?.key === verseKey) {
-        nextAudio = PRELOADED_AUDIO.el;
-        PRELOADED_AUDIO = null;
-    } else {
-        const [s, a] = verseKey.split(":").map(Number);
-        nextAudio = new Audio(buildAyahAudioUrl(s, a));
-    }
+    const [s, a] = verseKey.split(":").map(Number);
+    const nextAudio = new Audio(buildAyahAudioUrl(s, a));
     nextAudio.volume = AUDIO_VOLUME;
     nextAudio.playbackRate = AUDIO_SPEED;
 
@@ -1966,44 +2269,37 @@ function playMushafAyah(verseKey) {
         try { prevPlayer.pause(); } catch { }
     }
 
-    // Reflect state on each play.
+    // Reflect state on each play. EVERY listener and the play().catch is
+    // guarded against AUDIO_PLAYER !== nextAudio — if the user clicks a
+    // different ayah while this one is still loading, the stale play()
+    // promise rejects with AbortError and would otherwise tear down the
+    // NEW playback via stopMushafAudio(). Same goes for late "ended" /
+    // "error" events on the orphaned element.
     setPlaybackPlayingState(true);
-    nextAudio.addEventListener("play", () => { setPlaybackPlayingState(true); hideMushafAudioOffline(); });
-    nextAudio.addEventListener("pause", () => {
-        if (AUDIO_PLAYER === nextAudio && !nextAudio.ended) setPlaybackPlayingState(false);
+    nextAudio.addEventListener("play", () => {
+        if (AUDIO_PLAYER !== nextAudio) return;
+        setPlaybackPlayingState(true);
+        hideMushafAudioOffline();
     });
-
-    nextAudio.addEventListener("ended", async () => {
-        if (AUDIO_MODE === "continuous") {
-            const next = getNextVerseKey(verseKey);
-            if (next) {
-                const nextPage = VERSES_LOOKUP?.[next]?.page;
-                if (nextPage && nextPage !== CURRENT_PAGE) {
-                    // Instant page swap — no slide animation — so the audio
-                    // gap stays under ~100ms even at page boundaries.
-                    await goToPage(nextPage, { direction: "none" });
-                    history.replaceState({ mushaf: true, page: nextPage }, "", `/read/page/${nextPage}`);
-                }
-                playMushafAyah(next);
-                return;
-            }
-        }
+    nextAudio.addEventListener("pause", () => {
+        if (AUDIO_PLAYER !== nextAudio || nextAudio.ended) return;
+        setPlaybackPlayingState(false);
+    });
+    nextAudio.addEventListener("ended", () => {
+        if (AUDIO_PLAYER !== nextAudio) return;
         stopMushafAudio();
     });
-    nextAudio.addEventListener("error", () => { stopMushafAudio(); showMushafAudioOffline(); });
+    nextAudio.addEventListener("error", () => {
+        if (AUDIO_PLAYER !== nextAudio) return;
+        stopMushafAudio();
+        showMushafAudioOffline();
+    });
     nextAudio.play().catch((e) => {
+        if (AUDIO_PLAYER !== nextAudio) return; // superseded by another ayah click
         console.error("Mushaf audio play failed", e);
         stopMushafAudio();
         showMushafAudioOffline();
     });
-
-    // Eagerly fetch the successor while this ayah plays.
-    if (AUDIO_MODE === "continuous") {
-        const upcoming = getNextVerseKey(verseKey);
-        if (upcoming) preloadAyahAudio(upcoming);
-    } else {
-        discardPreloadedAudio();
-    }
 }
 
 function stopMushafAudio() {
@@ -2011,7 +2307,7 @@ function stopMushafAudio() {
         try { AUDIO_PLAYER.pause(); } catch { }
         AUDIO_PLAYER = null;
     }
-    discardPreloadedAudio();
+    if (surahAudio.isActive()) surahAudio.stop();
     if (AUDIO_VERSE) clearHighlight(AUDIO_VERSE);
     AUDIO_VERSE = null;
     document.documentElement.removeAttribute("data-audio-active");
@@ -2028,26 +2324,6 @@ function clearHighlight(verseKey) {
     if (!ACTIVE_PAGE_EL) return;
     const els = ACTIVE_PAGE_EL.querySelectorAll(`.mushaf-ayah[data-verse-key="${CSS.escape(verseKey)}"]`);
     els.forEach((e) => e.classList.remove("mushaf-ayah--playing"));
-}
-
-function getNextVerseKey(verseKey) {
-    if (!verseKey) return null;
-    const [s, a] = verseKey.split(":").map(Number);
-    const ch = CHAPTERS?.find((c) => c.id === s);
-    if (!ch) return null;
-    if (a < ch.verses_count) return `${s}:${a + 1}`;
-    const next = CHAPTERS.find((c) => c.id === s + 1);
-    if (!next) return null;
-    return `${next.id}:1`;
-}
-
-function getPrevVerseKey(verseKey) {
-    if (!verseKey) return null;
-    const [s, a] = verseKey.split(":").map(Number);
-    if (a > 1) return `${s}:${a - 1}`;
-    const prev = CHAPTERS?.find((c) => c.id === s - 1);
-    if (!prev) return null;
-    return `${prev.id}:${prev.verses_count}`;
 }
 
 /* ============================================================
@@ -2072,22 +2348,38 @@ function handleSettingsChip(chip) {
     const group = chip.closest("[data-settings-group]")?.dataset.settingsGroup;
     const val = chip.dataset.val;
     if (group === "reciter") {
+        // switchReciter (over in app.js) handles the engine cold-reload itself
+        // for the continuous (engine) path, keeping the existing callback
+        // bundle so the Mushaf highlight stays bound. We only need to restart
+        // per-ayah single-mode playback locally.
         DEPS?.setCurrentReciter?.(val);
-        discardPreloadedAudio();
-        if (AUDIO_VERSE) {
+        if (AUDIO_MODE !== "continuous" && AUDIO_VERSE && AUDIO_PLAYER && !AUDIO_PLAYER.paused) {
             const v = AUDIO_VERSE;
             stopMushafAudio();
             playMushafAyah(v);
         }
     } else if (group === "audio-mode") {
-        AUDIO_MODE = val === "continuous" ? "continuous" : "single";
+        const newMode = val === "continuous" ? "continuous" : "single";
+        const prevMode = AUDIO_MODE;
+        AUDIO_MODE = newMode;
         try { localStorage.setItem(STORAGE.AUDIO_MODE, AUDIO_MODE); } catch { }
-        if (AUDIO_MODE === "continuous" && AUDIO_VERSE) {
-            const upcoming = getNextVerseKey(AUDIO_VERSE);
-            if (upcoming) preloadAyahAudio(upcoming);
-        } else {
-            discardPreloadedAudio();
+
+        // single → continuous mid-play: hand off to the full-surah engine.
+        if (prevMode !== "continuous" && newMode === "continuous" && AUDIO_VERSE) {
+            const v = AUDIO_VERSE;
+            const [s, a] = v.split(":").map(Number);
+            const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+            // Pause any per-ayah Audio but keep the highlight while we swap.
+            if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } AUDIO_PLAYER = null; }
+            startMushafSurahEngine(s, a, v, reciter);
         }
+        // continuous → single mid-play: let the engine finish the current
+        // ayah naturally, then stop. The engine's tick honours _continuous=false.
+        if (prevMode === "continuous" && newMode === "single" && surahAudio.isActive()) {
+            surahAudio.setContinuous(false);
+        }
+        // Push to Tafsir so its listening-mode flag + chip stay in sync.
+        DEPS?.onAudioModeChanged?.(AUDIO_MODE);
     } else if (group === "font-size") {
         FONT_SIZE = (val === "s") ? "s" : "m";
         try { localStorage.setItem(STORAGE.FONT_SIZE, FONT_SIZE); } catch { }

@@ -2165,6 +2165,77 @@
         width: 20px;
         height: 20px;
       }
+
+    }
+
+    /* ============================================================
+     * Tafsir toolbar dropdowns — nuclear stacking + opacity fix
+     *
+     * Root cause: .mushaf-toolbar__dropdown has opacity:0→1 (animated),
+     * backdrop-filter:blur, and rgba(--card) background. The parent
+     * #tafsirSection (.glass) ALSO has backdrop-filter. Sibling #tafsirBox /
+     * #tafsirAyahTag spawn transient stacking contexts (transform + opacity
+     * animations). The combination made the dropdown panel partially
+     * transparent — tafsir text visibly bled through.
+     *
+     * Applied with !important and at every viewport so nothing inherited
+     * from the base mushaf-toolbar__dropdown rule can overpower it:
+     *  - Solid bg color (no rgba, no var, no gradient).
+     *  - backdrop-filter completely off.
+     *  - Open state uses visibility, not opacity, so there's no mid-fade
+     *    semi-transparent frame.
+     *  - z-index 99999 on dropdowns + their wraps so they win against
+     *    every sibling stacking context.
+     *  - isolation:isolate on each dropdown so the panel always composites
+     *    as its own group regardless of parent backdrop-filter quirks.
+     * ============================================================ */
+
+    #tafsirVolDropdown,
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
+      background-color: #ffffff !important;
+      background-image: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      opacity: 1 !important;
+      z-index: 99999 !important;
+      isolation: isolate !important;
+      transition: transform 180ms ease !important;
+    }
+
+    html.dark #tafsirVolDropdown,
+    body.dark #tafsirVolDropdown,
+    html.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown],
+    body.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
+      background-color: #1e293b !important;
+    }
+
+    /* Closed state via visibility — no opacity fade that could ever
+       expose content behind the panel for even a frame. */
+    #tafsirVolDropdown:not(.mushaf-toolbar__dropdown--open),
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown]:not(.mushaf-toolbar__dropdown--open) {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    #tafsirVolDropdown.mushaf-toolbar__dropdown--open,
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown].mushaf-toolbar__dropdown--open {
+      visibility: visible !important;
+      pointer-events: auto !important;
+    }
+
+    /* Wraps + the whole toolbar row need to be above the tafsir content
+       row beneath them — because tafsir-top-row and the mt-6 (compare panel /
+       ayah nav / tafsir box) are siblings with z-index:auto, the later
+       (mt-6) paints on top of the earlier (top-row) by document order.
+       Lift the row out of that order. */
+    #tafsirPlayWrap,
+    #tafsirSettingsWrap {
+      z-index: 99999 !important;
+    }
+
+    #tafsirSection .tafsir-top-row {
+      position: relative;
+      z-index: 50;
     }
 
     .compare-scroll {
