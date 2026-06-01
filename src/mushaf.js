@@ -108,6 +108,8 @@ const ICONS = {
     gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
     chevronRight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`,
     chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+    chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`,
+    search: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
     volumeMute: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`,
     volumeLow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
     volumeHigh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
@@ -213,10 +215,14 @@ export function initMushaf(deps) {
 
     buildShell();
     // The auto-bootstrap at module bottom may have run buildShell() before
-    // DEPS existed, in which case the reciter row would be empty. Repopulate
-    // it now that we have DEPS, and re-sync the active-state highlighting.
+    // DEPS existed, in which case the reciter row and surah list would be
+    // empty. Repopulate them now that we have DEPS, and re-sync the active
+    // highlighting / surah label.
     buildReciterChips();
+    buildSurahSelectList();
+    wireSurahSelect();
     syncSettingsUI();
+    syncSurahSelectLabel();
 
     let saved = "tafsir";
     try {
@@ -239,6 +245,10 @@ export function initMushaf(deps) {
         setAppMode, openMushafAtAyah, openMushafAtPage,
         openMushafAtSurah, isMushafMode, closeMushafPanel,
     };
+}
+
+export function getMushafTargetSurah() {
+    return TARGET_SURAH || LAST_VIEWED_AYAH?.s || null;
 }
 
 export function isMushafMode() {
@@ -428,6 +438,7 @@ export async function openMushafAtAyah(s, a, opts = {}) {
         history.pushState({ mushaf: true, page, target: key }, "", `/read/ayah/${s}/${a}`);
     }
     updateMushafSeo({ page, verse: key });
+    syncSurahSelectLabel();
 }
 
 export async function openMushafAtPage(p, opts = {}) {
@@ -442,6 +453,7 @@ export async function openMushafAtPage(p, opts = {}) {
         history.pushState({ mushaf: true, page: p }, "", `/read/page/${p}`);
     }
     updateMushafSeo({ page: p });
+    syncSurahSelectLabel();
 }
 
 export async function openMushafAtSurah(s, opts = {}) {
@@ -457,6 +469,7 @@ export async function openMushafAtSurah(s, opts = {}) {
         history.pushState({ mushaf: true, page, surah: Number(s) }, "", `/read/surah/${s}`);
     }
     updateMushafSeo({ page, surah: Number(s) });
+    syncSurahSelectLabel();
 }
 
 /* ============================================================
@@ -853,7 +866,7 @@ function buildShell() {
     root.dir = "rtl";
     root.setAttribute("aria-label", "قارئ المصحف");
     root.innerHTML = `
-    <!-- Toolbar: Settings + Play/Stop -->
+    <!-- Toolbar: Settings + Play/Stop on the left | Surah selector on the right -->
     <div class="mushaf-toolbar" id="mushafToolbar">
       <div class="mushaf-toolbar__btn-wrap" id="mushafSettingsWrap">
         <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings" id="mushafToolbarSettings" aria-label="إعدادات">${ICONS.gear}</button>
@@ -899,6 +912,43 @@ function buildShell() {
         </div>
       </div>
       <span class="mushaf-toolbar__msg" id="mushafAudioMsg" aria-live="polite"></span>
+      <div class="mushaf-toolbar__spacer"></div>
+      <div class="mushaf-toolbar__btn-wrap mushaf-toolbar__btn-wrap--surah" id="mushafSurahWrap">
+        <button type="button" class="mushaf-surah-select" id="mushafSurahSelectBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="اختر السورة">
+          <span class="mushaf-surah-select__name" id="mushafSurahSelectName">الفاتحة</span>
+          <span class="mushaf-surah-select__chev">${ICONS.chevronDown}</span>
+        </button>
+        <div class="mushaf-toolbar__dropdown mushaf-surah-dropdown" id="mushafSurahDropdown" role="dialog" aria-label="قائمة السور">
+          <!-- Panel 1: search + list of all 114 surahs -->
+          <div class="mushaf-surah-dropdown__panel mushaf-surah-dropdown__panel--list" id="mushafSurahListPanel">
+            <div class="mushaf-surah-search__wrap">
+              <span class="mushaf-surah-search__icon">${ICONS.search}</span>
+              <input type="search" class="mushaf-surah-search" id="mushafSurahSearch" placeholder="ابحث عن سورة..." autocomplete="off" inputmode="search" aria-label="بحث عن سورة">
+            </div>
+            <ul class="mushaf-surah-list" id="mushafSurahList" role="listbox" aria-label="السور"></ul>
+            <div class="mushaf-surah-empty" id="mushafSurahEmpty" hidden>لا توجد نتائج</div>
+          </div>
+          <!-- Panel 2: ayah picker for the selected surah -->
+          <div class="mushaf-surah-dropdown__panel mushaf-surah-dropdown__panel--detail" id="mushafSurahDetailPanel" hidden>
+            <div class="mushaf-surah-detail__header">
+              <button type="button" class="mushaf-surah-detail__back" id="mushafSurahDetailBack" aria-label="رجوع">${ICONS.chevronRight}</button>
+              <div class="mushaf-surah-detail__title">
+                <span class="mushaf-surah-detail__num" id="mushafSurahDetailNum">1</span>
+                <span class="mushaf-surah-detail__name" id="mushafSurahDetailName">الفاتحة</span>
+              </div>
+            </div>
+            <form class="mushaf-surah-detail__form" id="mushafSurahDetailForm" novalidate>
+              <label class="mushaf-surah-detail__label" id="mushafAyahWheelLabel">رقم الآية</label>
+              <div class="mushaf-wheel" id="mushafAyahWheel" tabindex="0" role="spinbutton" aria-valuenow="1" aria-valuemin="1" aria-valuemax="1" aria-labelledby="mushafAyahWheelLabel">
+                <ul class="mushaf-wheel__list" id="mushafAyahWheelList" role="listbox" aria-label="رقم الآية"></ul>
+                <div class="mushaf-wheel__band" aria-hidden="true"></div>
+                <input class="mushaf-wheel__input" id="mushafAyahWheelInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="3" aria-label="أدخل رقم الآية" hidden>
+              </div>
+              <button type="submit" class="mushaf-surah-detail__go mushaf-surah-detail__go--full" id="mushafSurahDetailGo">اذهب</button>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="mushaf-stage">
@@ -953,8 +1003,11 @@ function buildShell() {
     wirePageSwipe();
     wireCopy();
     wireToolbar();
+    wireSurahSelect();
     buildReciterChips();
+    buildSurahSelectList();
     syncSettingsUI();
+    syncSurahSelectLabel();
 
     if (window.ResizeObserver) {
         new ResizeObserver(() => {
@@ -1083,6 +1136,7 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
                 LAST_VIEWED_AYAH = { s, a };
             }
         }
+        syncSurahSelectLabel();
     } catch (e) {
         console.error("Mushaf goToPage error:", e);
     }
@@ -1496,6 +1550,7 @@ async function transitionToTargetSurah(newSurahId) {
         CURRENT_TARGET_VERSE = `${newSurahId}:1`;
         await goToPage(firstPage, { direction: "none" });
     }
+    syncSurahSelectLabel();
     closeAyahMenu();
 }
 
@@ -1577,6 +1632,600 @@ function wireMenu() {
         if (!PANEL_OPEN) return;
         if (e.target.closest(".mushaf-ayah") || e.target.closest(".mushaf-ayah-menu")) return;
         closeAyahMenu();
+    });
+}
+
+/* ============================================================
+ * Surah selector (toolbar pill + searchable dropdown)
+ *
+ * The pill shows "{num} {name_ar}" of the currently-focused surah and opens
+ * a searchable list of all 114 surahs. Selecting one calls the existing
+ * openMushafAtSurah() so navigation/URL/SEO follow the same path as any
+ * other jump. The label re-syncs whenever TARGET_SURAH changes (jump,
+ * page flip, or dimmed-ayah switch).
+ * ============================================================ */
+
+// Accept Arabic-Indic ٠-٩ and Eastern Arabic-Indic ۰-۹ as western digits.
+function normalizeDigits(s) {
+    return String(s)
+        .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+        .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+}
+// Diacritic-aware Arabic match: strip tashkeel/tatweel, fold alef/ya/ta-marbuta.
+function normalizeArabicForSearch(s) {
+    return String(s)
+        .normalize("NFC")
+        .replace(/[ً-ٰٟ]/g, "")
+        .replace(/ـ/g, "")
+        .replace(/[إأآٱ]/g, "ا")
+        .replace(/ى/g, "ي")
+        .replace(/ؤ/g, "و")
+        .replace(/ئ/g, "ي")
+        .replace(/ة/g, "ه")
+        .toLowerCase()
+        .trim();
+}
+
+let _SURAH_LIST_BUILT = false;
+let _SURAH_SELECT_WIRED = false;
+
+function buildSurahSelectList() {
+    const list = document.getElementById("mushafSurahList");
+    if (!list) return;
+    const meta = DEPS?.surahMeta;
+    if (!Array.isArray(meta) || meta.length === 0) return;
+
+    const rows = [];
+    for (const s of meta) {
+        const num = Number(s.number);
+        if (!num) continue;
+        const name = s.name_ar || `سورة ${num}`;
+        const nameNorm = normalizeArabicForSearch(name);
+        rows.push(
+            `<li class="mushaf-surah-item" role="option" data-num="${num}" ` +
+            `data-name-norm="${nameNorm}" data-num-str="${num}" data-ayahs="${Number(s.ayahs) || 0}" tabindex="-1" ` +
+            `aria-selected="false">${name}</li>`
+        );
+    }
+    list.innerHTML = rows.join("");
+    _SURAH_LIST_BUILT = true;
+    syncSurahSelectLabel();
+}
+
+function syncSurahSelectLabel() {
+    const nameEl = document.getElementById("mushafSurahSelectName");
+    if (!nameEl) return;
+
+    const s = TARGET_SURAH
+        || LAST_VIEWED_AYAH?.s
+        || (CURRENT_TARGET_VERSE ? Number(String(CURRENT_TARGET_VERSE).split(":")[0]) : null)
+        || 1;
+
+    const meta = DEPS?.surahMeta?.find((x) => x.number === s);
+    const ch = CHAPTERS?.find((c) => c.id === s);
+    const name = meta?.name_ar || ch?.name_arabic || `سورة ${s}`;
+
+    nameEl.textContent = name;
+
+    // Re-evaluate per-surah reciter restrictions for the new target surah
+    // (auto-fallback off blocked reciters + refresh chip disabled states).
+    DEPS?.enforceReciterForSurah?.(s);
+    syncSettingsUI();
+
+    // Mark the current row in the open list.
+    const list = document.getElementById("mushafSurahList");
+    if (list) {
+        list.querySelectorAll(".mushaf-surah-item--current").forEach((el) => {
+            el.classList.remove("mushaf-surah-item--current");
+            el.setAttribute("aria-selected", "false");
+        });
+        const row = list.querySelector(`.mushaf-surah-item[data-num="${s}"]`);
+        if (row) {
+            row.classList.add("mushaf-surah-item--current");
+            row.setAttribute("aria-selected", "true");
+        }
+    }
+}
+
+function openSurahDropdown() {
+    const dd = document.getElementById("mushafSurahDropdown");
+    const btn = document.getElementById("mushafSurahSelectBtn");
+    const search = document.getElementById("mushafSurahSearch");
+    if (!dd || !btn) return;
+    if (!_SURAH_LIST_BUILT) buildSurahSelectList();
+    showSurahListPanel();
+    dd.classList.add("mushaf-toolbar__dropdown--open");
+    btn.setAttribute("aria-expanded", "true");
+    if (search) {
+        search.value = "";
+        filterSurahList("");
+    }
+    // Scroll current row into view, then focus the search.
+    requestAnimationFrame(() => {
+        const list = document.getElementById("mushafSurahList");
+        const cur = list?.querySelector(".mushaf-surah-item--current");
+        if (cur && list) {
+            const lTop = list.getBoundingClientRect().top;
+            const cTop = cur.getBoundingClientRect().top;
+            const offset = cTop - lTop - (list.clientHeight / 2) + (cur.offsetHeight / 2);
+            list.scrollTop += offset;
+        }
+        search?.focus({ preventScroll: true });
+    });
+}
+
+function closeSurahDropdown() {
+    const dd = document.getElementById("mushafSurahDropdown");
+    const btn = document.getElementById("mushafSurahSelectBtn");
+    if (!dd || !btn) return;
+    dd.classList.remove("mushaf-toolbar__dropdown--open");
+    btn.setAttribute("aria-expanded", "false");
+    // Reset to list view so the next open starts fresh.
+    showSurahListPanel();
+}
+
+function showSurahListPanel() {
+    const listPanel = document.getElementById("mushafSurahListPanel");
+    const detailPanel = document.getElementById("mushafSurahDetailPanel");
+    if (!listPanel || !detailPanel) return;
+    listPanel.hidden = false;
+    detailPanel.hidden = true;
+}
+
+function showSurahDetailPanel(surahNum) {
+    const meta = DEPS?.surahMeta?.find((x) => x.number === surahNum);
+    if (!meta) return;
+    const listPanel = document.getElementById("mushafSurahListPanel");
+    const detailPanel = document.getElementById("mushafSurahDetailPanel");
+    const numEl = document.getElementById("mushafSurahDetailNum");
+    const nameEl = document.getElementById("mushafSurahDetailName");
+    const detailForm = document.getElementById("mushafSurahDetailForm");
+    if (!listPanel || !detailPanel || !numEl || !nameEl || !detailForm) return;
+
+    const count = Number(meta.ayahs) || 1;
+    numEl.textContent = String(surahNum);
+    nameEl.textContent = meta.name_ar || `سورة ${surahNum}`;
+    detailForm.dataset.surah = String(surahNum);
+    detailForm.dataset.max = String(count);
+
+    listPanel.hidden = true;
+    detailPanel.hidden = false;
+    // The wheel needs the panel laid out before we measure scroll positions,
+    // so build it on the next frame (panel just transitioned out of hidden).
+    requestAnimationFrame(() => buildAyahWheel(1, count, 1));
+}
+
+function submitSurahDetail() {
+    const form = document.getElementById("mushafSurahDetailForm");
+    if (!form) return;
+    const s = Number(form.dataset.surah);
+    const max = Number(form.dataset.max) || 1;
+    if (!s) return;
+
+    // Commit any in-progress manual edit so the wheel value is current.
+    commitWheelEdit({ silent: true });
+    let v = getAyahWheelValue();
+    if (!Number.isFinite(v) || v < 1) v = 1;
+    if (v > max) v = max;
+
+    closeSurahDropdown();
+    if (v === 1) openMushafAtSurah(s);
+    else openMushafAtAyah(s, v);
+}
+
+/* ============================================================
+ * Ayah wheel picker — transform-driven, no native scroll
+ *
+ * Drift-free by design: we control the list's translateY directly.
+ * - Drag (touch/mouse): finger movement maps 1:1 to wheel position, with
+ *   a soft rubber-band past the ends. On release we snap to the nearest
+ *   integer with a brief inertia projection from release velocity.
+ * - Wheel: each wheel step = ±1 with a snappy CSS transition.
+ * - Tap on center band → manual entry input (clamped to range, empty
+ *   commit returns to the previous value unchanged).
+ * - Tap on top/bottom thirds → ±1 step.
+ * - Keyboard: Arrow / PageUp/Down / Home / End / Enter (open edit).
+ * - Vibrate(2) ticks on each integer crossing on mobile.
+ * ============================================================ */
+
+let _wMin = 1;
+let _wMax = 1;
+let _wValue = 1;
+let _wEditing = false;
+let _wWired = false;
+let _wDragging = false;
+let _wDragStartY = 0;
+let _wDragOffsetPx = 0;
+let _wValueAtDragStart = 1;
+let _wLastMoveY = 0;
+let _wLastMoveTs = 0;
+let _wVelocity = 0; // px/ms; positive = finger moving down
+let _wAnimTimer = null;
+
+const _W_ANIM_MS = 220;
+
+function getWheelItemHeight() {
+    const wheel = document.getElementById("mushafAyahWheel");
+    if (!wheel) return 32;
+    const raw = getComputedStyle(wheel).getPropertyValue("--aw-h").trim();
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n > 0 ? n : 32;
+}
+
+function buildAyahWheel(min, max, initial = 1) {
+    const list = document.getElementById("mushafAyahWheelList");
+    const wheel = document.getElementById("mushafAyahWheel");
+    if (!list || !wheel) return;
+    _wMin = min;
+    _wMax = max;
+    _wValue = Math.max(min, Math.min(max, Math.round(initial) || min));
+    _wDragOffsetPx = 0;
+    _wDragging = false;
+    cancelWheelEdit();
+    const rows = [];
+    for (let v = min; v <= max; v++) {
+        rows.push(`<li class="mushaf-wheel__item" role="option" data-val="${v}">${v}</li>`);
+    }
+    list.innerHTML = rows.join("");
+    wheel.setAttribute("aria-valuemin", String(min));
+    wheel.setAttribute("aria-valuemax", String(max));
+    if (!_wWired) wireAyahWheel();
+    applyWheelTransform({ animated: false });
+    updateWheelAria();
+}
+
+function setAyahWheelValue(v, { animated = true } = {}) {
+    v = Math.max(_wMin, Math.min(_wMax, Math.round(v)));
+    if (v === _wValue && _wDragOffsetPx === 0 && !_wDragging) return;
+    _wValue = v;
+    _wDragOffsetPx = 0;
+    applyWheelTransform({ animated });
+    updateWheelAria();
+    if (animated && typeof navigator !== "undefined" && navigator.vibrate) {
+        try { navigator.vibrate(2); } catch { }
+    }
+}
+
+function getAyahWheelValue() { return _wValue; }
+
+function applyWheelTransform({ animated = true }) {
+    const list = document.getElementById("mushafAyahWheelList");
+    const wheel = document.getElementById("mushafAyahWheel");
+    if (!list || !wheel) return;
+    const h = getWheelItemHeight();
+    // The list is padded by H rows top/bottom; translating by -(value-min)*H
+    // centers the row for `value` in the viewport.
+    const ty = -(_wValue - _wMin) * h + _wDragOffsetPx;
+    if (animated) wheel.classList.add("mushaf-wheel--animating");
+    else wheel.classList.remove("mushaf-wheel--animating");
+    list.style.transform = `translate3d(0, ${ty}px, 0)`;
+    applyWheelDistAttrs();
+    if (animated) {
+        clearTimeout(_wAnimTimer);
+        _wAnimTimer = setTimeout(() => {
+            wheel.classList.remove("mushaf-wheel--animating");
+        }, _W_ANIM_MS + 30);
+    }
+}
+
+function applyWheelDistAttrs() {
+    const list = document.getElementById("mushafAyahWheelList");
+    if (!list) return;
+    const h = getWheelItemHeight();
+    if (h <= 0) return;
+    // Center index reflects current effective position (value ± drag).
+    const fractionalIdx = (_wValue - _wMin) - (_wDragOffsetPx / h);
+    const centerIdx = Math.round(fractionalIdx);
+    const items = list.children;
+    for (let i = 0; i < items.length; i++) {
+        const d = Math.abs(i - centerIdx);
+        const v = d <= 3 ? String(d) : "x";
+        if (items[i].dataset.dist !== v) items[i].dataset.dist = v;
+    }
+}
+
+function updateWheelAria() {
+    const wheel = document.getElementById("mushafAyahWheel");
+    if (wheel) wheel.setAttribute("aria-valuenow", String(_wValue));
+}
+
+function wireAyahWheel() {
+    if (_wWired) return;
+    const wheel = document.getElementById("mushafAyahWheel");
+    const list = document.getElementById("mushafAyahWheelList");
+    const input = document.getElementById("mushafAyahWheelInput");
+    if (!wheel || !list || !input) return;
+    _wWired = true;
+
+    // --- Pointer drag (touch + mouse). touch-action:none on the wheel
+    // ensures the browser hands us touch events instead of scrolling.
+    wheel.addEventListener("pointerdown", (e) => {
+        if (_wEditing) return;
+        if (e.button !== undefined && e.button !== 0) return;
+        _wDragging = true;
+        _wDragStartY = e.clientY;
+        _wDragOffsetPx = 0;
+        _wValueAtDragStart = _wValue;
+        _wLastMoveY = e.clientY;
+        _wLastMoveTs = performance.now();
+        _wVelocity = 0;
+        wheel.classList.add("mushaf-wheel--dragging");
+        wheel.classList.remove("mushaf-wheel--animating");
+        try { wheel.setPointerCapture(e.pointerId); } catch { }
+        e.preventDefault();
+    });
+
+    wheel.addEventListener("pointermove", (e) => {
+        if (!_wDragging) return;
+        const h = getWheelItemHeight();
+        const dy = e.clientY - _wDragStartY;
+        // Live position in float-step space.
+        const stepsRaw = -dy / h;
+        const proposed = _wValueAtDragStart + stepsRaw;
+        // Rubber-band beyond the ends.
+        let effectiveDy = dy;
+        if (proposed < _wMin) effectiveDy = dy - (proposed - _wMin) * h * 0.6;
+        else if (proposed > _wMax) effectiveDy = dy - (proposed - _wMax) * h * 0.6;
+        _wDragOffsetPx = effectiveDy;
+        // Live value = nearest integer clamped to range.
+        const eff = _wValueAtDragStart + (-effectiveDy / h);
+        const live = Math.max(_wMin, Math.min(_wMax, Math.round(eff)));
+        if (live !== _wValue) {
+            _wValue = live;
+            updateWheelAria();
+            if (typeof navigator !== "undefined" && navigator.vibrate) {
+                try { navigator.vibrate(2); } catch { }
+            }
+        }
+        applyWheelTransform({ animated: false });
+        // Track velocity for inertia.
+        const now = performance.now();
+        const dt = now - _wLastMoveTs;
+        if (dt > 0) _wVelocity = (e.clientY - _wLastMoveY) / dt;
+        _wLastMoveY = e.clientY;
+        _wLastMoveTs = now;
+    });
+
+    const endDrag = (e) => {
+        if (!_wDragging) return;
+        _wDragging = false;
+        wheel.classList.remove("mushaf-wheel--dragging");
+        try { wheel.releasePointerCapture(e.pointerId); } catch { }
+
+        const h = getWheelItemHeight();
+        const dy = _wDragOffsetPx;
+        const isTap = Math.abs(dy) < 4 && Math.abs(_wVelocity) < 0.05;
+
+        if (isTap) {
+            // Identify the tap zone (top third / center / bottom third).
+            const rect = wheel.getBoundingClientRect();
+            const tapY = e.clientY - rect.top;
+            const third = rect.height / 3;
+            if (tapY > third && tapY < third * 2) {
+                // Center — open manual edit.
+                _wDragOffsetPx = 0;
+                applyWheelTransform({ animated: false });
+                enterWheelEdit();
+                return;
+            }
+            const step = tapY < third ? -1 : 1;
+            _wDragOffsetPx = 0;
+            setAyahWheelValue(_wValue + step, { animated: true });
+            return;
+        }
+
+        // Inertia: project release velocity for ~140ms with light friction.
+        const projection = _wVelocity * 140;
+        const effectiveDy = dy + projection;
+        const targetSteps = -effectiveDy / h;
+        let finalValue = Math.round(_wValueAtDragStart + targetSteps);
+        finalValue = Math.max(_wMin, Math.min(_wMax, finalValue));
+        _wDragOffsetPx = 0;
+        // Force the transform even if the rounded value didn't change
+        // (we still need to animate from the rubber-banded position back).
+        _wValue = finalValue;
+        applyWheelTransform({ animated: true });
+        updateWheelAria();
+    };
+    wheel.addEventListener("pointerup", endDrag);
+    wheel.addEventListener("pointercancel", endDrag);
+
+    // --- Mouse wheel (desktop, trackpad). Each step = 1 value.
+    let wheelAcc = 0;
+    wheel.addEventListener("wheel", (e) => {
+        if (_wEditing) return;
+        e.preventDefault();
+        wheelAcc += e.deltaY;
+        const threshold = 24;
+        while (wheelAcc >= threshold) { setAyahWheelValue(_wValue + 1); wheelAcc -= threshold; }
+        while (wheelAcc <= -threshold) { setAyahWheelValue(_wValue - 1); wheelAcc += threshold; }
+    }, { passive: false });
+
+    // --- Keyboard.
+    wheel.addEventListener("keydown", (e) => {
+        if (_wEditing) return;
+        if (e.key === "ArrowUp") { e.preventDefault(); setAyahWheelValue(_wValue - 1); }
+        else if (e.key === "ArrowDown") { e.preventDefault(); setAyahWheelValue(_wValue + 1); }
+        else if (e.key === "Home") { e.preventDefault(); setAyahWheelValue(_wMin); }
+        else if (e.key === "End") { e.preventDefault(); setAyahWheelValue(_wMax); }
+        else if (e.key === "PageUp") { e.preventDefault(); setAyahWheelValue(_wValue - 5); }
+        else if (e.key === "PageDown") { e.preventDefault(); setAyahWheelValue(_wValue + 5); }
+        else if (e.key === "Enter") { e.preventDefault(); enterWheelEdit(); }
+    });
+
+    // --- Edit input commit handlers. stopPropagation so Enter/Escape don't
+    // bubble to the wheel's own keydown listener.
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault(); e.stopPropagation();
+            commitWheelEdit();
+        } else if (e.key === "Escape") {
+            e.preventDefault(); e.stopPropagation();
+            cancelWheelEdit();
+        }
+    });
+    input.addEventListener("blur", () => commitWheelEdit());
+}
+
+function enterWheelEdit() {
+    const wheel = document.getElementById("mushafAyahWheel");
+    const input = document.getElementById("mushafAyahWheelInput");
+    if (!wheel || !input) return;
+    _wEditing = true;
+    input.value = String(_wValue);
+    input.hidden = false;
+    wheel.classList.add("mushaf-wheel--editing");
+    requestAnimationFrame(() => {
+        input.focus();
+        try { input.select(); } catch { }
+    });
+}
+
+function commitWheelEdit({ silent = false } = {}) {
+    const wheel = document.getElementById("mushafAyahWheel");
+    const input = document.getElementById("mushafAyahWheelInput");
+    if (!wheel || !input || !_wEditing) return;
+    _wEditing = false;
+    const raw = normalizeDigits(input.value).replace(/\D/g, "");
+    let v;
+    if (raw === "") {
+        // Empty input → return to wheel at current value unchanged.
+        v = _wValue;
+    } else {
+        v = Number(raw);
+        if (!Number.isFinite(v) || v < _wMin) v = _wMin;
+        if (v > _wMax) v = _wMax;
+    }
+    input.hidden = true;
+    wheel.classList.remove("mushaf-wheel--editing");
+    // Force animate even if value unchanged so the user sees the wheel
+    // re-engage; silent mode (submit path) skips animation.
+    if (v === _wValue) applyWheelTransform({ animated: !silent });
+    else setAyahWheelValue(v, { animated: !silent });
+}
+
+function cancelWheelEdit() {
+    const wheel = document.getElementById("mushafAyahWheel");
+    const input = document.getElementById("mushafAyahWheelInput");
+    if (!wheel || !input) return;
+    _wEditing = false;
+    input.hidden = true;
+    wheel.classList.remove("mushaf-wheel--editing");
+}
+
+function filterSurahList(rawQuery) {
+    const list = document.getElementById("mushafSurahList");
+    const empty = document.getElementById("mushafSurahEmpty");
+    if (!list) return;
+    const items = list.querySelectorAll(".mushaf-surah-item");
+    const q = String(rawQuery || "").trim();
+    let visible = 0;
+
+    if (!q) {
+        items.forEach((el) => el.classList.remove("mushaf-surah-item--hidden"));
+        if (empty) empty.hidden = true;
+        return;
+    }
+
+    const qDigits = normalizeDigits(q).replace(/\D/g, "");
+    const qName = normalizeArabicForSearch(q);
+    const numericOnly = qDigits === normalizeDigits(q).trim() && qDigits.length > 0;
+
+    items.forEach((el) => {
+        const numStr = el.dataset.numStr || "";
+        const nameNorm = el.dataset.nameNorm || "";
+        const matchNum = qDigits ? numStr.startsWith(qDigits) || numStr === qDigits : false;
+        const matchName = qName ? nameNorm.includes(qName) : false;
+        const show = numericOnly ? matchNum : (matchNum || matchName);
+        el.classList.toggle("mushaf-surah-item--hidden", !show);
+        if (show) visible++;
+    });
+
+    if (empty) empty.hidden = visible !== 0;
+}
+
+function wireSurahSelect() {
+    if (_SURAH_SELECT_WIRED) return;
+    const wrap = document.getElementById("mushafSurahWrap");
+    const btn = document.getElementById("mushafSurahSelectBtn");
+    const dd = document.getElementById("mushafSurahDropdown");
+    const list = document.getElementById("mushafSurahList");
+    const search = document.getElementById("mushafSurahSearch");
+    const detailBack = document.getElementById("mushafSurahDetailBack");
+    const detailForm = document.getElementById("mushafSurahDetailForm");
+    if (!wrap || !btn || !dd || !list || !search || !detailBack || !detailForm) return;
+    _SURAH_SELECT_WIRED = true;
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = dd.classList.contains("mushaf-toolbar__dropdown--open");
+        if (isOpen) closeSurahDropdown();
+        else openSurahDropdown();
+    });
+
+    search.addEventListener("input", () => filterSurahList(search.value));
+
+    // Prevent the dropdown's interior clicks from closing it.
+    dd.addEventListener("click", (e) => e.stopPropagation());
+
+    // Clicking a surah row swaps to the detail view (ayah picker).
+    list.addEventListener("click", (e) => {
+        const row = e.target.closest(".mushaf-surah-item");
+        if (!row) return;
+        const num = Number(row.dataset.num);
+        if (!num) return;
+        showSurahDetailPanel(num);
+    });
+
+    // Back button returns to the list view + restores focus to search.
+    detailBack.addEventListener("click", (e) => {
+        e.preventDefault();
+        showSurahListPanel();
+        requestAnimationFrame(() => search.focus({ preventScroll: true }));
+    });
+
+    // Submit ayah picker — Enter on wheel (via its own handler), or click the اذهب button.
+    detailForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        submitSurahDetail();
+    });
+
+    // Keyboard nav inside the search box → moves through visible list rows.
+    search.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            closeSurahDropdown();
+            btn.focus();
+            return;
+        }
+        if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") {
+            const visible = Array.from(list.querySelectorAll(".mushaf-surah-item:not(.mushaf-surah-item--hidden)"));
+            if (!visible.length) return;
+            const activeIdx = visible.findIndex((el) => el.classList.contains("mushaf-surah-item--focus"));
+            if (e.key === "Enter") {
+                e.preventDefault();
+                const row = activeIdx >= 0 ? visible[activeIdx] : visible[0];
+                if (!row) return;
+                const num = Number(row.dataset.num);
+                if (!num) return;
+                showSurahDetailPanel(num);
+                return;
+            }
+            e.preventDefault();
+            const dir = e.key === "ArrowDown" ? 1 : -1;
+            const nextIdx = activeIdx < 0
+                ? (dir > 0 ? 0 : visible.length - 1)
+                : (activeIdx + dir + visible.length) % visible.length;
+            visible.forEach((el) => el.classList.remove("mushaf-surah-item--focus"));
+            const next = visible[nextIdx];
+            next.classList.add("mushaf-surah-item--focus");
+            next.scrollIntoView({ block: "nearest" });
+        }
+    });
+
+    // Outside-click closes (separate from the existing toolbar handler).
+    document.addEventListener("click", (e) => {
+        if (!wrap.contains(e.target)) closeSurahDropdown();
     });
 }
 
@@ -2471,8 +3120,16 @@ function syncSettingsUI() {
     const dd = document.getElementById("mushafSettingsDropdown");
     if (!dd) return;
     const reciter = DEPS?.getCurrentReciter?.();
+    const targetSurah = TARGET_SURAH || LAST_VIEWED_AYAH?.s;
     dd.querySelectorAll('[data-settings-group="reciter"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === reciter ? "true" : "false");
+        const allowed = DEPS?.isReciterAllowedForSurah
+            ? DEPS.isReciterAllowedForSurah(c.dataset.val, targetSurah)
+            : true;
+        c.disabled = !allowed;
+        c.classList.toggle("mushaf-settings__chip--disabled", !allowed);
+        if (!allowed) c.title = "غير متوفر لهذه السورة";
+        else c.removeAttribute("title");
     });
     dd.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === AUDIO_MODE ? "true" : "false");

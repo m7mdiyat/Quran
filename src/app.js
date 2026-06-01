@@ -28,7 +28,7 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
 /* Mushaf reading mode bridge */
-import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode, stopMushafPerAyahAudio, getMushafPerAyahPosition, playMushafAyahAtKey } from "./mushaf.js";
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode, stopMushafPerAyahAudio, getMushafPerAyahPosition, playMushafAyahAtKey, getMushafTargetSurah } from "./mushaf.js";
 
 /* Continuous full-surah audio engine (all reciters) */
 import { surahAudio } from "./surahAudio.js";
@@ -680,6 +680,56 @@ const RECITERS = {
 const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim'];
 let CURRENT_RECITER = 'alijaber';
 
+// Per-reciter surah blocklist — some reciters don't have a recording for a
+// given surah. Each entry maps a reciter key to the Set of surah numbers for
+// which that reciter is disabled (UI greys the chip and the engine falls
+// back to another reciter if needed).
+const RECITER_RESTRICTED_SURAHS = {
+  qasim: new Set([4]),
+};
+
+function isReciterAllowedForSurah(reciterKey, surahNum) {
+  if (!reciterKey || !surahNum) return true;
+  const blocked = RECITER_RESTRICTED_SURAHS[reciterKey];
+  return !blocked || !blocked.has(Number(surahNum));
+}
+
+function fallbackReciterForSurah(surahNum) {
+  for (const k of RECITER_ORDER) {
+    if (isReciterAllowedForSurah(k, surahNum)) return k;
+  }
+  return RECITER_ORDER[0];
+}
+
+function getActiveSurahForRestriction() {
+  // Prefer whatever the audio engine is currently playing — that's the
+  // surah the user will actually hear.
+  if (surahAudio.isActive()) {
+    const s = surahAudio.getSurah();
+    if (s) return Number(s);
+  }
+  // In Mushaf mode, follow the mushaf's focused surah.
+  try {
+    if (isMushafMode()) {
+      const s = getMushafTargetSurah();
+      if (s) return Number(s);
+    }
+  } catch { }
+  // Tafsir default: the currently-focused ayah's surah.
+  return CURRENT?.s ? Number(CURRENT.s) : null;
+}
+
+function enforceReciterForSurah(surahNum) {
+  if (!surahNum) return;
+  if (!isReciterAllowedForSurah(CURRENT_RECITER, surahNum)) {
+    switchReciter(fallbackReciterForSurah(surahNum));
+  } else {
+    // Same reciter, but the chip's disabled state may need to update if
+    // the user just navigated into / out of a restricted surah.
+    updateReciterUI();
+  }
+}
+
 // Initialize reciter from localStorage
 try {
   const savedReciter = localStorage.getItem('audioReciter');
@@ -1287,6 +1337,8 @@ mobileSeekForward?.addEventListener("click", () => skipAudio(5));
 function switchReciter(newReciter) {
   if (!RECITERS[newReciter]) return;
   if (newReciter === CURRENT_RECITER) return;
+  // Honor per-surah restrictions (e.g. qasim is not available on surah 4).
+  if (!isReciterAllowedForSurah(newReciter, getActiveSurahForRestriction())) return;
 
   // Snapshot what's currently playing BEFORE any state changes. The
   // position drives the restart so the user lands at the same ayah with
@@ -1379,8 +1431,14 @@ function buildTafsirReciterChips() {
 
 /** Reflect current reciter + playback mode in the settings panel pills. */
 function syncTafsirSettingsUI() {
+  const activeSurah = getActiveSurahForRestriction();
   document.querySelectorAll('[data-tafsir-settings="reciter"] .mushaf-settings__chip').forEach(c => {
     c.setAttribute('aria-checked', c.dataset.val === CURRENT_RECITER ? 'true' : 'false');
+    const allowed = isReciterAllowedForSurah(c.dataset.val, activeSurah);
+    c.disabled = !allowed;
+    c.classList.toggle('mushaf-settings__chip--disabled', !allowed);
+    if (!allowed) c.title = 'غير متوفر لهذه السورة';
+    else c.removeAttribute('title');
   });
   const mode = LISTENING_MODE ? 'continuous' : 'single';
   document.querySelectorAll('[data-tafsir-settings="audio-mode"] .mushaf-settings__chip').forEach(c => {
@@ -3978,6 +4036,9 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     stopAudio();
   }
   CURRENT = { s: surahNo, a: ayahNo };
+  // Re-evaluate reciter restrictions for the new surah (auto-fallback off
+  // qasim on surah 4, refresh chip disabled states either way).
+  enforceReciterForSurah(surahNo);
   setUrlForAyah(surahNo, ayahNo, { replace: replaceUrl });
 
   showAyahContext(surahNo, ayahNo);
@@ -4691,6 +4752,8 @@ async function init() {
     reciterOrder: RECITER_ORDER,
     getCurrentReciter: () => CURRENT_RECITER,
     setCurrentReciter: (r) => switchReciter(r),
+    isReciterAllowedForSurah: (r, s) => isReciterAllowedForSurah(r, s),
+    enforceReciterForSurah: (s) => enforceReciterForSurah(s),
     stopAudio: () => stopAudio(),
     // Quiet teardown of the Tafsir-side per-ayah <audio> only — does NOT
     // touch the engine. Used by Mushaf play paths to enforce the
