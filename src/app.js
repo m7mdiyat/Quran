@@ -1485,7 +1485,7 @@ document.addEventListener('click', (e) => {
 function attachLongPressDropdown(btn, dd) {
   if (!btn || !dd) return;
   const LONG_PRESS_MS = 500;
-  const MOVE_THRESHOLD_PX = 10;
+  const MOVE_THRESHOLD_PX = 14;
   let timer = null;
   let fired = false;
   let startX = 0, startY = 0;
@@ -1499,14 +1499,15 @@ function attachLongPressDropdown(btn, dd) {
   btn.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse') return; // hover covers desktop
     fired = false;
-    activePointerId = e.pointerId;
     startX = e.clientX; startY = e.clientY;
     cancel();
+    activePointerId = e.pointerId;
     timer = setTimeout(() => {
       timer = null;
       if (activePointerId !== e.pointerId) return;
       fired = true;
-      dd.classList.add('mushaf-toolbar__dropdown--open');
+      // Toggle: a second hold on an already-open panel closes it.
+      dd.classList.toggle('mushaf-toolbar__dropdown--open');
       if (navigator.vibrate) { try { navigator.vibrate(15); } catch { } }
     }, LONG_PRESS_MS);
   });
@@ -1518,7 +1519,9 @@ function attachLongPressDropdown(btn, dd) {
   });
   btn.addEventListener('pointerup', cancel);
   btn.addEventListener('pointercancel', cancel);
-  btn.addEventListener('pointerleave', cancel);
+  // Note: deliberately NOT cancelling on pointerleave — some WebViews
+  // synthesize pointerleave mid-touch when the finger drifts slightly off
+  // the button's box, which would kill the long-press just before it fires.
 
   // Capture phase so we beat the bubble-phase play-toggle listener.
   btn.addEventListener('click', (e) => {
@@ -1549,14 +1552,23 @@ function attachLongPressDropdown(btn, dd) {
   // Volume/speed dropdown: open on hover ONLY while audio is actually playing
   // (otherwise hovering the play button to start playback would pop the
   // dropdown over the ayah text). Match the Mushaf side's gate.
+  //
+  // Use pointerenter/pointerleave filtered to mouse pointers so touch never
+  // triggers the auto-hide path — otherwise the synthesized mouseleave after
+  // a touch release would close the dropdown opened by the long-press.
   if (playWrap && volDD) {
     let hideT = null;
-    playWrap.addEventListener('mouseenter', () => {
+    playWrap.addEventListener('pointerenter', (e) => {
+      if (e.pointerType !== 'mouse') return;
       if (!AUDIO_PLAYING && !surahAudio.isActive()) return;
       clearTimeout(hideT);
       volDD.classList.add('mushaf-toolbar__dropdown--open');
     });
-    playWrap.addEventListener('mouseleave', () => { clearTimeout(hideT); hideT = setTimeout(() => volDD.classList.remove('mushaf-toolbar__dropdown--open'), 350); });
+    playWrap.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      clearTimeout(hideT);
+      hideT = setTimeout(() => volDD.classList.remove('mushaf-toolbar__dropdown--open'), 350);
+    });
     document.addEventListener('click', (e) => { if (!playWrap.contains(e.target)) volDD.classList.remove('mushaf-toolbar__dropdown--open'); });
   }
 

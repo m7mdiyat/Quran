@@ -616,6 +616,77 @@ body.dark .mushaf-ayah-menu {
     color: var(--accent-strong);
 }
 
+/* Copy button: icon + small label, pill shape so the label reads cleanly
+ * next to the icon-only sparkles button. */
+.mushaf-ayah-menu__btn--copy {
+    width: auto;
+    min-width: 40px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.mushaf-ayah-menu__btn--copy .mushaf-ayah-menu__btn-icon {
+    display: inline-flex;
+}
+
+.mushaf-ayah-menu__btn--copy .mushaf-ayah-menu__btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Selected-ayah highlight: soft on-brand wash that reads as "this is the
+ * one the menu is acting on" — distinct from native text selection. The
+ * highlight is painted as a box-shadow-like background so it hugs the
+ * inline text without changing layout. */
+.mushaf-ayah--selected {
+    background-color: rgba(38, 68, 205, 0.10);
+    border-radius: 6px;
+    box-shadow: 0 0 0 2px rgba(38, 68, 205, 0.10);
+    transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+body.dark .mushaf-ayah--selected {
+    background-color: rgba(99, 130, 246, 0.18);
+    box-shadow: 0 0 0 2px rgba(99, 130, 246, 0.18);
+}
+
+/* Copy-confirmation toast — single shared element, bottom-center. */
+.copy-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translate(-50%, 8px);
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: #2644cd;
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 800;
+    box-shadow: 0 8px 22px rgba(38, 68, 205, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2000;
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.copy-toast--show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+body.dark .copy-toast {
+    background: #3b5bd9;
+}
+
 /* ============================================================
  * مختصر التفاسير — quick-view card
  * ============================================================ */

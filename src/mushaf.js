@@ -115,6 +115,8 @@ const ICONS = {
     volumeHigh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
     sparkles: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>`,
     close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+    copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
 
 /* Data caches */
@@ -964,6 +966,10 @@ function buildShell() {
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
         <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--mukhtasar" data-act="mukhtasar" aria-label="مختصر التفاسير">${ICONS.sparkles}</button>
+        <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--copy" data-act="copy" aria-label="نسخ الآية">
+          <span class="mushaf-ayah-menu__btn-icon">${ICONS.copy}</span>
+          <span class="mushaf-ayah-menu__btn-label">نسخ</span>
+        </button>
       </div>
     </div>
 
@@ -1626,6 +1632,12 @@ function wireMenu() {
             const verse = AYAH_MENU_VERSE;
             closeAyahMenu();
             openMukhtasarCard(verse);
+        } else if (btn.dataset.act === "copy") {
+            const verse = AYAH_MENU_VERSE;
+            const [s, a] = verse.split(":").map(Number);
+            const text = DEPS?.getAyahPlainText?.(s, a) || "";
+            if (text) copyAyahText(text);
+            closeAyahMenu();
         }
     });
     document.addEventListener("click", (e) => {
@@ -2248,15 +2260,22 @@ function wireToolbar() {
         settingsBtn?.addEventListener("click", (e) => { e.stopPropagation(); settingsDD.classList.toggle("mushaf-toolbar__dropdown--open"); syncSettingsUI(); });
     }
 
-    // --- Volume dropdown: shows only while audio is playing ---
+    // --- Volume dropdown: shows on mouse hover while audio is playing ---
+    // Filter to mouse pointers so a touch release (which synthesizes a
+    // mouseleave) cannot close the dropdown that the long-press just opened.
     if (playWrap && volDD) {
         let volHideT = null;
-        playWrap.addEventListener("mouseenter", () => {
+        playWrap.addEventListener("pointerenter", (e) => {
+            if (e.pointerType !== "mouse") return;
             if (!AUDIO_VERSE) return; // only show when audio is active
             clearTimeout(volHideT);
             volDD.classList.add("mushaf-toolbar__dropdown--open");
         });
-        playWrap.addEventListener("mouseleave", () => { clearTimeout(volHideT); volHideT = setTimeout(() => volDD.classList.remove("mushaf-toolbar__dropdown--open"), 350); });
+        playWrap.addEventListener("pointerleave", (e) => {
+            if (e.pointerType !== "mouse") return;
+            clearTimeout(volHideT);
+            volHideT = setTimeout(() => volDD.classList.remove("mushaf-toolbar__dropdown--open"), 350);
+        });
     }
 
     // --- Play button click ---
@@ -2273,7 +2292,7 @@ function wireToolbar() {
     // toggle playback. Mouse pointers ignored — desktop already has hover.
     if (playBtn && volDD) {
         const LONG_PRESS_MS = 500;
-        const MOVE_THRESHOLD_PX = 10;
+        const MOVE_THRESHOLD_PX = 14;
         let lpTimer = null;
         let lpFired = false;
         let lpStartX = 0, lpStartY = 0;
@@ -2285,14 +2304,15 @@ function wireToolbar() {
         playBtn.addEventListener("pointerdown", (e) => {
             if (e.pointerType === "mouse") return;
             lpFired = false;
-            lpPointerId = e.pointerId;
             lpStartX = e.clientX; lpStartY = e.clientY;
             lpCancel();
+            lpPointerId = e.pointerId;
             lpTimer = setTimeout(() => {
                 lpTimer = null;
                 if (lpPointerId !== e.pointerId) return;
                 lpFired = true;
-                volDD.classList.add("mushaf-toolbar__dropdown--open");
+                // Toggle: a second hold on an already-open panel closes it.
+                volDD.classList.toggle("mushaf-toolbar__dropdown--open");
                 if (navigator.vibrate) { try { navigator.vibrate(15); } catch { } }
             }, LONG_PRESS_MS);
         });
@@ -2303,7 +2323,9 @@ function wireToolbar() {
         });
         playBtn.addEventListener("pointerup", lpCancel);
         playBtn.addEventListener("pointercancel", lpCancel);
-        playBtn.addEventListener("pointerleave", lpCancel);
+        // Note: deliberately NOT cancelling on pointerleave — some WebViews
+        // synthesize pointerleave mid-touch when the finger drifts slightly
+        // off the button, which would kill the long-press just before fire.
         playBtn.addEventListener("click", (e) => {
             if (!lpFired) return;
             e.preventDefault();
@@ -2416,6 +2438,7 @@ function showMenu(ayahEl, { reposition = false } = {}) {
         AYAH_MENU_EL.setAttribute("data-view", "main");
         AYAH_MENU_EL.classList.add("mushaf-ayah-menu--open");
         AYAH_MENU_EL.setAttribute("aria-hidden", "false");
+        setSelectedAyah(ayahEl);
     }
     // Position
     const rect = ayahEl.getBoundingClientRect();
@@ -2443,6 +2466,80 @@ function closeAyahMenu() {
     AYAH_MENU_EL?.setAttribute("aria-hidden", "true");
     AYAH_MENU_VERSE = null;
     AYAH_MENU_ANCHOR = null;
+    clearSelectedAyah();
+}
+
+/* Soft on-brand highlight on the currently-actioned ayah. Only one at a
+ * time; previous highlight is cleared automatically. */
+let SELECTED_AYAH_EL = null;
+function setSelectedAyah(ayahEl) {
+    if (SELECTED_AYAH_EL && SELECTED_AYAH_EL !== ayahEl) {
+        SELECTED_AYAH_EL.classList.remove("mushaf-ayah--selected");
+    }
+    SELECTED_AYAH_EL = ayahEl || null;
+    ayahEl?.classList.add("mushaf-ayah--selected");
+}
+function clearSelectedAyah() {
+    if (SELECTED_AYAH_EL) {
+        SELECTED_AYAH_EL.classList.remove("mushaf-ayah--selected");
+        SELECTED_AYAH_EL = null;
+    }
+}
+
+/* Copy ayah Arabic text to the clipboard and surface a brief confirmation
+ * toast. Uses navigator.clipboard with a textarea fallback for older
+ * WebViews / non-secure contexts. */
+async function copyAyahText(text) {
+    if (!text) return;
+    let ok = false;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+        }
+    } catch { /* fall through */ }
+    if (!ok) {
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.top = "-1000px";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+        } catch { ok = false; }
+    }
+    if (ok) {
+        if (navigator.vibrate) { try { navigator.vibrate(10); } catch { } }
+        showCopyToast("تم النسخ");
+    } else {
+        showCopyToast("تعذّر النسخ");
+    }
+}
+
+/* Lightweight one-off toast (bottom-center). Single shared element. */
+let _copyToastEl = null;
+let _copyToastTimer = null;
+function showCopyToast(msg) {
+    if (!_copyToastEl) {
+        _copyToastEl = document.createElement("div");
+        _copyToastEl.className = "copy-toast";
+        _copyToastEl.setAttribute("role", "status");
+        _copyToastEl.setAttribute("aria-live", "polite");
+        document.body.appendChild(_copyToastEl);
+    }
+    _copyToastEl.textContent = msg;
+    // Force reflow so the transition runs on each call.
+    _copyToastEl.classList.remove("copy-toast--show");
+    void _copyToastEl.offsetWidth;
+    _copyToastEl.classList.add("copy-toast--show");
+    clearTimeout(_copyToastTimer);
+    _copyToastTimer = setTimeout(() => {
+        _copyToastEl?.classList.remove("copy-toast--show");
+    }, 1800);
 }
 
 /* ============================================================
