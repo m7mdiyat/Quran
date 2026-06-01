@@ -28,7 +28,7 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
 /* Mushaf reading mode bridge */
-import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode } from "./mushaf.js";
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode, stopMushafPerAyahAudio, getMushafPerAyahPosition, playMushafAyahAtKey } from "./mushaf.js";
 
 /* Continuous full-surah audio engine (all reciters) */
 import { surahAudio } from "./surahAudio.js";
@@ -889,6 +889,85 @@ function stopAudio() {
 }
 
 /**
+ * Quietly tear down ONLY the Tafsir-side per-ayah <audio> element. Does
+ * NOT touch the surahAudio engine or any UI other than the Tafsir play
+ * button state. Exposed to the Mushaf module via DEPS so its play paths
+ * can enforce the single-source invariant without clobbering the engine.
+ */
+function stopTafsirPerAyahAudio() {
+  if (!AUDIO_PLAYER) return;
+  try { AUDIO_PLAYER.pause(); } catch { }
+  AUDIO_PLAYER = null;
+  AUDIO_PLAYING = false;
+  setAudioActiveUI(false);
+}
+
+/**
+ * RIGID INVARIANT: at most one audio source ever plays at a time
+ * (surahAudio engine, Tafsir per-ayah <audio>, Mushaf per-ayah <audio>).
+ *
+ * This helper kills both per-ayah <audio> elements without touching the
+ * surahAudio engine — callers that want to start the engine let
+ * surahAudio.play() do its own internal teardown (which preserves the
+ * existing callback bundle bound to whichever view currently owns the
+ * engine). Callers that want to wipe everything follow this with an
+ * explicit surahAudio.stop().
+ */
+function silenceForeignPerAyah() {
+  if (AUDIO_PLAYER) {
+    try { AUDIO_PLAYER.pause(); } catch { }
+    AUDIO_PLAYER = null;
+  }
+  AUDIO_PLAYING = false;
+  setAudioActiveUI(false);
+  stopMushafPerAyahAudio();
+}
+
+/**
+ * Snapshot the currently playing audio (source + ayah) BEFORE any state
+ * change. Used by switchReciter so we can resume at the same ayah with
+ * the new reciter. Returns null if nothing is loaded.
+ */
+function captureAudioPosition() {
+  if (surahAudio.isActive()) {
+    return {
+      source: "engine",
+      surah: surahAudio.getSurah(),
+      ayah: surahAudio.getActiveAyah(),
+      playing: surahAudio.isPlaying(),
+    };
+  }
+  if (AUDIO_PLAYER && CURRENT) {
+    return {
+      source: "perAyah",
+      surah: CURRENT.s,
+      ayah: CURRENT.a,
+      playing: !AUDIO_PLAYER.paused,
+    };
+  }
+  const m = getMushafPerAyahPosition();
+  if (m) return { source: "perAyah", ...m };
+  return null;
+}
+
+/**
+ * Restart per-ayah playback at the captured ayah, routed through the
+ * currently-visible mode's path so UI feedback matches the user's view.
+ * Engine resumes are handled inline by switchReciter (cold reload).
+ */
+function resumePerAyahAtPosition(pos) {
+  if (!pos) return;
+  if (isMushafMode()) {
+    playMushafAyahAtKey(pos.surah, pos.ayah);
+    return;
+  }
+  if (!CURRENT || CURRENT.s !== pos.surah || CURRENT.a !== pos.ayah) {
+    setPrimaryAyah(pos.surah, pos.ayah, { scroll: false, animate: false, skipAudioStop: true });
+  }
+  playCurrentAyah();
+}
+
+/**
  * Set listening mode (continuous playback through surah)
  */
 function setListeningMode(enabled) {
@@ -980,7 +1059,10 @@ function tafsirEngineCallbacks() {
  */
 function startSurahEngineForCurrent() {
   if (!CURRENT) return;
+  // RIGID: kill any stale per-ayah <audio> from EITHER mode before the
+  // engine starts. surahAudio.play() destroys its own previous element.
   if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } AUDIO_PLAYER = null; }
+  stopMushafPerAyahAudio();
   surahAudio.play({
     surah: CURRENT.s,
     ayah: CURRENT.a,
@@ -1065,6 +1147,11 @@ function playCurrentAyah() {
     startSurahEngineForCurrent();
     return;
   }
+
+  // RIGID: about to spawn a NEW tafsir-side <audio>. Kill any background
+  // Mushaf-per-ayah stream still alive from before a mode toggle —
+  // without this, both reciters play at once.
+  stopMushafPerAyahAudio();
 
   const url = getAyahAudioUrl(CURRENT.s, CURRENT.a);
   const nextAudio = new Audio(url);
@@ -1201,45 +1288,51 @@ function switchReciter(newReciter) {
   if (!RECITERS[newReciter]) return;
   if (newReciter === CURRENT_RECITER) return;
 
-  const engineActive = surahAudio.isActive();
-  const enginePlaying = surahAudio.isPlaying();
-  const perAyahPlaying = AUDIO_PLAYING && !engineActive;
+  // Snapshot what's currently playing BEFORE any state changes. The
+  // position drives the restart so the user lands at the same ayah with
+  // the new reciter, regardless of which mode they're viewing.
+  const pos = captureAudioPosition();
 
   CURRENT_RECITER = newReciter;
   try { localStorage.setItem('audioReciter', CURRENT_RECITER); } catch { }
   updateReciterUI();
 
-  if (enginePlaying) {
-    // Atomic engine cold reload at the same ayah, KEEPING the existing
-    // callback bundle so whichever view (Tafsir / Mushaf) is bound stays
-    // bound, AND keeping the engine's existing _speed / _volume / _continuous
-    // (which surahAudio.setSpeed / setVolume keep in sync from both callers).
-    // The engine's cold path destroys the old audio element silently (no
-    // onStop), so the playing-state UI stays on throughout — only an
-    // unavoidable audio gap (~200–500ms) while the new MP3 + timings load.
-    const s = surahAudio.getSurah();
-    const a = surahAudio.getActiveAyah();
-    if (s && a) {
-      surahAudio.play({ surah: s, ayah: a, reciter: newReciter }).catch((err) => {
-        console.error("Reciter swap (engine) failed:", err);
-        stopAudio();
-        showTafsirAudioOffline();
-      });
-    }
+  // RIGID: kill both per-ayah <audio> elements. Engine, if alive, is
+  // left untouched for the cold-reload below — preserving the engine's
+  // callback bundle (bound to whichever view currently owns it). Without
+  // killing the per-ayah elements, a Mushaf-started single-mode stream
+  // can keep playing in the background after the user swaps views,
+  // layering a second reciter on top of any new stream we start.
+  silenceForeignPerAyah();
+
+  if (!pos || !pos.playing) {
+    // Nothing actively playing. Also drop a paused engine so a stale
+    // old-reciter element doesn't hang around.
+    if (surahAudio.isActive()) surahAudio.stop();
     return;
   }
 
-  if (engineActive) {
-    // Engine paused: drop the stale audio. User clicks play again to load
-    // the new reciter from the current ayah.
-    stopAudio();
+  if (pos.source === "engine") {
+    // Engine hot swap: cold reload at the captured ayah with the new
+    // reciter. surahAudio.play() destroys its old audio internally and
+    // keeps _callbacks (we don't pass any), so whichever view currently
+    // owns the engine keeps receiving onPlay / onAyahChange / onEnded.
+    surahAudio.play({
+      surah: pos.surah,
+      ayah: pos.ayah,
+      reciter: newReciter,
+    }).catch((err) => {
+      console.error("Reciter swap (engine) failed:", err);
+      stopAudio();
+      showTafsirAudioOffline();
+    });
     return;
   }
 
-  if (perAyahPlaying) {
-    stopAudio();
-    playCurrentAyah();
-  }
+  // Per-ayah single mode. Restart at the captured ayah via the
+  // currently-visible mode's path — so UI feedback (highlight, play
+  // button state, dropdown) matches what the user is looking at.
+  resumePerAyahAtPosition(pos);
 }
 
 
@@ -1324,6 +1417,60 @@ document.addEventListener('click', (e) => {
   });
 });
 
+/**
+ * Touch-only long-press: holding a play button for ~500ms opens the
+ * associated volume/speed dropdown. The synthetic click that fires when
+ * the user releases is swallowed in capture phase so the long-press
+ * doesn't also start/stop playback. Mouse pointers are ignored —
+ * desktop already has hover.
+ */
+function attachLongPressDropdown(btn, dd) {
+  if (!btn || !dd) return;
+  const LONG_PRESS_MS = 500;
+  const MOVE_THRESHOLD_PX = 10;
+  let timer = null;
+  let fired = false;
+  let startX = 0, startY = 0;
+  let activePointerId = null;
+
+  const cancel = () => {
+    if (timer != null) { clearTimeout(timer); timer = null; }
+    activePointerId = null;
+  };
+
+  btn.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return; // hover covers desktop
+    fired = false;
+    activePointerId = e.pointerId;
+    startX = e.clientX; startY = e.clientY;
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      if (activePointerId !== e.pointerId) return;
+      fired = true;
+      dd.classList.add('mushaf-toolbar__dropdown--open');
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch { } }
+    }, LONG_PRESS_MS);
+  });
+
+  btn.addEventListener('pointermove', (e) => {
+    if (timer == null || e.pointerId !== activePointerId) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (dx * dx + dy * dy > MOVE_THRESHOLD_PX * MOVE_THRESHOLD_PX) cancel();
+  });
+  btn.addEventListener('pointerup', cancel);
+  btn.addEventListener('pointercancel', cancel);
+  btn.addEventListener('pointerleave', cancel);
+
+  // Capture phase so we beat the bubble-phase play-toggle listener.
+  btn.addEventListener('click', (e) => {
+    if (!fired) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    fired = false;
+  }, true);
+}
+
 /* ---------------- Tafsir play button + volume/speed dropdown ---------------- */
 (function wireTafsirPlayToolbar() {
   const playWrap = document.getElementById('tafsirPlayWrap');
@@ -1354,6 +1501,13 @@ document.addEventListener('click', (e) => {
     playWrap.addEventListener('mouseleave', () => { clearTimeout(hideT); hideT = setTimeout(() => volDD.classList.remove('mushaf-toolbar__dropdown--open'), 350); });
     document.addEventListener('click', (e) => { if (!playWrap.contains(e.target)) volDD.classList.remove('mushaf-toolbar__dropdown--open'); });
   }
+
+  // Touch-only long-press: hold the play button for 500ms to open the
+  // volume/speed dropdown. Mobile has no hover, so without this the
+  // dropdown is unreachable when audio isn't already playing. The
+  // following synthetic click is swallowed (capture-phase) so a long
+  // press doesn't also toggle playback.
+  attachLongPressDropdown(playBtn, volDD);
 
   // Volume controls
   if (volSlider) {
@@ -2475,6 +2629,13 @@ function collapseResultsToChip(it) {
   results.classList.add("collapsed");
   resultsShell.classList.add("collapsed");
   results.style.maxHeight = "";
+  // User picked an ayah → the chip now represents the selection, so the
+  // raw query text is no longer needed. Clearing also drops Chrome's
+  // :-webkit-autofill state, removing the leftover overlay from the
+  // input. Don't clear if the input has no value (no-op anyway).
+  if (textSearch && textSearch.value) {
+    textSearch.value = "";
+  }
 }
 
 function expandResultsList() {
@@ -4531,6 +4692,10 @@ async function init() {
     getCurrentReciter: () => CURRENT_RECITER,
     setCurrentReciter: (r) => switchReciter(r),
     stopAudio: () => stopAudio(),
+    // Quiet teardown of the Tafsir-side per-ayah <audio> only — does NOT
+    // touch the engine. Used by Mushaf play paths to enforce the
+    // single-source invariant without clobbering the engine.
+    stopTafsirPerAyahAudio: () => stopTafsirPerAyahAudio(),
     tafsirSectionEl: tafsirSection,
     hasCurrentAyah: () => CURRENT != null,
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
@@ -4655,6 +4820,27 @@ async function init() {
     if (chipIcon) chipIcon.textContent = chipDefaults.icon;
     resetSeoMetaToHome({ removeAyahParam: true });
   });
+
+  // Click anywhere outside the search panel → drop a stale autofill
+  // visual on the input. Only fires when the value actually came from
+  // Chrome's autofill (a saved-search pick) — typed text is preserved
+  // so casual outside clicks don't wipe an in-progress search. Clearing
+  // the value is the cheapest way to make the :-webkit-autofill
+  // pseudo-class go away; the box-shadow inset overlay disappears with it.
+  const searchPanelEl = textSearch.closest('.glass');
+  if (searchPanelEl) {
+    const isInputAutofilled = () => {
+      try { if (textSearch.matches(':-webkit-autofill')) return true; } catch { }
+      try { if (textSearch.matches(':autofill')) return true; } catch { }
+      return false;
+    };
+    document.addEventListener('click', (e) => {
+      if (!textSearch.value) return;
+      if (searchPanelEl.contains(e.target)) return;
+      if (!isInputAutofilled()) return;
+      textSearch.value = "";
+    });
+  }
 
   // chip expands
   resultsShell?.addEventListener("click", (e) => {

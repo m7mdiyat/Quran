@@ -1305,6 +1305,36 @@
       color: var(--text);
     }
 
+    /* Browser autofill (saved-search dropdown) paints the input white from
+     * outside CSS — defeat it by overriding with a giant inset box-shadow,
+     * the only property that beats -webkit-autofill's background.
+     *
+     * Notes:
+     * - Opaque inset (no rgba alpha) so the browser's frozen autofill
+     *   background-color cannot bleed through during a theme toggle.
+     * - transition: none kills the Tailwind 150ms easing on this state
+     *   so theme toggles swap colors instantly — no laggy fade where
+     *   the inset is mid-transition while the underlying background
+     *   sits in the old theme. */
+    .input-glass:-webkit-autofill,
+    .input-glass:-webkit-autofill:hover,
+    .input-glass:-webkit-autofill:focus,
+    .input-glass:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 1000px #f1f5f9 inset !important;
+      -webkit-text-fill-color: #0f172a !important;
+      caret-color: #0f172a !important;
+      transition: none !important;
+    }
+
+    body.dark .input-glass:-webkit-autofill,
+    body.dark .input-glass:-webkit-autofill:hover,
+    body.dark .input-glass:-webkit-autofill:focus,
+    body.dark .input-glass:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 1000px #222830 inset !important;
+      -webkit-text-fill-color: var(--text) !important;
+      caret-color: var(--text) !important;
+    }
+
     body.dark .results-list {
       background: rgba(28, 34, 41, .6);
     }
