@@ -22,6 +22,8 @@ gcloud run deploy tafsir-api-sqlite --source m7mdiyat-backend/ --region me-centr
 curl -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
 ```
 
+**Deploy gotcha — `MANIFEST_UNKNOWN: Failed to fetch "3.12.x"`:** Cloud Run persists `--set-build-env-vars` flags as a `run.googleapis.com/build-environment-variables` annotation on the service, and every later `--source` deploy reuses them. A prior deploy pinned `GOOGLE_RUNTIME_VERSION=3.12.7`; when Google rotated that patch out of the buildpack registry, every subsequent build failed even though `runtime.txt` said `python-3.12`. Fix: add `--clear-build-env-vars` to the next deploy (one-time). `runtime.txt` (`python-3.12`, minor-only) is the source of truth — do NOT re-pin an exact patch. Diagnose with: `gcloud run services describe tafsir-api-sqlite --region me-central1 --format="value(metadata.annotations['run.googleapis.com/build-environment-variables'])"`.
+
 ## Architecture
 
 This is a Quran study SPA (محمديات / m7mdiyat.com) with **no frontend framework** — pure vanilla JS + Vite.

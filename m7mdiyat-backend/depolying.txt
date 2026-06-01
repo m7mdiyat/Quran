@@ -1,12 +1,14 @@
-gcloud run deploy tafsir-api-sqlite `
-  --source . `
-  --region me-central1 `
-  --runtime python312 `
-  --allow-unauthenticated
+# Deploy backend (Cloud Run, region me-central1)
 
+gcloud run deploy tafsir-api-sqlite --source . --region me-central1 --allow-unauthenticated
 
+# Health check
+curl -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
 
-gcloud run deploy tafsir-api-sqlite --source . --region me-central1 --allow-unauthenticated --set-build-env-vars GOOGLE_RUNTIME_VERSION=3.12.7
-
-
-curl.exe -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
+# NOTE — do NOT re-pin GOOGLE_RUNTIME_VERSION to an exact patch.
+# A previous deploy used --set-build-env-vars GOOGLE_RUNTIME_VERSION=3.12.7,
+# which Cloud Run persists on the service. When Google rotated that patch out
+# of its registry, every subsequent build failed with MANIFEST_UNKNOWN.
+# It was cleared with `--clear-build-env-vars`. The Python version now comes
+# from runtime.txt (`python-3.12`, minor-only), which lets the buildpack
+# pick whatever 3.12.x patch is currently available.

@@ -20,7 +20,7 @@ const el = (id) => document.getElementById(id);
 /** ✅ Your deployed backend endpoint (AI search) */
 const API_BASE = import.meta.env.VITE_API_BASE || "https://tafsir-api-317751773286.me-central1.run.app";
 const TAFSIR_API_URL = `${API_BASE}/ai`;
-const API_ROOT = API_BASE.replace(/\/$/, "");
+export const API_ROOT = API_BASE.replace(/\/$/, "");
 const COMPARE_API_URL = `${API_ROOT}/compare`;
 const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 
@@ -393,7 +393,7 @@ const TAFSIR_OFFLINE_FILES = [
  * before Capacitor is ready: the app is served from https://localhost with NO
  * port, while the dev/preview server uses an explicit port and the real website
  * uses its own domain — so a web user on a phone never triggers the download. */
-function isApp() {
+export function isApp() {
   if (typeof window === "undefined") return false;
   if (window.Capacitor !== undefined) return true;
   return window.location.hostname === "localhost"
@@ -4740,12 +4740,16 @@ async function init() {
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
 
-  // App-only: lazy-load the offline-downloads panel so the web bundle stays clean.
-  // The panel reveals its header icon on init; web users never see it.
+  // App-only: lazy-load the offline-downloads panel and the feedback panel so
+  // the web bundle stays clean. Each panel reveals its own header icon on init;
+  // web users never see either button or load either module.
   if (isApp()) {
     import("./offline-panel.js")
       .then((m) => m.initOfflinePanel())
       .catch((e) => console.error("offline-panel init failed", e));
+    import("./feedback-panel.js")
+      .then((m) => m.initFeedbackPanel())
+      .catch((e) => console.error("feedback-panel init failed", e));
   }
 
   // Lock search until core files load

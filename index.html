@@ -2389,7 +2389,17 @@
      * Offline downloads panel (APP ONLY — button revealed by JS via isApp())
      * ==================================================================== */
 
-    .offline-menu-btn {
+    /* App-only header actions cluster (offline + feedback buttons). Empty on
+       the website — both children start display:none and are revealed by their
+       respective panel modules behind isApp(). */
+    .header-app-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .offline-menu-btn,
+    .feedback-menu-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -2404,26 +2414,30 @@
       cursor: pointer;
     }
 
-    .offline-menu-btn:hover {
+    .offline-menu-btn:hover,
+    .feedback-menu-btn:hover {
       background: linear-gradient(135deg, #1e293b, #334155);
       border-color: rgba(15, 23, 42, .2);
       color: #f1f5f9;
       transform: translateY(-1px);
     }
 
-    body.dark .offline-menu-btn {
+    body.dark .offline-menu-btn,
+    body.dark .feedback-menu-btn {
       background: linear-gradient(135deg, #232933, #1f252e);
       border-color: rgba(148, 163, 184, .2);
       color: #e2e8f0;
     }
 
-    body.dark .offline-menu-btn:hover {
+    body.dark .offline-menu-btn:hover,
+    body.dark .feedback-menu-btn:hover {
       background: linear-gradient(135deg, #ffffff, #f1f5f9);
       border-color: rgba(148, 163, 184, .3);
       color: #1e293b;
     }
 
-    .offline-menu-btn svg { width: 18px; height: 18px; }
+    .offline-menu-btn svg,
+    .feedback-menu-btn svg { width: 18px; height: 18px; }
 
     /* Backdrop + centered card */
     .offline-sheet {
@@ -2730,6 +2744,116 @@
 
     .offline-btn--danger-text { color: #b91c1c; }
     body.dark .offline-btn--danger-text { color: #fecaca; }
+
+    /* ---------- Feedback section (app-only, inside offline sheet) ---------- */
+    .feedback-section {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(15, 23, 42, .08);
+    }
+    body.dark .feedback-section { border-top-color: rgba(148, 163, 184, .18); }
+
+    .feedback-section__head { margin-bottom: 12px; }
+    .feedback-section__title {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    }
+    body.dark .feedback-section__title { color: #e2e8f0; }
+    .feedback-section__desc {
+      margin: 0;
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.55;
+    }
+    body.dark .feedback-section__desc { color: #94a3b8; }
+
+    .feedback-form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+    .feedback-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
+    .feedback-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    }
+    body.dark .feedback-label { color: #cbd5e1; }
+    .feedback-optional { color: #94a3b8; font-weight: 500; }
+    body.dark .feedback-optional { color: #64748b; }
+
+    .feedback-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(15, 23, 42, .12);
+      background: #ffffff;
+      color: var(--text, #0b1326);
+      font-size: 14px;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      outline: none;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .feedback-input:focus {
+      border-color: #1d8fff;
+      box-shadow: 0 0 0 3px rgba(29, 143, 255, .15);
+    }
+    body.dark .feedback-input {
+      background: rgba(15, 23, 42, .35);
+      color: #e2e8f0;
+      border-color: rgba(148, 163, 184, .25);
+    }
+    body.dark .feedback-input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, .2);
+    }
+
+    .feedback-textarea {
+      resize: vertical;
+      min-height: 88px;
+      max-height: 220px;
+      line-height: 1.55;
+    }
+
+    .feedback-counter {
+      align-self: flex-start;
+      font-size: 11px;
+      color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+    body.dark .feedback-counter { color: #64748b; }
+
+    .feedback-honeypot {
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .feedback-submit { margin-top: 4px; }
+    .feedback-submit:disabled { opacity: .65; cursor: default; transform: none; box-shadow: 0 4px 10px rgba(29, 143, 255, .18); }
+
+    .feedback-status {
+      min-height: 0;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      padding: 0;
+      border-radius: 12px;
+      transition: padding 120ms ease;
+    }
+    .feedback-status:empty { display: none; }
+    .feedback-status--info { padding: 8px 10px; background: rgba(29, 143, 255, .08); color: #1976d2; }
+    .feedback-status--ok { padding: 8px 10px; background: rgba(34, 197, 94, .12); color: #15803d; }
+    .feedback-status--err { padding: 8px 10px; background: rgba(239, 68, 68, .12); color: #b91c1c; }
+    body.dark .feedback-status--info { background: rgba(96, 165, 250, .14); color: #bfdbfe; }
+    body.dark .feedback-status--ok { background: rgba(34, 197, 94, .18); color: #bbf7d0; }
+    body.dark .feedback-status--err { background: rgba(239, 68, 68, .2); color: #fecaca; }
   </style>
 </head>
 
@@ -2737,14 +2861,25 @@
   <div id="netBadge" class="hidden">بدون إنترنت</div>
   <!-- Minimal top bar -->
   <header class="site-header sticky top-0 z-40 border-b border-black/5">
-    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-end gap-2">
-      <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
-        style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
-        </svg>
-      </button>
+    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
+      <!-- App-only action buttons (offline downloads + feedback). Empty wrapper
+           on the website — both buttons start display:none and are revealed by
+           their respective panel modules behind isApp(). -->
+      <div class="header-app-actions">
+        <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
+          </svg>
+        </button>
+        <button id="feedbackMenuBtn" type="button" class="feedback-menu-btn"
+          style="display:none;" aria-label="إرسال ملاحظة">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/>
+          </svg>
+        </button>
+      </div>
       <button id="themeToggle" type="button"
         class="theme-toggle px-4 py-2 rounded-2xl border shadow-sm font-extrabold text-sm">فاتح</button>
       <span id="themeLabel" class="sr-only">theme</span>

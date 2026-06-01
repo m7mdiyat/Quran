@@ -2,10 +2,14 @@ import os
 import json
 import re
 import hashlib
+import secrets
 import time
+from collections import deque
+from datetime import datetime, timezone
 from flask import Flask, Response, stream_with_context, request, jsonify
 from flask_cors import CORS
 from google.cloud import storage
+from google.api_core import exceptions as gcs_exceptions
 
 # Create Flask app
 app = Flask(__name__)
@@ -2014,6 +2018,11 @@ def get_cors_headers(request, base_headers=None):
     whitelist = [
         "http://localhost:5173",
         "https://m7mdiyat.com",
+        # Capacitor WebView origins (Android default = https://localhost,
+        # cleartext config = http://localhost, iOS = capacitor://localhost).
+        "https://localhost",
+        "http://localhost",
+        "capacitor://localhost",
     ]
     env_domain = os.environ.get("FRONTEND_DOMAIN")
     if env_domain:
@@ -2267,13 +2276,200 @@ def compare_text_post():
         print(traceback.format_exc())
         return (json.dumps({"status": "error", "message": "Internal Server Error", "debug": str(e)}, ensure_ascii=False), 500, headers)
 
+# ---------------------------------------------------------
+# FEEDBACK ENDPOINT - writes one JSON file per message to GCS
+# ---------------------------------------------------------
+FEEDBACK_PREFIX = os.environ.get("FEEDBACK_PREFIX", "messages/")
+FEEDBACK_MAX_MSG = int(os.environ.get("FEEDBACK_MAX_MSG", "5000"))
+FEEDBACK_MAX_EMAIL = int(os.environ.get("FEEDBACK_MAX_EMAIL", "200"))
+FEEDBACK_RATE_LIMIT = int(os.environ.get("FEEDBACK_RATE_LIMIT", "5"))
+FEEDBACK_RATE_WINDOW_SEC = int(os.environ.get("FEEDBACK_RATE_WINDOW_SEC", "60"))
+FEEDBACK_ALLOWED_CATEGORIES = {"bug", "suggestion", "other"}
+FEEDBACK_IP_SALT = os.environ.get("FEEDBACK_IP_SALT", "m7mdiyat-feedback-v1")
+_FEEDBACK_CTRL_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+_FEEDBACK_RATE = {}  # ip -> deque[timestamp]
+_FEEDBACK_RATE_LOCK = threading.Lock()
+_FEEDBACK_RATE_MAX_KEYS = 2048
+
+def _feedback_client_ip(req):
+    xff = req.headers.get("X-Forwarded-For", "") or ""
+    if xff:
+        return xff.split(",")[0].strip() or (req.remote_addr or "")
+    return req.remote_addr or ""
+
+def _feedback_check_rate(ip: str) -> bool:
+    """True if allowed, False if rate-limited. Per-instance best-effort."""
+    if not ip:
+        return True  # don't block when IP unknown
+    now = time.time()
+    cutoff = now - FEEDBACK_RATE_WINDOW_SEC
+    with _FEEDBACK_RATE_LOCK:
+        dq = _FEEDBACK_RATE.get(ip)
+        if dq is None:
+            dq = deque()
+            _FEEDBACK_RATE[ip] = dq
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= FEEDBACK_RATE_LIMIT:
+            return False
+        dq.append(now)
+        # Prune dict if it grows too large
+        if len(_FEEDBACK_RATE) > _FEEDBACK_RATE_MAX_KEYS:
+            for k in list(_FEEDBACK_RATE.keys()):
+                d = _FEEDBACK_RATE[k]
+                while d and d[0] < cutoff:
+                    d.popleft()
+                if not d:
+                    _FEEDBACK_RATE.pop(k, None)
+                if len(_FEEDBACK_RATE) <= _FEEDBACK_RATE_MAX_KEYS // 2:
+                    break
+        return True
+
+def _feedback_sanitize_message(raw) -> str:
+    if not isinstance(raw, str):
+        return ""
+    s = _FEEDBACK_CTRL_RE.sub("", raw).strip()
+    if len(s) > FEEDBACK_MAX_MSG:
+        s = s[:FEEDBACK_MAX_MSG]
+    return s
+
+def _feedback_clean_email(raw):
+    """Return a stored-or-None email. Never raises, never rejects on bad input."""
+    if not isinstance(raw, str):
+        return None
+    e = _FEEDBACK_CTRL_RE.sub("", raw).strip()
+    if not e:
+        return None
+    if "@" not in e:
+        return None
+    if len(e) < 5 or len(e) > FEEDBACK_MAX_EMAIL:
+        return None
+    return e
+
+def _feedback_pick_category(raw) -> str:
+    if isinstance(raw, str):
+        c = raw.strip().lower()
+        if c in FEEDBACK_ALLOWED_CATEGORIES:
+            return c
+    return "other"
+
+def _feedback_pick_source(raw) -> str:
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s in {"app", "web"}:
+            return s
+    return ""
+
+def _feedback_ip_hash(ip: str) -> str:
+    if not ip:
+        return ""
+    h = hashlib.sha256(f"{FEEDBACK_IP_SALT}|{ip}".encode("utf-8")).hexdigest()
+    return h[:12]
+
+@app.route("/feedback", methods=["OPTIONS"])
+def feedback_options():
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+    try:
+        headers = get_cors_headers(request, headers)
+    except Exception:
+        pass
+    return ("", 204, headers)
+
+@app.post("/feedback")
+def feedback_post():
+    import traceback
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    try:
+        headers = get_cors_headers(request, headers)
+    except Exception:
+        pass
+
+    try:
+        body = request.get_json(silent=True)
+        if body is None:
+            body = request.get_json(force=True, silent=True)
+        if not isinstance(body, dict):
+            return (json.dumps({"ok": False, "error": "bad_json"}, ensure_ascii=False), 400, headers)
+
+        # Honeypot: silently accept (return ok) so bots can't tell they were filtered.
+        hp_val = body.get("hp") or body.get("website") or ""
+        if isinstance(hp_val, str) and hp_val.strip():
+            return (json.dumps({"ok": True}, ensure_ascii=False), 200, headers)
+
+        message = _feedback_sanitize_message(body.get("message"))
+        if not message:
+            return (json.dumps({"ok": False, "error": "empty_message"}, ensure_ascii=False), 400, headers)
+
+        category = _feedback_pick_category(body.get("category"))
+        email = _feedback_clean_email(body.get("email"))
+        source = _feedback_pick_source(body.get("source"))
+
+        client_ip = _feedback_client_ip(request)
+        if not _feedback_check_rate(client_ip):
+            return (json.dumps({"ok": False, "error": "too_many_requests"}, ensure_ascii=False), 429, headers)
+
+        now_dt = datetime.now(timezone.utc).replace(microsecond=0)
+        iso_ts = now_dt.isoformat().replace("+00:00", "Z")
+        path_ts = iso_ts.replace(":", "-")
+        rand = secrets.token_hex(3)  # 6 hex chars
+        object_path = f"{FEEDBACK_PREFIX}{path_ts}_{rand}.json"
+
+        record = {
+            "timestamp": iso_ts,
+            "category": category,
+            "message": message,
+            "user_agent": (request.headers.get("User-Agent") or "")[:500],
+        }
+        if email:
+            record["email"] = email
+        if source:
+            record["source"] = source
+        ref = request.headers.get("Referer") or ""
+        if ref:
+            record["referrer"] = ref[:500]
+        ip_hash = _feedback_ip_hash(client_ip)
+        if ip_hash:
+            record["ip_hash"] = ip_hash
+
+        payload = json.dumps(record, ensure_ascii=False, indent=2)
+
+        try:
+            client = _get_storage_client()
+            bucket = client.bucket(BUCKET_NAME)
+            blob = bucket.blob(object_path)
+            blob.upload_from_string(payload, content_type="application/json; charset=utf-8")
+        except gcs_exceptions.Forbidden as e:
+            print(f"❌ FEEDBACK GCS Forbidden — service account lacks write permission on {BUCKET_NAME}: {e}")
+            return (json.dumps({"ok": False, "error": "storage_forbidden"}, ensure_ascii=False), 500, headers)
+        except Exception as e:
+            print(f"❌ FEEDBACK GCS write failed: {e}")
+            print(traceback.format_exc())
+            return (json.dumps({"ok": False, "error": "storage_error"}, ensure_ascii=False), 500, headers)
+
+        return (json.dumps({"ok": True}, ensure_ascii=False), 200, headers)
+
+    except Exception as e:
+        print(f"❌ FEEDBACK ERROR: {e}")
+        print(traceback.format_exc())
+        return (json.dumps({"ok": False, "error": "internal"}, ensure_ascii=False), 500, headers)
+
 
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
 @app.route("/<path:path>", methods=["GET", "POST"])
 def catch_all(path):
     """Catch-all route for other endpoints (AI, compare, etc.)"""
     # Skip paths handled by dedicated routes
-    if path == "health" or path.startswith("tafsir") or path.startswith("compare-text"):
+    if path == "health" or path.startswith("tafsir") or path.startswith("compare-text") or path.startswith("feedback"):
         return jsonify({"status": "error", "message": "Route not found"}), 404
     
     try:

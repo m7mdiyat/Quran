@@ -1,8 +1,8 @@
 /*
  * Offline downloads panel — APP ONLY.
  *
- * Surfaces a top-right cloud-arrow button in the header that opens a centered
- * glass sheet with two rows (Mushaf, Tafsir). Each row shows one of:
+ * Surfaces a header cloud-arrow button that opens a centered glass sheet with
+ * two rows (Mushaf, Tafsir). Each row shows one of:
  *   - idle:        "تحميل" button + size
  *   - downloading: live progress bar + rotating Arabic message
  *   - offline:     inline "no connection" pill (auto-retries on `online`)
@@ -15,7 +15,8 @@
  * the download modules, not by the panel.
  *
  * Dynamic-imported from app.js init() behind `if (isApp())`, so the web bundle
- * never even pulls this code.
+ * never even pulls this code. Feedback lives in a sibling module
+ * (feedback-panel.js) opened by its own header button.
  */
 
 "use strict";
@@ -46,7 +47,7 @@ const PENDING_CONFIRM = { mushaf: null, tafsir: null };
 const ROW_DEFS = {
     mushaf: {
         title: "وضع المصحف",
-        desc: "صفحات المصحف الكاملة وخطوطه — للقراءة والاستماع بدون إنترنت.",
+        desc: "صفحات المصحف الكاملة وخطوطه.",
         sizeMb: QCF4_TOTAL_MB,
         startDownload: () => downloadQcf4Assets(),
         deleteCache: () => deleteQcf4Cache(),
@@ -171,13 +172,12 @@ function buildSheet() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/></svg>
           </div>
           <h2 id="offlineSheetTitle" class="offline-sheet__title">استخدام التطبيق بدون إنترنت</h2>
-          <p class="offline-sheet__desc">لاستخدام التطبيق بدون اتصال، حمّل البيانات اللازمة لكل وضع. حجم كبير — يُفضّل عبر Wi-Fi.</p>
+          <p class="offline-sheet__desc">للتدبر بدون انترنت، حمّل البيانات اللازمة لكل وضع.</p>
         </div>
         <div class="offline-sheet__rows">
           <div class="offline-row" data-offline-row="mushaf">
             <div class="offline-row__head">
               <div class="offline-row__title">${ROW_DEFS.mushaf.title}</div>
-              <div class="offline-row__size">${fmtSize(ROW_DEFS.mushaf.sizeMb)}</div>
             </div>
             <div class="offline-row__desc">${ROW_DEFS.mushaf.desc}</div>
             <div class="offline-row__status"></div>
@@ -185,7 +185,6 @@ function buildSheet() {
           <div class="offline-row" data-offline-row="tafsir">
             <div class="offline-row__head">
               <div class="offline-row__title">${ROW_DEFS.tafsir.title}</div>
-              <div class="offline-row__size">${fmtSize(ROW_DEFS.tafsir.sizeMb)}</div>
             </div>
             <div class="offline-row__desc">${ROW_DEFS.tafsir.desc}</div>
             <div class="offline-row__status"></div>
