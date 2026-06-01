@@ -675,9 +675,14 @@ const RECITERS = {
   alijaber: { name: 'علي جابر', path: 'alijaber', color: 'alijaber' },
   shuraim: { name: 'سعود الشريم', path: 'shuraim', color: 'shuraim' },
   ayoub: { name: 'محمد أيوب', path: 'ayoub', color: 'ayoub' },
-  qasim: { name: 'عبدالمحسن القاسم', path: 'qasim', color: 'qasim' }
+  qasim: { name: 'عبدالمحسن القاسم', path: 'qasim', color: 'qasim' },
+  // engineOnly: this reciter ships only as full-surah MP3s + flat-array
+  // timings on GCS — no per-ayah files. Single-mode playback must go
+  // through the surah engine (continuous: false) instead of the legacy
+  // per-ayah URL, which returns 404 for this folder.
+  dosari: { name: 'ياسر الدوسري', path: 'dosari', color: 'dosari', engineOnly: true }
 };
-const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim'];
+const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim', 'dosari'];
 let CURRENT_RECITER = 'alijaber';
 
 // Per-reciter surah blocklist — some reciters don't have a recording for a
@@ -1193,7 +1198,10 @@ function playCurrentAyah() {
   }
 
   // Listening (continuous) mode — full-surah engine.
-  if (LISTENING_MODE) {
+  // engineOnly reciters (e.g. dosari) have no per-ayah files, so single
+  // mode also routes through the engine; the engine honours continuous:
+  // false by stopping at end-of-ayah.
+  if (LISTENING_MODE || RECITERS[CURRENT_RECITER]?.engineOnly) {
     startSurahEngineForCurrent();
     return;
   }

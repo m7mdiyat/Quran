@@ -226,13 +226,24 @@ export function initMushaf(deps) {
     syncSettingsUI();
     syncSurahSelectLabel();
 
+    // Boot mode is determined by URL, not localStorage. URL is canonical —
+    // /read/* opens the Mushaf panel, /S/A and / show Tafsir. localStorage
+    // is only consulted when the URL is ambiguous (root), and is overwritten
+    // here so a refresh on a /read/ URL with stale "tafsir" preference doesn't
+    // leave the toggle showing Tafsir while the user is staring at the
+    // Mushaf panel (and vice versa).
     let saved = "tafsir";
     try {
         const v = localStorage.getItem(STORAGE.MODE);
         if (v === "mushaf" || v === "tafsir") saved = v;
     } catch { }
-    MUSHAF_MODE = saved === "mushaf";
-    document.documentElement.setAttribute("data-app-mode", saved);
+    const bootIntoMushaf = !!window._mushafInit; // set by the early routing script in index.html
+    const bootMode = bootIntoMushaf ? "mushaf" : "tafsir";
+    MUSHAF_MODE = bootMode === "mushaf";
+    document.documentElement.setAttribute("data-app-mode", bootMode);
+    if (bootMode !== saved) {
+        try { localStorage.setItem(STORAGE.MODE, bootMode); } catch { }
+    }
     document.documentElement.setAttribute("data-font-size", FONT_SIZE);
 
     document.querySelectorAll("[data-mode-toggle]").forEach((btn) => {
@@ -255,6 +266,21 @@ export function getMushafTargetSurah() {
 
 export function isMushafMode() {
     return MUSHAF_MODE;
+}
+
+/**
+ * Single source of truth for the mode flag. Updates MUSHAF_MODE, the
+ * <html data-app-mode> attribute the toggle CSS reads, and localStorage,
+ * all in lockstep. Callers MUST use this whenever the displayed mode
+ * changes so the toggle never disagrees with what's visible. Idempotent.
+ */
+function commitMode(mode) {
+    const wanted = mode === "mushaf" ? "mushaf" : "tafsir";
+    if (MUSHAF_MODE === (wanted === "mushaf")
+        && document.documentElement.getAttribute("data-app-mode") === wanted) return;
+    MUSHAF_MODE = wanted === "mushaf";
+    document.documentElement.setAttribute("data-app-mode", wanted);
+    try { localStorage.setItem(STORAGE.MODE, wanted); } catch { }
 }
 
 /**
@@ -333,10 +359,6 @@ export async function setAppMode(mode) {
         try { DEPS?.stopAudio?.(); } catch { }
     }
 
-    MUSHAF_MODE = wanted === "mushaf";
-    document.documentElement.setAttribute("data-app-mode", wanted);
-    try { localStorage.setItem(STORAGE.MODE, wanted); } catch { }
-
     if (wanted === "tafsir") {
         if (PANEL_OPEN) {
             const target = engineLive
@@ -366,6 +388,9 @@ export async function setAppMode(mode) {
             }
             commitFadeIn(tafsirEl);
         }
+        // Tafsir mode is always a safe fall-back even with no current ayah
+        // (the homepage/search state is shown), so commit unconditionally.
+        commitMode("tafsir");
         return;
     }
 
@@ -375,22 +400,26 @@ export async function setAppMode(mode) {
     const target = engineLive
         ? { s: surahAudio.getSurah(), a: surahAudio.getActiveAyah() }
         : (DEPS?.getCurrentAyah?.() || LAST_VIEWED_AYAH || null);
-    if (target) {
-        const tafsirEl = DEPS?.tafsirSectionEl;
-        if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
-            await fadeOutPanel(tafsirEl);
-        }
-        // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
-        ROOT_EL?.classList.add("mode-fade-in");
-        // noScroll: the mode toggle must not move the viewport (Fix 3).
-        if (engineLive) {
-            await resumeMushafFromEngine();
-        } else {
-            await openMushafAtAyah(target.s, target.a, { noScroll: true });
-        }
-        commitFadeIn(ROOT_EL);
+    if (!target) {
+        // Nothing to anchor the Mushaf view at. Abort the toggle entirely
+        // (don't flip MUSHAF_MODE/data-app-mode) — otherwise the user would
+        // see the Tafsir homepage but the toggle would claim Mushaf.
+        return;
     }
-    // If no ayah has ever been selected, do nothing — wait for first click.
+    const tafsirEl = DEPS?.tafsirSectionEl;
+    if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
+        await fadeOutPanel(tafsirEl);
+    }
+    // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
+    ROOT_EL?.classList.add("mode-fade-in");
+    // noScroll: the mode toggle must not move the viewport (Fix 3).
+    if (engineLive) {
+        await resumeMushafFromEngine();
+    } else {
+        await openMushafAtAyah(target.s, target.a, { noScroll: true });
+    }
+    commitFadeIn(ROOT_EL);
+    commitMode("mushaf");
     } finally {
         MODE_TRANSITIONING = false;
     }
@@ -424,6 +453,10 @@ function commitFadeIn(el) {
 
 export function closeMushafPanel() {
     if (PANEL_OPEN) closePanel();
+    // popstate-driven close (browser back from /read/* to /S/A) must also
+    // sync the mode flag — otherwise the toggle keeps showing Mushaf while
+    // the user is on the Tafsir view.
+    commitMode("tafsir");
 }
 
 export async function openMushafAtAyah(s, a, opts = {}) {
@@ -441,6 +474,10 @@ export async function openMushafAtAyah(s, a, opts = {}) {
     }
     updateMushafSeo({ page, verse: key });
     syncSurahSelectLabel();
+    // Any path that opens the Mushaf panel — boot via _mushafInit, browser
+    // back/forward, deep links — must keep the mode flag in sync so the
+    // toggle reflects what's visible.
+    commitMode("mushaf");
 }
 
 export async function openMushafAtPage(p, opts = {}) {
@@ -456,6 +493,7 @@ export async function openMushafAtPage(p, opts = {}) {
     }
     updateMushafSeo({ page: p });
     syncSurahSelectLabel();
+    commitMode("mushaf");
 }
 
 export async function openMushafAtSurah(s, opts = {}) {
@@ -472,6 +510,7 @@ export async function openMushafAtSurah(s, opts = {}) {
     }
     updateMushafSeo({ page, surah: Number(s) });
     syncSurahSelectLabel();
+    commitMode("mushaf");
 }
 
 /* ============================================================
@@ -494,9 +533,12 @@ function closePanel({ keepAudio = false } = {}) {
     ROOT_EL?.classList.remove("is-open");
     const wrapper = ROOT_EL?.parentElement;
     if (wrapper) wrapper.classList.remove("has-mushaf");
-    if (DEPS?.tafsirSectionEl) {
-        if (DEPS?.hasCurrentAyah?.()) DEPS.tafsirSectionEl.classList.remove("hidden");
-    }
+    // Always unhide the tafsir section on close — its empty/home state is
+    // the right thing to show when no ayah is loaded yet. Gating this on
+    // hasCurrentAyah() used to leave the tafsir section hidden after a
+    // /read/* → toggle-to-Tafsir from a cold start (CURRENT was still null
+    // at close time), so the user ended up staring at a blank page.
+    if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.remove("hidden");
     // keepAudio: setAppMode hands the live engine over to Tafsir without
     // stopping audio. The default closePanel still tears audio down so the
     // panel-close case (toggle off, etc.) behaves as before.
@@ -2842,9 +2884,13 @@ function toggleAudioForAyah(verseKey) {
         history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: verseKey }, "", `/read/ayah/${vs}/${va}`);
     }
 
-    /* ── Continuous mode → full-surah engine ── */
-    if (AUDIO_MODE === "continuous") {
-        const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+    /* ── Continuous mode → full-surah engine ──
+     * engineOnly reciters (e.g. dosari) have no per-ayah files, so single
+     * mode also routes through the engine — startMushafSurahEngine passes
+     * continuous: AUDIO_MODE === "continuous", which the engine honours. */
+    const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+    const reciterEngineOnly = !!DEPS?.reciters?.[reciter]?.engineOnly;
+    if (AUDIO_MODE === "continuous" || reciterEngineOnly) {
         const engineLoaded = surahAudio.isActive() && surahAudio.getSurah() === vs && surahAudio.getReciter() === reciter;
         if (engineLoaded && AUDIO_VERSE === verseKey) {
             // Same ayah → pause/resume
@@ -3134,8 +3180,9 @@ export function getMushafPerAyahPosition() {
 export function playMushafAyahAtKey(s, a) {
     if (!Number.isFinite(Number(s)) || !Number.isFinite(Number(a))) return;
     const verseKey = `${s}:${a}`;
-    if (AUDIO_MODE === "continuous") {
-        const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+    const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
+    // engineOnly reciters have no per-ayah files, so always use the engine.
+    if (AUDIO_MODE === "continuous" || DEPS?.reciters?.[reciter]?.engineOnly) {
         startMushafSurahEngine(Number(s), Number(a), verseKey, reciter);
     } else {
         playMushafAyah(verseKey);

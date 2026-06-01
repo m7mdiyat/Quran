@@ -643,20 +643,13 @@ body.dark .mushaf-ayah-menu {
     height: 18px;
 }
 
-/* Selected-ayah highlight: soft on-brand wash that reads as "this is the
- * one the menu is acting on" — distinct from native text selection. The
- * highlight is painted as a box-shadow-like background so it hugs the
- * inline text without changing layout. */
+/* Selected-ayah highlight: intentionally NO visual style. The class is
+ * still applied by JS for menu anchoring, but it must not change the
+ * background or shadow — otherwise it overrides the green playing
+ * highlight (CSS source order) and hides which ayah is actually playing
+ * during a long-press. The popup menu is feedback enough. */
 .mushaf-ayah--selected {
-    background-color: rgba(38, 68, 205, 0.10);
-    border-radius: 6px;
-    box-shadow: 0 0 0 2px rgba(38, 68, 205, 0.10);
-    transition: background-color 180ms ease, box-shadow 180ms ease;
-}
-
-body.dark .mushaf-ayah--selected {
-    background-color: rgba(99, 130, 246, 0.18);
-    box-shadow: 0 0 0 2px rgba(99, 130, 246, 0.18);
+    /* no visual properties — see comment above */
 }
 
 /* Copy-confirmation toast — single shared element, bottom-center. */

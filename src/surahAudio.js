@@ -9,7 +9,7 @@
  * Mushaf and Tafsir views can highlight in sync — with no audible
  * gap between ayahs (it's literally the same audio stream).
  *
- * All four reciters (qasim, alijaber, shuraim, ayoub) are
+ * All five reciters (qasim, alijaber, shuraim, ayoub, dosari) are
  * no-preamble: ayah 1 starts at 0:00.
  * ============================================================ */
 
@@ -17,7 +17,7 @@ const AUDIO_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/su
 const TIMINGS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/timings";
 const TICK_INTERVAL_MS = 100;
 
-const SURAH_RECITERS = new Set(["qasim", "alijaber", "shuraim", "ayoub"]);
+const SURAH_RECITERS = new Set(["qasim", "alijaber", "shuraim", "ayoub", "dosari"]);
 export function isSurahAudioReciter(reciter) {
   return SURAH_RECITERS.has(reciter);
 }
