@@ -385,6 +385,14 @@ export async function setAppMode(mode) {
             } else if (target && DEPS?.openTafsirForAyah) {
                 DEPS.openTafsirForAyah(target.s, target.a);
                 history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
+            } else if (DEPS?.openTafsirForAyah) {
+                // No anchor ayah — default to Al-Fatiha 1:1 so the toggle
+                // lands somewhere predictable instead of dropping the user
+                // onto a blank homepage with a stale /read/page/N URL.
+                DEPS.openTafsirForAyah(1, 1);
+                history.replaceState({ s: 1, a: 1 }, "", `/1/1`);
+            } else {
+                history.replaceState(null, "", "/");
             }
             commitFadeIn(tafsirEl);
         }
@@ -400,12 +408,6 @@ export async function setAppMode(mode) {
     const target = engineLive
         ? { s: surahAudio.getSurah(), a: surahAudio.getActiveAyah() }
         : (DEPS?.getCurrentAyah?.() || LAST_VIEWED_AYAH || null);
-    if (!target) {
-        // Nothing to anchor the Mushaf view at. Abort the toggle entirely
-        // (don't flip MUSHAF_MODE/data-app-mode) — otherwise the user would
-        // see the Tafsir homepage but the toggle would claim Mushaf.
-        return;
-    }
     const tafsirEl = DEPS?.tafsirSectionEl;
     if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
         await fadeOutPanel(tafsirEl);
@@ -415,8 +417,13 @@ export async function setAppMode(mode) {
     // noScroll: the mode toggle must not move the viewport (Fix 3).
     if (engineLive) {
         await resumeMushafFromEngine();
-    } else {
+    } else if (target) {
         await openMushafAtAyah(target.s, target.a, { noScroll: true });
+    } else {
+        // No ayah anchor (no current selection, no search). Default to
+        // Al-Fatiha 1:1 so the toggle lands somewhere predictable instead
+        // of restoring whatever page the user last browsed.
+        await openMushafAtAyah(1, 1, { noScroll: true });
     }
     commitFadeIn(ROOT_EL);
     commitMode("mushaf");
@@ -487,7 +494,7 @@ export async function openMushafAtPage(p, opts = {}) {
     // Target surah will be set to first surah on page after render.
     TARGET_SURAH = null;
     openPanel();
-    await goToPage(p, { direction: "none" });
+    await goToPage(p, { direction: "none", noScroll: !!opts.noScroll });
     if (opts.updateUrl !== false) {
         history.pushState({ mushaf: true, page: p }, "", `/read/page/${p}`);
     }

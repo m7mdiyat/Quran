@@ -2256,8 +2256,12 @@ const BASMALA_PLAIN = "بسم الله الرحمن الرحيم";
 const BASMALA_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_TEXT)}\\s*`);
 const BASMALA_PLAIN_REGEX = new RegExp(`^[\\s\\uFEFF]*${escapeRegex(BASMALA_PLAIN)}\\s*`);
 
-function stripBasmala(text = "", ayahNo) {
+function stripBasmala(text = "", surahNo, ayahNo) {
   if (ayahNo !== 1) return { text: text || "", basmala: "" };
+  // Surah 1, Ayah 1 IS the Basmala — keep it in the ayah text so the
+  // tafsir view renders the verse instead of a dash. (The standalone
+  // basmala header is suppressed because basmala is returned empty.)
+  if (surahNo === 1) return { text: text || "", basmala: "" };
   if (BASMALA_REGEX.test(text)) {
     return { text: text.replace(BASMALA_REGEX, "").trim(), basmala: BASMALA_TEXT };
   }
@@ -2292,7 +2296,7 @@ function normalizeQuran(raw) {
       ayahs: (s.ayahs || []).map((a) => {
         const numberInSurah = Number(a.numberInSurah);
         const rawText = a.text || "";
-        const { text, basmala } = stripBasmala(rawText, numberInSurah);
+        const { text, basmala } = stripBasmala(rawText, Number(s.number), numberInSurah);
         return { numberInSurah, text, basmala };
       }),
     })),
