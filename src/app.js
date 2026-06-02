@@ -220,8 +220,13 @@ function setDarkMode(on) {
   document.documentElement.classList.toggle("dark", !!on);
   try { localStorage.setItem("darkMode", on ? "1" : "0"); } catch { }
   if (themeToggle) themeToggle.setAttribute("aria-pressed", on ? "true" : "false");
-  if (themeToggle) themeToggle.textContent = on ? "فاتح" : "داكن";
-  if (themeLabel) themeLabel.textContent = on ? "فاتح" : "داكن";
+  // Status-label semantics: the visible text names the CURRENT theme, so
+  // the button stays in sync with the page on every tap (light → "فاتح",
+  // dark → "داكن"). Was previously action-label ("tap to switch to X")
+  // which read as one-tap-behind to users. aria-pressed continues to
+  // report dark-mode-active as the canonical toggle state for AT.
+  if (themeToggle) themeToggle.textContent = on ? "داكن" : "فاتح";
+  if (themeLabel) themeLabel.textContent = on ? "داكن" : "فاتح";
   syncNativeStatusBar(on);
 }
 
@@ -240,6 +245,35 @@ function syncNativeStatusBar(dark, _attempt = 0) {
     sb.setStyle({ style: dark ? "DARK" : "LIGHT" });
     sb.setBackgroundColor?.({ color: dark ? "#181c22" : "#f7fbff" });
   } catch { }
+}
+
+/* Query the OS-reported Android status-bar height and set it as a CSS var so
+ * the safe-area inset fallback uses a REAL measured value when env() lies
+ * (Android 14 WebView quirk: env(safe-area-inset-top) reports 0 even when
+ * the WebView is genuinely edge-to-edge under the status bar, causing the
+ * 24px CSS floor to undershoot devices with ~30dp status bars like Pixel 8).
+ *
+ * Three-layer fallback chain in CSS:
+ *   max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px))
+ * 1. env() — correct on Android 15+ and iOS.
+ * 2. var(--m7-statusbar-height) — set here from StatusBar.getInfo().height,
+ *    also from cache by the inline script in index.html for instant first paint.
+ * 3. 24px — last-resort absolute floor for the very first launch ever.
+ *
+ * Same retry pattern as syncNativeStatusBar — the Capacitor bridge is
+ * injected AFTER scripts evaluate, so the plugin may not be ready at init. */
+function applyStatusBarHeight(_attempt = 0) {
+  const sb = window.Capacitor?.Plugins?.StatusBar;
+  if (!sb || typeof sb.getInfo !== "function") {
+    if (_attempt < 10) setTimeout(() => applyStatusBarHeight(_attempt + 1), 100);
+    return;
+  }
+  sb.getInfo().then((info) => {
+    const h = Number(info?.height);
+    if (!Number.isFinite(h) || h <= 0) return;
+    document.documentElement.style.setProperty("--m7-statusbar-height", `${h}px`);
+    try { localStorage.setItem("m7_statusbar_h", String(h)); } catch { }
+  }).catch(() => { });
 }
 function toggleDarkMode() {
   const on = !document.body.classList.contains("dark");
@@ -4830,6 +4864,11 @@ async function init() {
   updateCompareButtonState();
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
+
+  // Capacitor app only: measure the real Android status-bar height and
+  // expose it as a CSS var. Fixes Pixel 8 / Android 14 where env() lies
+  // and our 24px floor undershoots the actual ~30dp inset. No-op on web.
+  if (isApp()) applyStatusBarHeight();
 
   // App-only: lazy-load the offline-downloads panel and the feedback panel so
   // the web bundle stays clean. Each panel reveals its own header icon on init;

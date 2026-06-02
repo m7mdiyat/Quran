@@ -22,6 +22,41 @@
         }
       } catch { }
     })();
+    // Detect Capacitor (Android app) context synchronously so safe-area CSS
+    // gated to html.is-app applies before first paint, AND so viewport-fit=cover
+    // is only set inside the app (web layout — including iOS Safari with a
+    // notch — must remain visually unchanged).
+    //
+    // window.Capacitor is injected by the native bridge AFTER scripts evaluate,
+    // so we fall back to the URL: the Capacitor WebView serves from
+    // capacitor://localhost or https://localhost / http://localhost. The
+    // production site origin is m7mdiyat.com, which never matches.
+    (function () {
+      try {
+        var loc = window.location;
+        var inApp = (typeof window.Capacitor !== "undefined")
+          || (loc.protocol === "capacitor:")
+          || (loc.hostname === "localhost" && (loc.protocol === "https:" || loc.protocol === "http:"));
+        if (!inApp) return;
+        document.documentElement.classList.add("is-app");
+        var meta = document.querySelector('meta[name="viewport"]');
+        var content = meta && meta.getAttribute("content") || "";
+        if (meta && !/viewport-fit/.test(content)) {
+          meta.setAttribute("content", content + ",viewport-fit=cover");
+        }
+        // Apply previously-measured Android status-bar height (set by JS
+        // via StatusBar.getInfo() on a previous launch) so the very first
+        // paint already pads correctly — no layout shift when the async
+        // re-measurement finishes. First-ever launch still falls back to
+        // the CSS 24px floor for one frame, then jumps to the real value.
+        try {
+          var cached = localStorage.getItem("m7_statusbar_h");
+          if (cached && Number(cached) > 0) {
+            document.documentElement.style.setProperty("--m7-statusbar-height", cached + "px");
+          }
+        } catch {}
+      } catch { }
+    })();
   </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
@@ -289,6 +324,29 @@
       backdrop-filter: blur(8px);
     }
 
+    /* Capacitor app only: status bar / notch / cutout safe-area padding.
+     * Under Android 15+ (target SDK 35+) the WebView is forced edge-to-edge
+     * and overlaysWebView:true makes that consistent on older Android too,
+     * so the sticky header must pad its own top + left/right insets — the
+     * system no longer reserves the space. Gated to html.is-app (set by
+     * the inline script above) so web layout is byte-identical.
+     *
+     * For the TOP inset we use max(env(...), 24px). Reason: on Android 14
+     * with overlaysWebView:true the WebView genuinely renders edge-to-edge,
+     * but the Android 14 WebView's window-insets propagation to the
+     * renderer is unreliable — env(safe-area-inset-top) often reports 0
+     * instead of the real ~30dp status-bar height. With a 0-padding header,
+     * the buttons render BEHIND the status bar overlay (the "top eaten up"
+     * symptom on Pixel 8). 24px is the Android default status-bar height,
+     * so max() guarantees at least that much padding even when env() lies.
+     * Android 15+ propagates correctly (env returns ~30+) → max picks env,
+     * unchanged behavior. */
+    html.is-app header.site-header {
+      padding-top: max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px));
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+    }
+
     .theme-toggle {
       /* White button in light mode */
       background: linear-gradient(135deg, #ffffff, #f8fafc);
@@ -298,12 +356,22 @@
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    .theme-toggle:hover {
-      /* Dark on hover in light mode */
-      background: linear-gradient(135deg, #1e293b, #334155);
-      border-color: rgba(15, 23, 42, .2);
-      color: #f1f5f9;
-      transform: translateY(-1px);
+    /* Hover styles are the visual INVERSE of the normal styles (dark in
+     * light mode, light in dark mode). On touch devices :hover sticks
+     * after a tap until the next touch elsewhere, so the post-tap button
+     * froze in this inverse state — looking exactly like the previous
+     * mode and creating the "one tap behind" perception. Gating hover
+     * to @media (hover: hover) ensures only true pointer devices (mouse,
+     * trackpad) get hover effects; touch never sticks. Same pattern is
+     * used elsewhere in public/styles.css:879-907. */
+    @media (hover: hover) {
+      .theme-toggle:hover {
+        /* Dark on hover in light mode */
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border-color: rgba(15, 23, 42, .2);
+        color: #f1f5f9;
+        transform: translateY(-1px);
+      }
     }
 
     body.dark .theme-toggle {
@@ -314,12 +382,14 @@
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
 
-    body.dark .theme-toggle:hover {
-      /* Light on hover in dark mode */
-      background: linear-gradient(135deg, #ffffff, #f1f5f9) !important;
-      border-color: rgba(148, 163, 184, .3) !important;
-      color: #1e293b !important;
-      transform: translateY(-1px);
+    @media (hover: hover) {
+      body.dark .theme-toggle:hover {
+        /* Light on hover in dark mode */
+        background: linear-gradient(135deg, #ffffff, #f1f5f9) !important;
+        border-color: rgba(148, 163, 184, .3) !important;
+        color: #1e293b !important;
+        transform: translateY(-1px);
+      }
     }
 
     .quran-font {
@@ -444,6 +514,20 @@
       appearance: none;
       background-image: none;
       box-shadow: none;
+    }
+
+    /* Older / smaller phones (~ ≤ 400 CSS px wide — iPhone SE, older Androids,
+     * etc.) saw an oversized gap between the placeholder text and the input's
+     * right edge from the default px-10 (40px) padding. Tighten just the
+     * search input for those screens: keep ~80px on the left to clear the
+     * absolute-positioned مسح button, drop the right side to 16px so the
+     * text starts close to the edge. Modern phones (Pixel 8 ≈ 412 CSS px,
+     * iPhone 14 ≈ 390) and up keep the original px-10. */
+    @media (max-width: 400px) {
+      #textSearch {
+        padding-left: 5rem;
+        padding-right: 1rem;
+      }
     }
 
     /* Updated Container: Adds spacing/gap between items */
@@ -2414,12 +2498,22 @@
       cursor: pointer;
     }
 
-    .offline-menu-btn:hover,
-    .feedback-menu-btn:hover {
-      background: linear-gradient(135deg, #1e293b, #334155);
-      border-color: rgba(15, 23, 42, .2);
-      color: #f1f5f9;
-      transform: translateY(-1px);
+    /* Hover styles are the visual INVERSE of the normal styles (dark in
+     * light mode, light in dark mode). On touch devices :hover sticks
+     * after a tap until the next touch elsewhere, so the post-tap button
+     * froze in this inverse state — looking like a "selected in opposite
+     * theme color" highlight. Gating hover to @media (hover: hover) ensures
+     * only true pointer devices (mouse, trackpad) get hover effects; touch
+     * never sticks. Same pattern as .theme-toggle:hover above.
+     * Covers all three header buttons — #notesMenuBtn reuses .offline-menu-btn. */
+    @media (hover: hover) {
+      .offline-menu-btn:hover,
+      .feedback-menu-btn:hover {
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border-color: rgba(15, 23, 42, .2);
+        color: #f1f5f9;
+        transform: translateY(-1px);
+      }
     }
 
     body.dark .offline-menu-btn,
@@ -2429,11 +2523,13 @@
       color: #e2e8f0;
     }
 
-    body.dark .offline-menu-btn:hover,
-    body.dark .feedback-menu-btn:hover {
-      background: linear-gradient(135deg, #ffffff, #f1f5f9);
-      border-color: rgba(148, 163, 184, .3);
-      color: #1e293b;
+    @media (hover: hover) {
+      body.dark .offline-menu-btn:hover,
+      body.dark .feedback-menu-btn:hover {
+        background: linear-gradient(135deg, #ffffff, #f1f5f9);
+        border-color: rgba(148, 163, 184, .3);
+        color: #1e293b;
+      }
     }
 
     .offline-menu-btn svg,

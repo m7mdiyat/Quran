@@ -467,7 +467,10 @@ export async function setAppMode(mode) {
 }
 
 /* Fix 4: fade helpers used by setAppMode. We don't tear down the existing
- * panel-toggle logic — we just bracket it with opacity transitions. */
+ * panel-toggle logic — we just bracket it with opacity transitions.
+ * Durations shortened from 180ms → 120ms (and the rAF safety from
+ * 260ms → 180ms) to cut the mode-toggle latency floor from ~360ms to
+ * ~240ms while keeping a smooth, visible fade in both directions. */
 function fadeOutPanel(el) {
     if (!el) return Promise.resolve();
     return new Promise((resolve) => {
@@ -476,7 +479,7 @@ function fadeOutPanel(el) {
         setTimeout(() => {
             el.classList.remove("mode-fade-out");
             resolve();
-        }, 180);
+        }, 120);
     });
 }
 
@@ -489,7 +492,7 @@ function commitFadeIn(el) {
         requestAnimationFrame(() => el.classList.remove("mode-fade-in"));
     });
     // Safety net in case the rAF chain misses (tab backgrounded, etc.)
-    setTimeout(() => el.classList.remove("mode-fade-in"), 260);
+    setTimeout(() => el.classList.remove("mode-fade-in"), 180);
 }
 
 export function closeMushafPanel() {
@@ -1641,10 +1644,22 @@ function wireAyahInteractions(pageEl) {
         }
     });
 
-    // Prevent the native context menu (long-press selection UI) on ayahs so
-    // only our custom tafsir menu appears — no blue handles or copy popup.
+    // Prevent the native context menu + selectstart on the Mushaf page so
+    // only our custom tafsir menu appears — no blue handles or Copy popup.
+    // selectstart fires on touchstart of a long-press BEFORE contextmenu,
+    // and on Android the OS commits to a selection at selectstart; killing
+    // only contextmenu is too late. CSS (.mushaf-root/.mushaf-page/.mushaf-ayah
+    // user-select:none + touch-callout:none) is the primary guard; these
+    // listeners are belt-and-braces for any descendant that re-enables
+    // selection (e.g. the QCF4 word spans) or if the WebView's user-select
+    // honor is patchy. touchstart can't preventDefault here — it's passive
+    // for tap performance — so the OS gesture has to be blocked via these
+    // selection-specific events.
     pageEl.addEventListener("contextmenu", (e) => {
         if (e.target.closest(".mushaf-ayah")) e.preventDefault();
+    });
+    pageEl.addEventListener("selectstart", (e) => {
+        e.preventDefault();
     });
 
     // Mobile: long-press shows menu (only for target ayahs); tap plays / switches.
