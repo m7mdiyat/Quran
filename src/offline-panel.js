@@ -46,7 +46,7 @@ const PENDING_CONFIRM = { mushaf: null, tafsir: null };
 
 const ROW_DEFS = {
     mushaf: {
-        title: "وضع المصحف",
+        title: "وضع التدبّر",
         desc: "صفحات المصحف الكاملة وخطوطه.",
         sizeMb: QCF4_TOTAL_MB,
         startDownload: () => downloadQcf4Assets(),
