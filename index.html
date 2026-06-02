@@ -29,14 +29,20 @@
     //
     // window.Capacitor is injected by the native bridge AFTER scripts evaluate,
     // so we fall back to the URL: the Capacitor WebView serves from
-    // capacitor://localhost or https://localhost / http://localhost. The
-    // production site origin is m7mdiyat.com, which never matches.
+    // capacitor://localhost or https://localhost (NO port) and the user agent
+    // contains "Android". The Vite dev server also uses http://localhost but
+    // with an explicit port (5173/5174/…), so the port check excludes it; the
+    // production site origin is m7mdiyat.com, which never matches. Mirrors
+    // isApp() in src/app.js so the inline-script gate stays consistent with
+    // the runtime gate.
     (function () {
       try {
         var loc = window.location;
         var inApp = (typeof window.Capacitor !== "undefined")
           || (loc.protocol === "capacitor:")
-          || (loc.hostname === "localhost" && (loc.protocol === "https:" || loc.protocol === "http:"));
+          || (loc.hostname === "localhost"
+              && loc.port === ""
+              && navigator.userAgent.indexOf("Android") !== -1);
         if (!inApp) return;
         document.documentElement.classList.add("is-app");
         var meta = document.querySelector('meta[name="viewport"]');
@@ -2222,88 +2228,20 @@
       box-shadow: none;
     }
 
-    /* Audio toolbar buttons (⚙ / ▶) — neutral; play is solid blue. No motion. */
-    .tafsir-audio-toolbar .mushaf-toolbar__btn {
-      width: 40px;
-      height: 40px;
-      border-radius: 13px;
-      background: #f1f5f9;
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      color: #475569;
-      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
-      transition: background .18s ease, color .18s ease, box-shadow .18s ease;
-    }
+    /* Audio toolbar buttons (⚙ / ▶) — INHERIT from public/mushaf.css's base
+       .mushaf-toolbar__btn so they look and behave identically to the Tadabbur
+       (Mushaf) toolbar: 38×38, neutral var(--card2), hover tint via
+       --accent-soft, gear rotation on hover, green tint when playing. The
+       previous Tafsir-specific solid-blue + static-gear overrides created a
+       visual divergence from Tadabbur and are no longer needed.
 
-    .tafsir-audio-toolbar .mushaf-toolbar__btn:hover {
-      background: #e7edf5;
-      color: #1e293b;
-    }
-
-    /* keep the gear static (no rotate) for a clean professional feel */
-    .tafsir-audio-toolbar .mushaf-toolbar__btn--settings:hover {
-      transform: none;
-    }
-
-    .tafsir-audio-toolbar #tafsirPlayBtn {
-      background: #2644cd;
-      border-color: rgba(38, 68, 205, 0.5);
-      color: #ffffff;
-      box-shadow: 0 2px 8px rgba(38, 68, 205, 0.36);
-    }
-
-    .tafsir-audio-toolbar #tafsirPlayBtn:hover {
-      background: #213bb2;
-      color: #ffffff;
-    }
-
-    .tafsir-audio-toolbar #tafsirPlayBtn[data-playing="true"] {
-      background: #1c3296;
-      border-color: rgba(28, 50, 150, 0.65);
-      color: #ffffff;
-      box-shadow: 0 2px 10px rgba(38, 68, 205, 0.44);
-    }
-
-    body.dark .tafsir-audio-toolbar .mushaf-toolbar__btn {
-      background: #1e293b;
-      border-color: rgba(255, 255, 255, 0.08);
-      color: #cbd5e1;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-    }
-
-    body.dark .tafsir-audio-toolbar .mushaf-toolbar__btn:hover {
-      background: #273449;
-      color: #f1f5f9;
-    }
-
-    body.dark .tafsir-audio-toolbar #tafsirPlayBtn,
-    body.dark .tafsir-audio-toolbar #tafsirPlayBtn:hover {
-      background: #2644cd;
-      color: #ffffff;
-    }
-
-    body.dark .tafsir-audio-toolbar #tafsirPlayBtn[data-playing="true"] {
-      background: #213bb2;
-      color: #ffffff;
-    }
-
-    /* Desktop: vertically center the ⚙/▶ toolbar against the taller pills,
-       make the buttons a touch bigger, and nudge slightly right + up. */
+       Desktop: keep the toolbar vertical alignment + slight nudge against the
+       taller pills next to it, but NOT the button-size override (38×38 stays). */
     @media (min-width: 640px) {
       .tafsir-audio-toolbar {
         align-self: center;
         transform: translate(8px, -2px);
       }
-
-      .tafsir-audio-toolbar .mushaf-toolbar__btn {
-        width: 44px;
-        height: 44px;
-      }
-
-      .tafsir-audio-toolbar .mushaf-toolbar__btn svg {
-        width: 20px;
-        height: 20px;
-      }
-
     }
 
     /* ============================================================
@@ -3135,8 +3073,8 @@
               <button type="button" class="mode-toggle__btn" data-mode-toggle aria-label="التبديل بين التفسير والمصحف">
                 <span class="mode-toggle__knob"></span>
                 <span class="mode-toggle__labels">
-                  <span class="mode-toggle__label mode-toggle__label--tafsir">تفسير</span>
-                  <span class="mode-toggle__label mode-toggle__label--mushaf">تدبر</span>
+                  <span class="mode-toggle__label mode-toggle__label--tafsir">التفسير</span>
+                  <span class="mode-toggle__label mode-toggle__label--mushaf">المصحف</span>
                 </span>
               </button>
             </div>

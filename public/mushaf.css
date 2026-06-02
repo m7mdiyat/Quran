@@ -414,7 +414,13 @@ body.dark .mushaf-download {
     font-family: "QCF4_Hafs_01", serif;
     text-align: center;
     margin: 8px 0 10px;
-    font-size: calc(var(--font-size) * 1.0);
+    /* Bismillah is INDEPENDENT of the verse --font-size. The QCF4 bismillah
+       PUA glyph is a wide calligraphic ornament whose natural width is much
+       greater than its height; sizing it by the verse autoFit value made the
+       flourish stretch across the container while the letters looked thin
+       (distorted). A viewport-relative clamp keeps it compact and
+       proportional like the printed Mushaf on any device. */
+    font-size: clamp(18px, 4vw, 28px);
 }
 
 .mushaf-ayah {
@@ -491,17 +497,47 @@ body.dark .mushaf-ayah--playing {
     border: 1px solid var(--line);
     color: var(--text);
     cursor: pointer;
-    transition: opacity 200ms ease, background 150ms ease, transform 150ms ease;
+    /* The button box itself never transitions or moves. Only the chevron
+       icon inside reacts on hover (see .mushaf-nav svg rules below). */
+    transition: none;
+    appearance: none;
+    -webkit-appearance: none;
+    text-decoration: none;
+    outline: none;
     z-index: 4;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-.mushaf-nav:hover {
-    transform: translateY(-50%) scale(1.04);
+/* Hard-lock EVERY visual property of the box on every interactive state.
+ * Position, scale, background, color, shadow, border, outline — all
+ * pinned to the resting values. The button box is glued in place. */
+.mushaf-nav:hover,
+.mushaf-nav:focus,
+.mushaf-nav:focus-visible,
+.mushaf-nav:active {
+    transform: translateY(-50%) !important;
+    background: linear-gradient(180deg, var(--card), var(--card2)) !important;
+    color: var(--text) !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+    border-color: var(--line) !important;
+    outline: none !important;
+    text-decoration: none !important;
 }
 
-.mushaf-nav:active {
-    transform: translateY(-50%) scale(0.96);
+.mushaf-nav svg {
+    width: 18px;
+    height: 18px;
+    /* The chevron is the ONLY thing that animates on hover. It scales up
+     * slightly so the button feels alive without the box itself moving.
+     * Eased with a cubic-bezier for a soft snap. */
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.mushaf-nav:hover svg,
+.mushaf-nav:focus-visible svg,
+.mushaf-nav:active svg {
+    transform: scale(1.18);
 }
 
 .mushaf-nav svg {
@@ -934,13 +970,23 @@ body.dark .mushaf-mukhtasar {
     font-size: 0.82rem;
     font-weight: 800;
     color: #fff;
-    background: var(--accent-strong);
+    /* Same royal blue as #compareTafsirsBtn (مختصر التفاسير) so the two
+       buttons read as one consistent action color. Previously used
+       var(--accent-strong) (#0b6bdc) which next to the deeper #2644cd royal
+       blue read as teal/green. */
+    background: #2644cd;
+    box-shadow: 0 2px 8px rgba(38, 68, 205, 0.34);
     cursor: pointer;
-    transition: opacity 150ms ease;
+    transition: background 150ms ease, box-shadow 150ms ease;
 }
 
 .mushaf-mukhtasar__more:hover {
-    opacity: 0.9;
+    background: #213bb2;
+    box-shadow: 0 4px 12px rgba(38, 68, 205, 0.40);
+}
+
+.mushaf-mukhtasar__more:active {
+    background: #1c3296;
 }
 
 .mushaf-mukhtasar__more:disabled {
@@ -1478,10 +1524,11 @@ body.dark .mushaf-toolbar__dropdown {
 }
 
 .mushaf-surah-select:hover {
+    /* Subtle, static hover: a slight bg/shadow change for affordance, but
+       NO vertical lift (transform: translateY) and NO accent-blue border —
+       both previously made the pill feel jumpy and out-of-palette. */
     background: var(--card);
-    border-color: var(--accent-strong);
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-    transform: translateY(-1px);
 }
 
 body.dark .mushaf-surah-select:hover {
@@ -1489,7 +1536,6 @@ body.dark .mushaf-surah-select:hover {
 }
 
 .mushaf-surah-select:active {
-    transform: translateY(0);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
@@ -2130,6 +2176,17 @@ body.dark .mushaf-root--fullscreen {
 
 .mushaf-root--fullscreen .mushaf-toolbar > *:not(#mushafPlayWrap) {
     display: none !important;
+}
+
+/* In fullscreen the toolbar sits near the right edge (right: 48px), so the
+ * default `left: 0` anchor on the play-button volume/speed dropdown makes
+ * the 220px panel overflow to the right of the viewport — only the leftmost
+ * "1x" pill stays visible. Anchor to the right edge of the play wrap so it
+ * opens LEFTWARD into the screen instead, sliding under the empty space
+ * between the play button and the floating settings/font controls. */
+.mushaf-root--fullscreen .mushaf-toolbar__dropdown--volume {
+    left: auto !important;
+    right: 0 !important;
 }
 
 /* Re-style the existing play button to match the overlay aesthetic. */

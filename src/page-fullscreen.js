@@ -65,6 +65,10 @@ export function openFullscreen(deps) {
     document.addEventListener("mushaf:page-rendered", onPageRendered);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("click", onDocumentClick, true);
+    // Mutual exclusion: when the toolbar play-button's volume/speed dropdown
+    // opens (hover or long-press, fired from src/mushaf.js's wireToolbar),
+    // close our floating settings panel so the two never overlap.
+    document.addEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
     window.addEventListener("resize", updatePageNum);
 }
 
@@ -74,6 +78,7 @@ export function closeFullscreen() {
     document.removeEventListener("mushaf:page-rendered", onPageRendered);
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("click", onDocumentClick, true);
+    document.removeEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
     window.removeEventListener("resize", updatePageNum);
 
     closeSettingsPanel();
@@ -105,6 +110,10 @@ function onDocumentClick(e) {
     if (e.target.closest(".mushaf-fs__settings-panel")) return;
     if (e.target.closest(".mushaf-fs__settings-btn")) return;
     closeSettingsPanel();
+}
+
+function onVolDropdownOpen() {
+    if (_settingsOpen) closeSettingsPanel();
 }
 
 /* ============================================================ Controls = */
@@ -270,6 +279,11 @@ function openSettingsPanel() {
     if (!_rootEl) return;
     if (!_settingsPanel) buildSettingsPanel();
     if (!_settingsPanel) return;
+    // Mutual exclusion: close the toolbar's volume/speed dropdown if it's
+    // open. The reverse direction (vol opens → settings closes) is handled
+    // by the `m7:vol-dropdown-open` listener installed in openFullscreen().
+    document.getElementById("mushafVolDropdown")
+        ?.classList.remove("mushaf-toolbar__dropdown--open");
     _settingsOpen = true;
     _settingsPanel.classList.add("mushaf-fs__settings-panel--open");
     _settingsPanel.setAttribute("aria-hidden", "false");

@@ -1150,7 +1150,16 @@ function tafsirEngineCallbacks() {
     onPause: () => setAudioActiveUI(false),
     onAyahChange: (ayah, surah) => {
       if (!CURRENT || CURRENT.s !== surah || CURRENT.a !== ayah) {
-        setPrimaryAyah(surah, ayah, { scroll: false, animate: false, skipAudioStop: true });
+        // Use the SAME defaults as a manual prev/next click (`stepAyah` calls
+        // setPrimaryAyah with just `scroll: false`, so animate defaults to
+        // true). The continuous-mode auto-advance was previously passing
+        // `animate: false`, which skipped the tafsirGlow entrance fade and
+        // made the transition feel sudden compared to a hand-clicked step.
+        // Re-using animate:true brings auto-advance to parity with manual
+        // navigation. The mode-toggle handoff path still passes its own
+        // `animate: false` (see comment in setPrimaryAyah) to avoid a double
+        // fade against the concurrent mode-fade-in, so that path is unchanged.
+        setPrimaryAyah(surah, ayah, { scroll: false, skipAudioStop: true });
       }
     },
     onEnded: () => {
@@ -1577,13 +1586,34 @@ document.querySelectorAll('[data-tafsir-settings-dropdown]').forEach(dd => {
 // (Mushaf chip row, Tafsir chip row), refresh both UIs so they agree.
 subscribeRepeat(() => { syncTafsirSettingsUI(); });
 
-// Cog open/close: click toggles, outside click closes
+// Cog open/close — mirrors the Tadabbur (Mushaf) settings pattern in
+// src/mushaf.js's wireToolbar so behavior is identical across modes AND
+// across input types:
+//   - desktop mouse: mouseenter opens, mouseleave closes after a 350ms grace
+//     period (lets the cursor cross from button to dropdown without flicker)
+//   - touch: the synthetic mouseenter on tap + the explicit click toggle keep
+//     the same open/close mechanics working without true hover
+//   - any input: outside-click closes (handles the case where the cursor
+//     never leaves via the wrap because it jumps to another element)
+// This fixes the previous Tafsir-only bug where the panel stuck open after a
+// click and then visually overlapped the adjacent play button.
 document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
   const btn = wrap.querySelector('[data-tafsir-settings-btn]');
   const dd = wrap.querySelector('[data-tafsir-settings-dropdown]');
-  btn?.addEventListener('click', (e) => {
+  if (!btn || !dd) return;
+  let hideT = null;
+  wrap.addEventListener('mouseenter', () => {
+    clearTimeout(hideT);
+    dd.classList.add('mushaf-toolbar__dropdown--open');
+    syncTafsirSettingsUI();
+  });
+  wrap.addEventListener('mouseleave', () => {
+    clearTimeout(hideT);
+    hideT = setTimeout(() => dd.classList.remove('mushaf-toolbar__dropdown--open'), 350);
+  });
+  btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (dd?.classList.toggle('mushaf-toolbar__dropdown--open')) syncTafsirSettingsUI();
+    if (dd.classList.toggle('mushaf-toolbar__dropdown--open')) syncTafsirSettingsUI();
   });
 });
 document.addEventListener('click', (e) => {
@@ -3337,6 +3367,14 @@ async function updateTafsirUI(surahNo, ayahNo) {
   if (tafsirAyahTag) {
     tafsirAyahTag.innerHTML = ayahText ? wrapTashkeelWords(escapeHtml(ayahText)) : "—";
     tafsirAyahTag.classList.toggle("is-hidden", !ayahText);
+    // Re-fire the tafsir-swap animation NOW (sync with the innerHTML change)
+    // so the ayah text fades in smoothly. Previously the swap was applied
+    // only after the async loadPrimaryTafsir below — which made the text
+    // snap to the new ayah and then fade in late, feeling jerky during
+    // continuous-mode auto-advance. The tafsirBox swap stays after the
+    // async load because its content updates then.
+    tafsirAyahTag.classList.remove("tafsir-swap");
+    requestAnimationFrame(() => tafsirAyahTag.classList.add("tafsir-swap"));
   }
 
   updateBasmalaUI(surahNo, ayahNo);
@@ -3373,10 +3411,12 @@ async function updateTafsirUI(surahNo, ayahNo) {
 
   if (tafsirMetaAyah) tafsirMetaAyah.textContent = `${surahNo}:${ayahNo}`;
 
-  tafsirAyahTag?.classList.remove("tafsir-swap");
+  // Only the tafsirBox is re-animated here — its content just updated. The
+  // tafsirAyahTag was already animated above at the moment its innerHTML
+  // changed (so the swap stays in sync with the actual text change instead
+  // of running late after the async fetch).
   tafsirBox?.classList.remove("tafsir-swap");
   requestAnimationFrame(() => {
-    tafsirAyahTag?.classList.add("tafsir-swap");
     tafsirBox?.classList.add("tafsir-swap");
   });
 

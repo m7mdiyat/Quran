@@ -375,6 +375,13 @@ export async function setAppMode(mode) {
     // panels end up in a half-applied state.
     if (MODE_TRANSITIONING) return;
     MODE_TRANSITIONING = true;
+    // Force-close any open Tafsir toolbar dropdowns (settings cog + volume)
+    // before the switch so a stuck-open panel doesn't bleed into the Mushaf
+    // view (or back into Tafsir on the return trip).
+    document.querySelectorAll(
+        '[data-tafsir-settings-dropdown].mushaf-toolbar__dropdown--open,'
+        + ' #tafsirVolDropdown.mushaf-toolbar__dropdown--open'
+    ).forEach((dd) => dd.classList.remove("mushaf-toolbar__dropdown--open"));
     try {
 
     // Audio preservation across the toggle:
@@ -1575,7 +1582,14 @@ function autoFitFontSize() {
         if (!ACTIVE_PAGE_EL) return;
 
         let maxLineWidth = 0;
-        const lines = ACTIVE_PAGE_EL.querySelectorAll('.mushaf-line');
+        // Exclude the bismillah line. The QCF4 bismillah PUA glyph has an
+        // intentionally wide ornamental flourish; if we let its scrollWidth
+        // drive autoFit, the page font-size gets shrunk so the bismillah
+        // fits — which then makes the verse lines too small and stretches
+        // the bismillah letters horizontally across the page width. Verses
+        // determine the page font-size; the bismillah is sized independently
+        // in CSS (.mushaf-line--bismillah).
+        const lines = ACTIVE_PAGE_EL.querySelectorAll('.mushaf-line:not(.mushaf-line--bismillah)');
         lines.forEach((line) => {
             const width = line.scrollWidth;
             if (width > maxLineWidth) maxLineWidth = width;
@@ -2477,6 +2491,8 @@ function wireToolbar() {
     // --- Volume dropdown: shows on mouse hover while audio is playing ---
     // Filter to mouse pointers so a touch release (which synthesizes a
     // mouseleave) cannot close the dropdown that the long-press just opened.
+    // Dispatching `m7:vol-dropdown-open` lets the fullscreen overlay
+    // (page-fullscreen.js) close its own settings panel for mutual exclusion.
     if (playWrap && volDD) {
         let volHideT = null;
         playWrap.addEventListener("pointerenter", (e) => {
@@ -2484,6 +2500,7 @@ function wireToolbar() {
             if (!AUDIO_VERSE) return; // only show when audio is active
             clearTimeout(volHideT);
             volDD.classList.add("mushaf-toolbar__dropdown--open");
+            document.dispatchEvent(new CustomEvent("m7:vol-dropdown-open"));
         });
         playWrap.addEventListener("pointerleave", (e) => {
             if (e.pointerType !== "mouse") return;
@@ -2526,7 +2543,10 @@ function wireToolbar() {
                 if (lpPointerId !== e.pointerId) return;
                 lpFired = true;
                 // Toggle: a second hold on an already-open panel closes it.
-                volDD.classList.toggle("mushaf-toolbar__dropdown--open");
+                const opened = volDD.classList.toggle("mushaf-toolbar__dropdown--open");
+                // Same mutual-exclusion signal as the hover path — only fire on
+                // the open→true transition so a toggle-CLOSE doesn't trigger it.
+                if (opened) document.dispatchEvent(new CustomEvent("m7:vol-dropdown-open"));
                 if (navigator.vibrate) { try { navigator.vibrate(15); } catch { } }
             }, LONG_PRESS_MS);
         });

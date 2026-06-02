@@ -55,6 +55,18 @@ export function setRepeatPref(n) {
     if (!REPEAT_OPTIONS.includes(v)) return;
     if (v === _pref) return;
     _pref = v;
+    // Mid-play pref flip: re-seed the active ayah's loop budget so the new
+    // preference takes effect immediately on the currently-playing ayah
+    // (instead of only from the NEXT ayah-crossing onward). Without this,
+    // toggling repeat ON while an ayah is mid-play leaves `_remaining`
+    // pinned to whatever it was set to when the ayah started — typically
+    // 0, so the ayah ends without looping. The "sometimes it loops"
+    // intermittency the user saw was the lucky timing where the pref
+    // flipped during an ayah-boundary tick (which calls startLoopFor for
+    // the new ayah with the just-updated _pref).
+    if (_activeKey) {
+        _remaining = v === Infinity ? Infinity : Math.max(0, v - 1);
+    }
     try { localStorage.setItem(STORAGE_KEY, v === Infinity ? "inf" : String(v)); } catch { }
     for (const fn of LISTENERS) { try { fn(_pref); } catch { } }
 }
