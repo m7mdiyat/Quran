@@ -33,6 +33,16 @@ import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMu
 /* Continuous full-surah audio engine (all reciters) */
 import { surahAudio } from "./surahAudio.js";
 
+/* Repeat / loop preference + active-loop counter (shared website + app) */
+import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, getRepeatPref, setRepeatPref, subscribeRepeat } from "./repeat.js";
+
+/* Resume reading position — APP ONLY. The website never enters this code
+ * path; the import is dynamic + behind isApp(), and these are no-op by
+ * default so the website's setPrimaryAyah / Mushaf hooks can call them
+ * unconditionally without paying any cost. */
+let _recordResume = (_patch) => { };
+export function recordResumeCb(patch) { _recordResume(patch); }
+
 /* ---------------- DOM ---------------- */
 const textSearch = el("textSearch");
 const clearBtn = el("clearBtn");
@@ -212,6 +222,24 @@ function setDarkMode(on) {
   if (themeToggle) themeToggle.setAttribute("aria-pressed", on ? "true" : "false");
   if (themeToggle) themeToggle.textContent = on ? "فاتح" : "داكن";
   if (themeLabel) themeLabel.textContent = on ? "فاتح" : "داكن";
+  syncNativeStatusBar(on);
+}
+
+/* Match the Android status bar to the current theme so the top strip doesn't
+ * stay white when the user switches to dark mode. Uses @capacitor/status-bar
+ * (installed in the wrapper), accessed via the bridge-injected global.
+ * window.Capacitor is injected after scripts evaluate, so the first call from
+ * init() may run before the bridge is ready — retry briefly until it lands. */
+function syncNativeStatusBar(dark, _attempt = 0) {
+  const sb = window.Capacitor?.Plugins?.StatusBar;
+  if (!sb) {
+    if (_attempt < 10) setTimeout(() => syncNativeStatusBar(dark, _attempt + 1), 100);
+    return;
+  }
+  try {
+    sb.setStyle({ style: dark ? "DARK" : "LIGHT" });
+    sb.setBackgroundColor?.({ color: dark ? "#181c22" : "#f7fbff" });
+  } catch { }
 }
 function toggleDarkMode() {
   const on = !document.body.classList.contains("dark");
@@ -941,6 +969,8 @@ function stopAudio() {
   document.querySelector(".mobile-audio-btn")?.classList.remove("playing");
   updateAudioIcons(false);
   updateSeekSliderVisibility(false);
+  // Clear any active repeat loop so the next playback starts fresh.
+  repeatReset();
 }
 
 /**
@@ -1212,10 +1242,13 @@ function playCurrentAyah() {
   stopMushafPerAyahAudio();
 
   const url = getAyahAudioUrl(CURRENT.s, CURRENT.a);
+  const ayahKey = `${CURRENT.s}:${CURRENT.a}`;
   const nextAudio = new Audio(url);
   nextAudio.volume = AUDIO_VOLUME;
   nextAudio.playbackRate = AUDIO_SPEED;
   AUDIO_PLAYER = nextAudio;
+  // Seed the repeat counter for this ayah (1× = no replays, 3×/5×/∞ = loop).
+  repeatStart(ayahKey);
 
   // Guard every listener and the play().catch against AUDIO_PLAYER having
   // been swapped to a NEW Audio element while this one was still loading —
@@ -1236,6 +1269,15 @@ function playCurrentAyah() {
   });
   nextAudio.addEventListener("ended", () => {
     if (AUDIO_PLAYER !== nextAudio) return;
+    // Repeat hook: if the loop still has plays left, restart in place.
+    if (repeatConsume(ayahKey)) {
+      try {
+        nextAudio.currentTime = 0;
+        const p = nextAudio.play();
+        if (p && typeof p.catch === "function") p.catch(() => { });
+      } catch { }
+      return;
+    }
     stopAudio();
   });
   nextAudio.addEventListener("error", (e) => {
@@ -1452,6 +1494,33 @@ function syncTafsirSettingsUI() {
   document.querySelectorAll('[data-tafsir-settings="audio-mode"] .mushaf-settings__chip').forEach(c => {
     c.setAttribute('aria-checked', c.dataset.val === mode ? 'true' : 'false');
   });
+  // Repeat row: reflect the saved preference. Also hide the entire
+  // section whenever audio-mode is "continuous" — repeat-ayah only makes
+  // sense when playing one ayah at a time.
+  const pref = getRepeatPref();
+  const prefVal = pref === Infinity ? 'inf' : String(pref);
+  document.querySelectorAll('[data-tafsir-settings="repeat"] .mushaf-settings__chip').forEach(c => {
+    c.setAttribute('aria-checked', c.dataset.val === prefVal ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-repeat-section]').forEach((s) => {
+    s.style.display = LISTENING_MODE ? 'none' : '';
+  });
+  updateRepeatBadgeUI();
+}
+
+/** Show a subtle ∞ badge on the play button only when BOTH conditions hold:
+ *   (1) repeat preference is ∞
+ *   (2) audio-mode is single (the repeat-ayah loop doesn't apply in
+ *       continuous mode, so the badge is meaningless there).
+ * Without the second check, the badge would stay lit after the user flipped
+ * to "تشغيل متواصل" — even though no loop will ever fire. */
+function updateRepeatBadgeUI() {
+  const pref = getRepeatPref();
+  const show = pref === Infinity && !LISTENING_MODE;
+  const tafsirPlayBtn = document.getElementById('tafsirPlayBtn');
+  if (tafsirPlayBtn) tafsirPlayBtn.classList.toggle('mushaf-toolbar__btn--repeat-inf', show);
+  const mushafPlayBtn = document.getElementById('mushafToolbarPlay');
+  if (mushafPlayBtn) mushafPlayBtn.classList.toggle('mushaf-toolbar__btn--repeat-inf', show);
 }
 
 // Chip clicks: reciter + playback mode (both drive the existing audio engine)
@@ -1462,9 +1531,17 @@ document.querySelectorAll('[data-tafsir-settings-dropdown]').forEach(dd => {
     const group = chip.closest('[data-tafsir-settings]')?.dataset.tafsirSettings;
     if (group === 'reciter') switchReciter(chip.dataset.val);
     else if (group === 'audio-mode') setListeningMode(chip.dataset.val === 'continuous');
+    else if (group === 'repeat') {
+      const v = chip.dataset.val;
+      setRepeatPref(v === 'inf' ? Infinity : Number(v));
+    }
     syncTafsirSettingsUI();
   });
 });
+
+// Cross-mode chip sync: when the user changes repeat preference anywhere
+// (Mushaf chip row, Tafsir chip row), refresh both UIs so they agree.
+subscribeRepeat(() => { syncTafsirSettingsUI(); });
 
 // Cog open/close: click toggles, outside click closes
 document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
@@ -4064,6 +4141,9 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   // qasim on surah 4, refresh chip disabled states either way).
   enforceReciterForSurah(surahNo);
   setUrlForAyah(surahNo, ayahNo, { replace: replaceUrl });
+  // Resume hook (app only — no-op on the website): every Tafsir-mode ayah
+  // change captures the new position. Page is null in Tafsir mode.
+  _recordResume({ mode: "tafsir", surah: surahNo, ayah: ayahNo, page: null });
 
   showAyahContext(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
@@ -4739,7 +4819,14 @@ function renderSurahView(surah) {
 async function init() {
   if (INIT_STARTED) return;
   INIT_STARTED = true;
-  themeToggle?.addEventListener("click", toggleDarkMode);
+  themeToggle?.addEventListener("click", () => {
+    toggleDarkMode();
+    // On touch devices the :hover / :focus state sticks on the button
+    // after tap (no mouseout fires), leaving a residual highlight until
+    // the user taps elsewhere. Blurring immediately releases focus and
+    // visual state right after the toggle.
+    try { themeToggle.blur(); } catch { }
+  });
   updateCompareButtonState();
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
@@ -4754,6 +4841,25 @@ async function init() {
     import("./feedback-panel.js")
       .then((m) => m.initFeedbackPanel())
       .catch((e) => console.error("feedback-panel init failed", e));
+    // Resume (silent restore on next launch) + auto-flush on hide.
+    import("./resume.js")
+      .then((m) => {
+        m.initResumeAutoflush();
+        _recordResume = m.recordResume;
+      })
+      .catch((e) => console.error("resume init failed", e));
+    // Personal notes panel + "ملاحظاتي" header button.
+    import("./notes.js")
+      .then((m) => m.initNotesPanel({
+        // Jump to an ayah in whichever mode is currently displayed. The
+        // notes list calls this on row tap.
+        jumpToAyah: (s, a) => {
+          if (isMushafMode()) openMushafAtAyah(s, a);
+          else setPrimaryAyah(s, a, { scroll: true, animate: true });
+        },
+        getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
+      }))
+      .catch((e) => console.error("notes init failed", e));
   }
 
   // Lock search until core files load
@@ -4840,6 +4946,13 @@ async function init() {
     // cached comparisons.json the Tafsir tab downloaded.
     tafsirOfflineReady: () => tafsirIsReady(),
     getOfflineComparison: (s, a) => getOfflineComparison(s, a),
+    // Repeat / loop preference — shared across modes (one source of truth).
+    getRepeatPref: () => getRepeatPref(),
+    setRepeatPref: (n) => setRepeatPref(n),
+    // Resume hook — app-only on the receiving side; called by Mushaf for
+    // every page / ayah / surah navigation. Pass the no-op-by-default
+    // shim so mushaf.js can call it unconditionally.
+    recordResume: (patch) => _recordResume(patch),
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
@@ -4864,9 +4977,46 @@ async function init() {
       if (!existingGrid) {
         renderSurahView(surah);
       }
-      // We don't return here because we still might want other init logic (like theme), 
+      // We don't return here because we still might want other init logic (like theme),
       // but we should avoid loading the default search view if possible.
     }
+  }
+
+  // Resume reading position — APP ONLY. Honours URL deep-links / Mushaf
+  // routes / Surah landing page: only fires when the user landed on the
+  // bare "/" and nothing else is already taking them somewhere specific.
+  if (isApp()
+    && !window._mushafInit
+    && !urlAyah
+    && !surahMatch
+    && window.location.pathname === "/") {
+    try {
+      const m = await import("./resume.js");
+      // Make sure the recorder is wired in case the early fire-and-forget
+      // import is still resolving. Module instance is shared either way.
+      _recordResume = m.recordResume;
+      const stored = m.loadStoredResume();
+      if (stored) {
+        if (stored.mode === "mushaf" && Number.isFinite(stored.page)) {
+          // Open the page first (right page, right SEO), then drop the ayah
+          // anchor on top so the target-surah highlight is correct.
+          openMushafAtPage(stored.page, { updateUrl: true, noScroll: true });
+          if (stored.surah && stored.ayah) {
+            openMushafAtAyah(stored.surah, stored.ayah, { updateUrl: false, noScroll: true });
+          }
+        } else if (stored.mode === "tafsir" && stored.surah && stored.ayah) {
+          setPrimaryAyah(stored.surah, stored.ayah, { scroll: false, animate: false });
+          // Apply the saved scroll offset on the next microtask, after the
+          // tafsir DOM updates settle (setPrimaryAyah re-renders).
+          if (stored.scrollY > 0) {
+            requestAnimationFrame(() => {
+              try { window.scrollTo({ top: stored.scrollY, behavior: "instant" }); }
+              catch { window.scrollTo(0, stored.scrollY); }
+            });
+          }
+        }
+      }
+    } catch { /* resume failure must never block init */ }
   }
 
 

@@ -2854,6 +2854,127 @@
     body.dark .feedback-status--info { background: rgba(96, 165, 250, .14); color: #bfdbfe; }
     body.dark .feedback-status--ok { background: rgba(34, 197, 94, .18); color: #bbf7d0; }
     body.dark .feedback-status--err { background: rgba(239, 68, 68, .2); color: #fecaca; }
+
+    /* --- Notes editor (sheet contents) --- */
+    .notes-editor { display: flex; flex-direction: column; gap: 10px; }
+    .notes-editor__ayah {
+      font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+      font-size: 14px; color: #475569; background: rgba(15, 23, 42, .04);
+      padding: 10px 12px; border-radius: 12px; line-height: 1.7;
+      max-height: 78px; overflow: auto; text-align: justify;
+    }
+    body.dark .notes-editor__ayah { background: rgba(148, 163, 184, .1); color: #cbd5e1; }
+    .notes-editor__textarea { min-height: 110px; max-height: 240px; }
+    .notes-editor__counter {
+      align-self: flex-start; font-size: 11px; color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+    body.dark .notes-editor__counter { color: #64748b; }
+    .notes-editor__actions {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;
+      justify-content: flex-end;
+    }
+    .notes-editor__actions .offline-btn { min-width: 90px; }
+    .notes-editor__hint {
+      font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 6px;
+    }
+    body.dark .notes-editor__hint { color: #64748b; }
+
+    /* --- Notes list (sheet contents) --- */
+    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; padding-inline-end: 2px; }
+    .notes-list__row {
+      background: rgba(15, 23, 42, .04); border: 1px solid rgba(15, 23, 42, .06);
+      border-radius: 14px; padding: 12px; cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+    .notes-list__row:hover { background: rgba(29, 143, 255, .08); }
+    body.dark .notes-list__row {
+      background: rgba(148, 163, 184, .08); border-color: rgba(148, 163, 184, .14);
+    }
+    body.dark .notes-list__row:hover { background: rgba(96, 165, 250, .15); }
+    .notes-list__row-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; margin-bottom: 6px;
+    }
+    .notes-list__row-ref { font-weight: 800; font-size: 13.5px; color: #0f172a; }
+    body.dark .notes-list__row-ref { color: #e2e8f0; }
+    .notes-list__row-time { font-size: 11px; color: #94a3b8; }
+    .notes-list__row-preview {
+      font-size: 13px; color: #475569; line-height: 1.55;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    body.dark .notes-list__row-preview { color: #cbd5e1; }
+    .notes-list__row-actions {
+      display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end;
+    }
+    .notes-list__row-actions .offline-btn { padding: 4px 10px; font-size: 12px; min-width: 60px; }
+    .notes-list__empty {
+      text-align: center; color: #94a3b8; font-size: 13.5px; font-weight: 600;
+      padding: 28px 8px; line-height: 1.7;
+    }
+    body.dark .notes-list__empty { color: #64748b; }
+    .notes-list__hint {
+      font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 8px;
+    }
+    body.dark .notes-list__hint { color: #64748b; }
+
+    /* --- First-launch offline tooltip (neutral grey, not blue) --- */
+    .m7-tip {
+      position: fixed;
+      z-index: 1100;
+      transform: translateX(-50%) translateY(-6px);
+      background: #f8fafc;
+      color: #334155;
+      border-radius: 12px;
+      padding: 8px 12px 8px 10px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14), 0 1px 4px rgba(15, 23, 42, 0.05);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+      font-size: 13px; font-weight: 600; line-height: 1.2;
+      opacity: 0;
+      transition: opacity 220ms ease, transform 220ms ease;
+      pointer-events: auto;
+      max-width: calc(100vw - 16px);
+    }
+    .m7-tip--show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    body.dark .m7-tip {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.16);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+    .m7-tip__text { color: #334155; font-weight: 600; white-space: nowrap; }
+    body.dark .m7-tip__text { color: #cbd5e1; }
+    .m7-tip__arrow {
+      position: absolute;
+      top: -5px;
+      left: 50%;                                       /* JS may override per-position */
+      transform: translateX(-50%) rotate(45deg);
+      width: 10px; height: 10px;
+      background: #f8fafc;
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+      border-left: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 2px;
+    }
+    body.dark .m7-tip__arrow {
+      background: #1e293b;
+      border-top-color: rgba(148, 163, 184, 0.16);
+      border-left-color: rgba(148, 163, 184, 0.16);
+    }
+    .m7-tip__close {
+      width: 20px; height: 20px;
+      border: 0; background: transparent; padding: 0;
+      color: #94a3b8;
+      display: grid; place-items: center;
+      border-radius: 50%; cursor: pointer;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .m7-tip__close:hover { background: rgba(15, 23, 42, 0.06); color: #475569; }
+    body.dark .m7-tip__close { color: #94a3b8; }
+    body.dark .m7-tip__close:hover { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; }
+    .m7-tip__close svg { width: 13px; height: 13px; }
   </style>
 </head>
 
@@ -2877,6 +2998,13 @@
           style="display:none;" aria-label="إرسال ملاحظة">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/>
+          </svg>
+        </button>
+        <button id="notesMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="تدبرياتي">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
           </svg>
         </button>
       </div>
@@ -2984,6 +3112,13 @@
                           <div class="mushaf-settings__row" data-tafsir-settings="audio-mode">
                             <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
                             <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
+                          </div>
+                        </div>
+                        <div class="mushaf-settings__section" data-repeat-section>
+                          <div class="mushaf-settings__label">تكرار الآية</div>
+                          <div class="mushaf-settings__row" data-tafsir-settings="repeat">
+                            <button type="button" class="mushaf-settings__chip" data-val="1">بدون تكرار</button>
+                            <button type="button" class="mushaf-settings__chip" data-val="inf">تكرار</button>
                           </div>
                         </div>
                       </div>

@@ -19,6 +19,7 @@
 "use strict";
 
 import { surahAudio } from "./surahAudio.js";
+import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, subscribeRepeat } from "./repeat.js";
 
 /* ============================================================
  * QCF4 asset source + offline caching (Capacitor app only)
@@ -117,6 +118,8 @@ const ICONS = {
     close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
     copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+    maximize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>`,
+    notePencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
 };
 
 /* Data caches */
@@ -181,6 +184,11 @@ let LONG_PRESS_TIMER = null;
 let LONG_PRESS_FIRED = false;
 let TOUCH_START = null; // {x, y, target}
 let TOUCH_MOVED = false;
+
+/* App-only: known set of "S:A" keys with notes (mirrors notes.js state) and
+ * subscription cleanup. Used to paint the has-note dot on rendered ayahs. */
+let _notesKeysSet = null;
+let _notesSubUnsub = null;
 
 /* ============================================================
  * Public API
@@ -253,6 +261,32 @@ export function initMushaf(deps) {
     });
 
     document.addEventListener("keydown", onKeyDown);
+
+    // Cross-mode repeat-pref sync: when Tafsir's chip changes the pref,
+    // refresh the Mushaf chip row + ∞ badge too.
+    subscribeRepeat(() => { try { syncSettingsUI(); } catch { } });
+
+    // App-only buttons in the Mushaf shell. Both default to display:none
+    // and are revealed only when we're actually inside the Capacitor app.
+    if (isApp()) {
+        const noteBtn = document.querySelector('.mushaf-ayah-menu__btn--note');
+        if (noteBtn) noteBtn.style.display = "";
+        const fsBtn = document.getElementById("mushafFullscreenBtn");
+        if (fsBtn) fsBtn.style.display = "";
+        wireFullscreenButton(fsBtn);
+        // Subscribe to notes changes so the has-note dot updates on save/delete.
+        import("./notes.js")
+            .then((m) => {
+                _notesKeysSet = m.getNoteKeysSet();
+                _notesSubUnsub = m.subscribeNotes(() => {
+                    _notesKeysSet = m.getNoteKeysSet();
+                    // Re-tag the currently visible page if any.
+                    refreshNoteDots();
+                });
+                refreshNoteDots();
+            })
+            .catch(() => { });
+    }
 
     return {
         setAppMode, openMushafAtAyah, openMushafAtPage,
@@ -940,8 +974,16 @@ function buildShell() {
               <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
             </div>
           </div>
+          <div class="mushaf-settings__section" data-repeat-section>
+            <div class="mushaf-settings__label">تكرار الآية</div>
+            <div class="mushaf-settings__row" data-settings-group="repeat">
+              <button type="button" class="mushaf-settings__chip" data-val="1">بدون تكرار</button>
+              <button type="button" class="mushaf-settings__chip" data-val="inf">تكرار</button>
+            </div>
+          </div>
         </div>
       </div>
+      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--fullscreen" id="mushafFullscreenBtn" aria-label="عرض الصفحة بملء الشاشة" style="display:none;">${ICONS.maximize}</button>
       <div class="mushaf-toolbar__btn-wrap" id="mushafPlayWrap">
         <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="mushafToolbarPlay" aria-label="تشغيل/إيقاف" data-playing="false">${ICONS.play}</button>
         <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="mushafVolDropdown">
@@ -1019,6 +1061,10 @@ function buildShell() {
           <span class="mushaf-ayah-menu__btn-icon">${ICONS.copy}</span>
           <span class="mushaf-ayah-menu__btn-label">نسخ</span>
         </button>
+        <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--note" data-act="note" aria-label="إضافة ملاحظة للآية" style="display:none;">
+          <span class="mushaf-ayah-menu__btn-icon">${ICONS.notePencil}</span>
+          <span class="mushaf-ayah-menu__btn-label">ملاحظة</span>
+        </button>
       </div>
     </div>
 
@@ -1066,10 +1112,20 @@ function buildShell() {
 
     if (window.ResizeObserver) {
         new ResizeObserver(() => {
-            if (PANEL_OPEN) autoFitFontSize();
+            // FS_FONT_LOCK is set by the fullscreen module after it applies
+            // a font-size multiplier. Without this guard, every fullscreen
+            // layout reflow (entering, rotating, font-button clicks, page
+            // swaps) would trigger autoFit and immediately overwrite the
+            // multiplied --font-size — making the + button look broken.
+            if (PANEL_OPEN && !FS_FONT_LOCK) autoFitFontSize();
         }).observe(PAGES_EL);
     }
 }
+
+/* Fullscreen-only flag — when true, the ResizeObserver above does NOT
+ * re-fit, so the user's font multiplier is preserved across layout reflows.
+ * Set via the deps wiring exposed to page-fullscreen.js. */
+let FS_FONT_LOCK = false;
 
 /* ============================================================
  * Page navigation (these DO update the URL)
@@ -1125,7 +1181,10 @@ function wirePageSwipe() {
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
         if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
-        if (dx > 0) goPrev(); else goNext();
+        // Direction (per user request — LTR-style mapping):
+        //   dx > 0  →  finger moved LEFT→RIGHT  →  goNext (NEXT page, higher #)
+        //   dx < 0  →  finger moved RIGHT→LEFT  →  goPrev (previous page)
+        if (dx > 0) goNext(); else goPrev();
     }, { passive: true });
 }
 
@@ -1192,6 +1251,19 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
             }
         }
         syncSurahSelectLabel();
+        // Resume hook (app only on the receiving side — no-op on the website).
+        // Saves the current Mushaf position; openMushafAtAyah/openMushafAtPage
+        // both funnel through here, so this single call covers all paths.
+        if (LAST_VIEWED_AYAH) {
+            try {
+                DEPS?.recordResume?.({
+                    mode: "mushaf",
+                    surah: LAST_VIEWED_AYAH.s,
+                    ayah: LAST_VIEWED_AYAH.a,
+                    page: CURRENT_PAGE,
+                });
+            } catch { }
+        }
     } catch (e) {
         console.error("Mushaf goToPage error:", e);
     }
@@ -1343,7 +1415,23 @@ function renderPage(data, direction = "none") {
     ACTIVE_PAGE_EL = newPage;
     wireAyahInteractions(newPage);
     if (AUDIO_VERSE) highlightAyah(AUDIO_VERSE, "playing");
-    autoFitFontSize();
+    // Fire the event AFTER autoFit finishes (its internal document.fonts
+    // .ready is async). Fullscreen reads --font-size in its page-rendered
+    // handler and needs the auto-fit value, not the CSS default.
+    const fitPromise = autoFitFontSize();
+    const dispatch = () => {
+        try {
+            PAGES_EL?.dispatchEvent(new CustomEvent("mushaf:page-rendered", {
+                bubbles: true,
+                detail: { page: data.page, el: newPage },
+            }));
+        } catch { }
+    };
+    if (fitPromise && typeof fitPromise.then === "function") {
+        fitPromise.then(dispatch, dispatch);
+    } else {
+        dispatch();
+    }
 }
 
 function buildSurahHeader(surahId) {
@@ -1396,6 +1484,9 @@ function buildLineElement(line, lineSurahId) {
             if (TARGET_SURAH && sId !== TARGET_SURAH) {
                 currentAyahEl.classList.add("mushaf-ayah--dimmed");
             }
+            if (_notesKeysSet?.has(vk)) {
+                currentAyahEl.classList.add("mushaf-ayah--has-note");
+            }
             lineEl.appendChild(currentAyahEl);
             currentVerseKey = vk;
         }
@@ -1410,6 +1501,54 @@ function buildLineElement(line, lineSurahId) {
     return lineEl;
 }
 
+/* Re-paint has-note dots on every visible ayah using the latest notes keys.
+ * Cheap (only touches DOM if state changed): pages render with the dot when
+ * built; this fires only when a note is saved/deleted while a page is on
+ * screen, so the indicator pops/disappears without a re-render. */
+function refreshNoteDots() {
+    if (!ACTIVE_PAGE_EL) return;
+    const keys = _notesKeysSet || new Set();
+    ACTIVE_PAGE_EL.querySelectorAll(".mushaf-ayah").forEach((el) => {
+        const vk = el.dataset.verseKey;
+        if (!vk) return;
+        el.classList.toggle("mushaf-ayah--has-note", keys.has(vk));
+    });
+}
+
+/* Fullscreen now runs IN-PLACE on the real Mushaf (just a CSS class on
+ * ROOT_EL + overlay close/font/settings/page-num controls). Swipe
+ * direction, page animation, ayah long-press menu, tap-to-play and the
+ * Tafsir/Mushaf reciter chain all come for free because it's the same
+ * DOM and the same handlers. The fullscreen module only owns the overlay
+ * chrome + font-size cycling + the floating settings panel (whose chips
+ * share the toolbar dropdown's data-settings-group attributes so the
+ * shared sync function keeps them aligned). */
+function wireFullscreenButton(btn) {
+    if (!btn || btn.__fsWired) return;
+    btn.__fsWired = true;
+    btn.addEventListener("click", async () => {
+        try {
+            const m = await import("./page-fullscreen.js");
+            m.openFullscreen({
+                rootEl: ROOT_EL,
+                getActivePageEl: () => ACTIVE_PAGE_EL,
+                getCurrentPageNum: () => CURRENT_PAGE,
+                totalPages: TOTAL_PAGES,
+                refitFont: () => autoFitFontSize(),
+                setFontLock: (b) => { FS_FONT_LOCK = !!b; },
+                goPrev: () => goPrev(),
+                goNext: () => goNext(),
+                reciters: DEPS?.reciters || {},
+                reciterOrder: DEPS?.reciterOrder || [],
+                handleSettingsChip: (chip) => handleSettingsChip(chip),
+                syncSettingsUI: () => syncSettingsUI(),
+            });
+        } catch (e) {
+            console.error("page-fullscreen load failed", e);
+        }
+    });
+}
+
 function applyTargetHighlight({ noScroll = false } = {}) {
     if (!ACTIVE_PAGE_EL || !CURRENT_TARGET_VERSE) return;
     const els = ACTIVE_PAGE_EL.querySelectorAll(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
@@ -1422,16 +1561,16 @@ function applyTargetHighlight({ noScroll = false } = {}) {
 }
 
 function autoFitFontSize() {
-    if (!ACTIVE_PAGE_EL || !PAGES_EL) return;
-    
+    if (!ACTIVE_PAGE_EL || !PAGES_EL) return Promise.resolve();
+
     // Reset to CSS default so we can measure the natural unscaled width
     ACTIVE_PAGE_EL.style.removeProperty('--font-size');
     const containerWidth = PAGES_EL.clientWidth - 16; // 8px padding each side
-    if (containerWidth <= 0) return;
+    if (containerWidth <= 0) return Promise.resolve();
 
-    document.fonts.ready.then(() => {
+    return document.fonts.ready.then(() => {
         if (!ACTIVE_PAGE_EL) return;
-        
+
         let maxLineWidth = 0;
         const lines = ACTIVE_PAGE_EL.querySelectorAll('.mushaf-line');
         lines.forEach((line) => {
@@ -1445,12 +1584,12 @@ function autoFitFontSize() {
 
             // Scale to fit exactly, minus 2% for anti-aliasing safety margin
             const scale = (containerWidth / maxLineWidth) * 0.98;
-            
+
             let newSize = baseFontSize * scale;
-            
+
             // Limit maximum font size so it doesn't get gigantic on wide desktop monitors
             if (newSize > 38) newSize = 38;
-            
+
             ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
         }
     });
@@ -1687,6 +1826,17 @@ function wireMenu() {
             const text = DEPS?.getAyahPlainText?.(s, a) || "";
             if (text) copyAyahText(text);
             closeAyahMenu();
+        } else if (btn.dataset.act === "note") {
+            // App-only: open the notes editor for this ayah. Lazy-imported
+            // so the website bundle never pulls the module.
+            const verse = AYAH_MENU_VERSE;
+            const [s, a] = verse.split(":").map(Number);
+            closeAyahMenu();
+            if (isApp()) {
+                import("./notes.js")
+                    .then((m) => m.openNoteEditor(s, a))
+                    .catch((e) => console.error("notes editor load failed", e));
+            }
         }
     });
     document.addEventListener("click", (e) => {
@@ -2489,18 +2639,25 @@ function showMenu(ayahEl, { reposition = false } = {}) {
         AYAH_MENU_EL.setAttribute("aria-hidden", "false");
         setSelectedAyah(ayahEl);
     }
-    // Position
+    // Position. The menu is position: absolute inside ROOT_EL, so its
+    // left/top are in ROOT_EL's CONTENT coordinate system. The ayah's
+    // boundingClientRect is in viewport coordinates. The diff gives the
+    // visible offset — plus ROOT_EL.scrollTop/Left to convert to content
+    // coordinates (important in fullscreen where ROOT_EL is scrollable).
     const rect = ayahEl.getBoundingClientRect();
     const rootRect = ROOT_EL.getBoundingClientRect();
+    const scrollLeft = ROOT_EL.scrollLeft || 0;
+    const scrollTop = ROOT_EL.scrollTop || 0;
     const menuW = AYAH_MENU_EL.offsetWidth;
     const menuH = AYAH_MENU_EL.offsetHeight;
-    let left = rect.left + rect.width / 2 - menuW / 2 - rootRect.left;
-    let top = rect.bottom + 8 - rootRect.top;
-    const maxLeft = rootRect.width - menuW - 8;
-    if (left < 8) left = 8;
+    let left = rect.left + rect.width / 2 - menuW / 2 - rootRect.left + scrollLeft;
+    let top = rect.bottom + 8 - rootRect.top + scrollTop;
+    const maxLeft = rootRect.width - menuW - 8 + scrollLeft;
+    const minLeft = 8 + scrollLeft;
+    if (left < minLeft) left = minLeft;
     if (left > maxLeft) left = maxLeft;
-    if (top + menuH > rootRect.height - 8) {
-        top = rect.top - menuH - 8 - rootRect.top;
+    if ((top - scrollTop) + menuH > rootRect.height - 8) {
+        top = rect.top - menuH - 8 - rootRect.top + scrollTop;
     }
     AYAH_MENU_EL.style.left = `${left}px`;
     AYAH_MENU_EL.style.top = `${top}px`;
@@ -3086,6 +3243,8 @@ function playMushafAyah(verseKey) {
     const nextAudio = new Audio(buildAyahAudioUrl(s, a));
     nextAudio.volume = AUDIO_VOLUME;
     nextAudio.playbackRate = AUDIO_SPEED;
+    // Seed the repeat counter for this ayah. 1× = no replays; 3×/5×/∞ = loop.
+    repeatStart(verseKey);
 
     // Swap highlight FIRST — visual feedback should not wait on the network.
     if (AUDIO_VERSE && AUDIO_VERSE !== verseKey) clearHighlight(AUDIO_VERSE);
@@ -3116,6 +3275,15 @@ function playMushafAyah(verseKey) {
     });
     nextAudio.addEventListener("ended", () => {
         if (AUDIO_PLAYER !== nextAudio) return;
+        // Repeat hook: replay in place if the loop still has plays left.
+        if (repeatConsume(verseKey)) {
+            try {
+                nextAudio.currentTime = 0;
+                const p = nextAudio.play();
+                if (p && typeof p.catch === "function") p.catch(() => { });
+            } catch { }
+            return;
+        }
         stopMushafAudio();
     });
     nextAudio.addEventListener("error", () => {
@@ -3141,6 +3309,8 @@ function stopMushafAudio() {
     AUDIO_VERSE = null;
     document.documentElement.removeAttribute("data-audio-active");
     setPlaybackPlayingState(false);
+    // Drop any active repeat loop so the next ayah starts fresh.
+    repeatReset();
 }
 
 /**
@@ -3263,16 +3433,19 @@ function handleSettingsChip(chip) {
         FONT_SIZE = (val === "s") ? "s" : "m";
         try { localStorage.setItem(STORAGE.FONT_SIZE, FONT_SIZE); } catch { }
         document.documentElement.setAttribute("data-font-size", FONT_SIZE);
+    } else if (group === "repeat") {
+        DEPS?.setRepeatPref?.(val === "inf" ? Infinity : Number(val));
     }
     syncSettingsUI();
 }
 
 function syncSettingsUI() {
-    const dd = document.getElementById("mushafSettingsDropdown");
-    if (!dd) return;
     const reciter = DEPS?.getCurrentReciter?.();
     const targetSurah = TARGET_SURAH || LAST_VIEWED_AYAH?.s;
-    dd.querySelectorAll('[data-settings-group="reciter"] .mushaf-settings__chip').forEach((c) => {
+    // Iterate DOCUMENT-WIDE so the fullscreen settings panel (a sibling
+    // chip group with the same data-settings-group attributes) stays in
+    // sync with the toolbar dropdown. Single source of truth wins.
+    document.querySelectorAll('[data-settings-group="reciter"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === reciter ? "true" : "false");
         const allowed = DEPS?.isReciterAllowedForSurah
             ? DEPS.isReciterAllowedForSurah(c.dataset.val, targetSurah)
@@ -3282,12 +3455,31 @@ function syncSettingsUI() {
         if (!allowed) c.title = "غير متوفر لهذه السورة";
         else c.removeAttribute("title");
     });
-    dd.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
+    document.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === AUDIO_MODE ? "true" : "false");
     });
-    dd.querySelectorAll('[data-settings-group="font-size"] .mushaf-settings__chip').forEach((c) => {
+    document.querySelectorAll('[data-settings-group="font-size"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === FONT_SIZE ? "true" : "false");
     });
+    // Repeat row: reflect the saved preference. Also hide the entire
+    // section whenever audio-mode is "continuous" — the repeat-ayah toggle
+    // only makes sense when playing a single ayah.
+    const pref = DEPS?.getRepeatPref?.() ?? 1;
+    const prefVal = pref === Infinity ? "inf" : String(pref);
+    document.querySelectorAll('[data-settings-group="repeat"] .mushaf-settings__chip').forEach((c) => {
+        c.setAttribute("aria-checked", c.dataset.val === prefVal ? "true" : "false");
+    });
+    document.querySelectorAll("[data-repeat-section]").forEach((s) => {
+        s.style.display = AUDIO_MODE === "continuous" ? "none" : "";
+    });
+    // ∞ badge on the play button — only meaningful when both:
+    //   (1) repeat preference is ∞, AND
+    //   (2) audio-mode is single (repeat doesn't apply in continuous).
+    // Without the second check, the badge would stay on after the user
+    // switches to "تشغيل متواصل" even though no loop will ever happen.
+    const showInfBadge = pref === Infinity && AUDIO_MODE === "single";
+    const playBtn = document.getElementById("mushafToolbarPlay");
+    if (playBtn) playBtn.classList.toggle("mushaf-toolbar__btn--repeat-inf", showInfBadge);
     // Sync volume slider
     const volSlider = document.getElementById("mushafVolSlider");
     if (volSlider) volSlider.value = String(Math.round(AUDIO_VOLUME * 100));

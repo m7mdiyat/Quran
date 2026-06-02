@@ -1,5 +1,7 @@
 "use strict";
 
+import { startLoopFor, consumeOne, resetLoop } from "./repeat.js";
+
 /* ============================================================
  * Continuous full-surah audio engine.
  *
@@ -121,6 +123,14 @@ function tick() {
   if (!_continuous && _activeAyah) {
     const active = ayahEntryFor(_timings, _activeAyah);
     if (active && ms >= active.end) {
+      // Repeat hook: if the user picked 3×/5×/∞ for this ayah, replay it
+      // in-place instead of stopping. The counter is seeded by startLoopFor
+      // in play() / on each ayah change, so this stays bound to ONE ayah.
+      if (consumeOne(`${_surah}:${_activeAyah}`)) {
+        try { _audio.currentTime = active.start / 1000; } catch { }
+        // Keep audio running — don't pause, don't fire onEnded.
+        return;
+      }
       try { _audio.pause(); } catch { }
       fire("onEnded");
       return;
@@ -131,6 +141,9 @@ function tick() {
   if (!entry) return;
   if (entry.ayah !== _activeAyah) {
     _activeAyah = entry.ayah;
+    // Crossing into a new ayah resets the repeat counter so the next ayah
+    // gets a fresh loop budget instead of inheriting the previous ayah's.
+    startLoopFor(`${_surah}:${_activeAyah}`);
     fire("onAyahChange", _activeAyah, _surah);
   }
 }
@@ -226,7 +239,11 @@ export async function play({ surah, ayah, reciter, continuous, volume, speed, ca
         try { _audio.currentTime = entry.start / 1000; } catch { }
         if (_activeAyah !== entry.ayah) {
           _activeAyah = entry.ayah;
+          startLoopFor(`${_surah}:${_activeAyah}`);
           fire("onAyahChange", _activeAyah, _surah);
+        } else {
+          // Same ayah replay (user pressed play again) → fresh loop budget.
+          startLoopFor(`${_surah}:${_activeAyah}`);
         }
       }
     } else {
@@ -291,6 +308,7 @@ export async function play({ surah, ayah, reciter, continuous, volume, speed, ca
   // load/decode that happens between play() and the seek above.
   audio.playbackRate = _speed;
   audio.volume = _volume;
+  startLoopFor(`${_surah}:${_activeAyah}`);
   startTick();
   fire("onAyahChange", _activeAyah, _surah);
 }
@@ -317,6 +335,7 @@ export function stop() {
   _surah = null;
   _reciter = null;
   _pendingSeekAyah = null;
+  resetLoop();
   fire("onStop");
   _callbacks = null;
 }
