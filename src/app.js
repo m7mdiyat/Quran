@@ -1597,6 +1597,14 @@ subscribeRepeat(() => { syncTafsirSettingsUI(); });
 //     never leaves via the wrap because it jumps to another element)
 // This fixes the previous Tafsir-only bug where the panel stuck open after a
 // click and then visually overlapped the adjacent play button.
+// Mutual exclusion between the two Tafsir toolbar dropdowns (settings cog +
+// play volume/speed). Whenever one opens it closes the other so they can
+// never overlap. Reverse direction is wired in the play-volume open paths
+// further below.
+function _closeTafsirVolDropdown() {
+  document.getElementById('tafsirVolDropdown')
+    ?.classList.remove('mushaf-toolbar__dropdown--open');
+}
 document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
   const btn = wrap.querySelector('[data-tafsir-settings-btn]');
   const dd = wrap.querySelector('[data-tafsir-settings-dropdown]');
@@ -1605,6 +1613,7 @@ document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
   wrap.addEventListener('mouseenter', () => {
     clearTimeout(hideT);
     dd.classList.add('mushaf-toolbar__dropdown--open');
+    _closeTafsirVolDropdown();
     syncTafsirSettingsUI();
   });
   wrap.addEventListener('mouseleave', () => {
@@ -1613,7 +1622,10 @@ document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
   });
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (dd.classList.toggle('mushaf-toolbar__dropdown--open')) syncTafsirSettingsUI();
+    if (dd.classList.toggle('mushaf-toolbar__dropdown--open')) {
+      _closeTafsirVolDropdown();
+      syncTafsirSettingsUI();
+    }
   });
 });
 document.addEventListener('click', (e) => {
@@ -1631,7 +1643,7 @@ document.addEventListener('click', (e) => {
  * doesn't also start/stop playback. Mouse pointers are ignored —
  * desktop already has hover.
  */
-function attachLongPressDropdown(btn, dd) {
+function attachLongPressDropdown(btn, dd, onOpen) {
   if (!btn || !dd) return;
   const LONG_PRESS_MS = 500;
   const MOVE_THRESHOLD_PX = 14;
@@ -1655,8 +1667,11 @@ function attachLongPressDropdown(btn, dd) {
       timer = null;
       if (activePointerId !== e.pointerId) return;
       fired = true;
-      // Toggle: a second hold on an already-open panel closes it.
-      dd.classList.toggle('mushaf-toolbar__dropdown--open');
+      // Toggle: a second hold on an already-open panel closes it. Only the
+      // open transition fires the optional onOpen hook (used to close sibling
+      // dropdowns for mutual exclusion) — a hold-to-close mustn't trigger it.
+      const opened = dd.classList.toggle('mushaf-toolbar__dropdown--open');
+      if (opened && typeof onOpen === 'function') { try { onOpen(); } catch { } }
       if (navigator.vibrate) { try { navigator.vibrate(15); } catch { } }
     }, LONG_PRESS_MS);
   });
@@ -1705,6 +1720,15 @@ function attachLongPressDropdown(btn, dd) {
   // Use pointerenter/pointerleave filtered to mouse pointers so touch never
   // triggers the auto-hide path — otherwise the synthesized mouseleave after
   // a touch release would close the dropdown opened by the long-press.
+  // Mutual exclusion the other direction: closing any open Tafsir settings
+  // dropdown when the play volume/speed dropdown opens. Both open-paths
+  // (mouse hover + touch long-press) call this so the two panels can never
+  // overlap, regardless of input type.
+  const closeTafsirSettingsDropdown = () => {
+    document.querySelectorAll(
+      '[data-tafsir-settings-dropdown].mushaf-toolbar__dropdown--open'
+    ).forEach(d => d.classList.remove('mushaf-toolbar__dropdown--open'));
+  };
   if (playWrap && volDD) {
     let hideT = null;
     playWrap.addEventListener('pointerenter', (e) => {
@@ -1712,6 +1736,7 @@ function attachLongPressDropdown(btn, dd) {
       if (!AUDIO_PLAYING && !surahAudio.isActive()) return;
       clearTimeout(hideT);
       volDD.classList.add('mushaf-toolbar__dropdown--open');
+      closeTafsirSettingsDropdown();
     });
     playWrap.addEventListener('pointerleave', (e) => {
       if (e.pointerType !== 'mouse') return;
@@ -1725,8 +1750,9 @@ function attachLongPressDropdown(btn, dd) {
   // volume/speed dropdown. Mobile has no hover, so without this the
   // dropdown is unreachable when audio isn't already playing. The
   // following synthetic click is swallowed (capture-phase) so a long
-  // press doesn't also toggle playback.
-  attachLongPressDropdown(playBtn, volDD);
+  // press doesn't also toggle playback. The onOpen hook closes the
+  // settings dropdown for mutual exclusion on touch.
+  attachLongPressDropdown(playBtn, volDD, closeTafsirSettingsDropdown);
 
   // Volume controls
   if (volSlider) {

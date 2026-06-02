@@ -1383,7 +1383,19 @@ function renderPage(data, direction = "none") {
             const isContinuationFirstSurah = renderedSurahHeaderFor.size === 0;
 
             if (!renderedSurahHeaderFor.has(sId) && (isFirstVerseOfSurahOnPage || isContinuationFirstSurah)) {
-                newPage.appendChild(buildSurahHeader(sId));
+                const headerEl = buildSurahHeader(sId);
+                // Mark the header as a CONTINUATION when the surah's first
+                // verse on this page is not ayah 1 — i.e., the surah was
+                // already in progress on the previous page. Used by the
+                // fullscreen CSS (app-only) to suppress this "out-of-nowhere"
+                // surah name, since the printed Mushaf only shows a surah
+                // name at the actual start. Real surah-starts (ayah 1 lands
+                // on this page) are left unmarked and continue to render.
+                const firstVerseOnPage = firstVerseKeyPerSurah.get(sId);
+                if (!firstVerseOnPage || !firstVerseOnPage.endsWith(":1")) {
+                    headerEl.classList.add("mushaf-surah-header--continuation");
+                }
+                newPage.appendChild(headerEl);
                 renderedSurahHeaderFor.add(sId);
 
                 // Emit pending bismillah after the header.

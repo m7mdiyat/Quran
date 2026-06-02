@@ -2658,3 +2658,15 @@ html.is-app .mushaf-fs__nav {
 html.is-app .copy-toast {
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
+
+/* Fullscreen-only (app): hide the surah name when the surah was already in
+ * progress from the previous page (continuation). The printed Mushaf only
+ * prints a surah name at its actual START — so a "سورة الغاشية" appearing
+ * out of nowhere at the top of a page where Al-Ghashiyah is just continuing
+ * from the previous page reads as wrong/intrusive. Headers for surahs that
+ * actually START on this page (ayah 1 present) are left untagged and
+ * continue to render normally. The non-fullscreen view keeps the
+ * continuation header because the side-arrow paging context isn't there. */
+html.is-app .mushaf-root--fullscreen .mushaf-surah-header--continuation {
+    display: none !important;
+}
