@@ -136,7 +136,7 @@ let baseTemplate = fs.readFileSync(path.join(DIST_DIR, 'index.html'), 'utf-8');
  * Generate SEO meta tags for a specific ayah
  */
 function generateMetaTags(surah, ayah, surahName, tafsirText) {
-    const canonicalUrl = `${SITE_URL}/${surah}/${ayah}`;
+    const canonicalUrl = `${SITE_URL}/${surah}/${ayah}/`;
     const title = `تفسير سورة ${surahName} آية ${ayah} | محمديات`;
 
     // Improved Description: Include start of Tafsir for uniqueness
@@ -178,13 +178,13 @@ function generateSchemaMarkup(surah, ayah, surahName, canonicalUrl, description)
                 "@type": "ListItem",
                 "position": 1,
                 "name": "محمديات",
-                "item": SITE_URL
+                "item": `${SITE_URL}/`
             },
             {
                 "@type": "ListItem",
                 "position": 2,
                 "name": `سورة ${surahName}`,
-                "item": `${SITE_URL}/${surah}`
+                "item": `${SITE_URL}/${surah}/`
             },
             {
                 "@type": "ListItem",
@@ -201,7 +201,7 @@ function generateSchemaMarkup(surah, ayah, surahName, canonicalUrl, description)
  * Generate Surah Landing Page HTML (Table of Contents)
  */
 function generateSurahPageHtml(surah, surahName, ayahsCount) {
-    const canonicalUrl = `${SITE_URL}/${surah}`;
+    const canonicalUrl = `${SITE_URL}/${surah}/`;
     const title = `سورة ${surahName} مكتوبة كاملة بالتشكيل | محمديات`;
     const description = `اقرأ سورة ${surahName} مكتوبة كاملة بالتشكيل مع تفسير كل آية، عدد آياتها ${ayahsCount}. تصفح فهرس الآيات للوصول السريع للتفسير.`;
 
@@ -216,7 +216,7 @@ function generateSurahPageHtml(surah, surahName, ayahsCount) {
     html = html.replace(/<meta[^>]*id="ogUrl"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="ogUrl" property="og:url" content="${canonicalUrl}" />`);
     html = html.replace(/<meta[^>]*id="ogTitle"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="ogTitle" property="og:title" content="${title}" />`);
     html = html.replace(/<meta[^>]*id="metaDescription"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="metaDescription" name="description" content="${description}" />`);
-    html = html.replace(/<meta[^>]*id="ogDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta properties="og:description" content="${description}" />`);
+    html = html.replace(/<meta[^>]*id="ogDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta property="og:description" content="${description}" />`);
     html = html.replace(/<meta property="og:site_name" content="[^"]*" \/>/i, `<meta property="og:site_name" content="محمديات" />`); // Fix site name
     html = html.replace(/<meta[^>]*id="twTitle"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twTitle" name="twitter:title" content="${title}" />`);
     html = html.replace(/<meta[^>]*id="twDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="twDesc" name="twitter:description" content="${description}" />`);
@@ -226,7 +226,7 @@ function generateSurahPageHtml(surah, surahName, ayahsCount) {
         "@type": "BreadcrumbList",
         "@id": `${canonicalUrl}#breadcrumb`,
         "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "محمديات", "item": SITE_URL },
+            { "@type": "ListItem", "position": 1, "name": "محمديات", "item": `${SITE_URL}/` },
             { "@type": "ListItem", "position": 2, "name": `سورة ${surahName}` }
         ]
     };
@@ -315,7 +315,7 @@ function generatePageHtml(surah, ayah, surahName) {
     html = html.replace(/<meta[^>]*id="metaDescription"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta id="metaDescription" name="description" content="${description}" />`);
 
     // Replace og:description
-    html = html.replace(/<meta[^>]*id="ogDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta properties="og:description" content="${description}" />`);
+    html = html.replace(/<meta[^>]*id="ogDesc"[^>]*content="[^"]*"[^>]*\/?>/i, `<meta property="og:description" content="${description}" />`);
 
     // Fix og:site_name (SEO Audit Fix)
     html = html.replace(/<meta property="og:site_name" content="[^"]*" \/>/i, `<meta property="og:site_name" content="محمديات" />`);
@@ -329,9 +329,6 @@ function generatePageHtml(surah, ayah, surahName) {
         '<html lang="ar" dir="rtl">',
         `<html lang="ar" dir="rtl" data-surah="${surah}" data-ayah="${ayah}">`
     );
-
-    // JSON-LD Update & Injection (SEO Audit Fix)
-    html = html.replace(/"url": "https:\/\/www\.m7mdiyat\.com\/"/g, `"url": "${canonicalUrl}"`);
 
     // Inject Schema Markup
     const schemaData = generateSchemaMarkup(surah, ayah, surahName, canonicalUrl, description);
@@ -422,7 +419,7 @@ function surahNamesForPage(pageNo) {
 }
 
 function generateMushafPageHtml(pageNo) {
-    const canonicalUrl = `${SITE_URL}/read/page/${pageNo}`;
+    const canonicalUrl = `${SITE_URL}/read/page/${pageNo}/`;
     const names = surahNamesForPage(pageNo);
     const surahDesc = names.length
         ? `يحتوي على سور: ${names.join('، ')}`
@@ -462,8 +459,8 @@ function generateMushafPageHtml(pageNo) {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "محمديات", "item": SITE_URL },
-            { "@type": "ListItem", "position": 2, "name": "المصحف", "item": `${SITE_URL}/read/page/1` },
+            { "@type": "ListItem", "position": 1, "name": "محمديات", "item": `${SITE_URL}/` },
+            { "@type": "ListItem", "position": 2, "name": "المصحف", "item": `${SITE_URL}/read/page/1/` },
             { "@type": "ListItem", "position": 3, "name": `صفحة ${pageNo}` },
         ],
     };

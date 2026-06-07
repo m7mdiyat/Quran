@@ -49,7 +49,7 @@ function generateSitemap() {
     for (const surah of surahsData) {
         for (let ayah = 1; ayah <= surah.ayahs; ayah++) {
             urls.push({
-                loc: `${SITE_URL}/${surah.number}/${ayah}`,
+                loc: `${SITE_URL}/${surah.number}/${ayah}/`,
                 lastmod: TODAY,
                 priority: '0.7',
                 changefreq: 'monthly'
@@ -60,7 +60,7 @@ function generateSitemap() {
     // Add Mushaf reading pages /read/page/1..604
     for (let p = 1; p <= 604; p++) {
         urls.push({
-            loc: `${SITE_URL}/read/page/${p}`,
+            loc: `${SITE_URL}/read/page/${p}/`,
             lastmod: TODAY,
             priority: '0.6',
             changefreq: 'monthly'
