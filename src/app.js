@@ -28,10 +28,13 @@ const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
 
 /* Mushaf reading mode bridge */
-import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode, stopMushafPerAyahAudio, getMushafPerAyahPosition, playMushafAyahAtKey, getMushafTargetSurah } from "./mushaf.js";
+import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMushafMode, setAppMode, closeMushafPanel, resetMushafHomeState, noteTafsirViewedAyah, preloadMushafData, syncSpeed as syncMushafSpeed, syncVolume as syncMushafVolume, syncAudioMode as syncMushafAudioMode, stopMushafPerAyahAudio, getMushafPerAyahPosition, playMushafAyahAtKey, getMushafTargetSurah } from "./mushaf.js";
 
 /* Continuous full-surah audio engine (all reciters) */
 import { surahAudio } from "./surahAudio.js";
+
+/* Pulse-outside glow driver for the مختصر التفاسير button */
+import { initMukhtasarPulse } from "./pulse-beam.js";
 
 /* Repeat / loop preference + active-loop counter (shared website + app) */
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, getRepeatPref, setRepeatPref, subscribeRepeat } from "./repeat.js";
@@ -2893,6 +2896,17 @@ function deactivateSearchBeam() {
   setTimeout(done, 700);
 }
 
+// Inverse of deactivateSearchBeam, used by the مسح full-reset: the beam is
+// part of the homepage's default look, so restoring the default state brings
+// it back. Re-adding [data-active] replays beam-fade-in + the spin loop.
+// Safe mid-fade: a pending deactivate timeout only removes [data-fading].
+function reactivateSearchBeam() {
+  const el = document.querySelector(".border-beam");
+  if (!el || el.hasAttribute("data-active")) return;
+  el.removeAttribute("data-fading");
+  el.setAttribute("data-active", "");
+}
+
 function collapseResultsToChip(it) {
   if (!resultsShell || !results) return;
   updateSelectedChip(it);
@@ -4259,6 +4273,10 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     stopAudio();
   }
   CURRENT = { s: surahNo, a: ayahNo };
+  // Keep the search-pill surah selector's label (visible in both modes)
+  // tracking the surah being read, and LAST_VIEWED_AYAH fresh for a later
+  // toggle into Mushaf.
+  noteTafsirViewedAyah(surahNo, ayahNo);
   // An ayah is now chosen → fade the search-pill border beam away (no-op
   // after the first time).
   deactivateSearchBeam();
@@ -5027,11 +5045,16 @@ async function init() {
     hasCurrentAyah: () => CURRENT != null,
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
     getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
-    openTafsirForAyah: (s, a) => {
+    openTafsirForAyah: (s, a, opts) => {
       // Mode switch: skip the tafsir entrance animation (double-render with
       // mode-fade-in) and skip scrollIntoView (jarring during a toggle).
-      setPrimaryAyah(s, a, { scroll: false, animate: false });
+      // The surah-selector submit overrides both (a user pick SHOULD
+      // animate + scroll, like a search-result click).
+      setPrimaryAyah(s, a, { scroll: false, animate: false, ...opts });
     },
+    // Opening the Mushaf panel counts as choosing an ayah → fade the
+    // search pill's border beam (idempotent).
+    deactivateSearchBeam: () => deactivateSearchBeam(),
     // Mushaf calls this during a Mushaf→Tafsir toggle WHEN the surah engine
     // is mid-playback, instead of openTafsirForAyah, so audio keeps going.
     resumeTafsirFromEngine: () => resumeTafsirFromEngine(),
@@ -5178,6 +5201,11 @@ async function init() {
     warmUpAPI();
   }, { once: true });
 
+  // مسح = full return to the homepage default state, not just an input
+  // wipe: clear the search, retract the opened ayah in WHICHEVER mode it
+  // lives (Tafsir panel or Mushaf panel), stop playback, and put the URL,
+  // SEO tags, mode toggle and search beam back to how a fresh load of "/"
+  // looks. pushState (not replace) so Back still returns to the ayah.
   clearBtn?.addEventListener("click", () => {
     textSearch.value = "";
     results.innerHTML = "";
@@ -5189,8 +5217,43 @@ async function init() {
     if (chipTitle) chipTitle.textContent = chipDefaults.title;
     if (chipSnippet) chipSnippet.textContent = chipDefaults.snippet;
     if (chipIcon) chipIcon.textContent = chipDefaults.icon;
+
+    stopAudio();              // Tafsir per-ayah <audio> + surahAudio engine
+    resetMushafHomeState();   // close Mushaf panel, drop its anchor ayah, toggle → تفسير
+    CURRENT = null;
+    if (tafsirSection) {
+      tafsirSection.classList.add("hidden");
+      tafsirSection.classList.remove("is-visible");
+      tafsirSection.classList.remove("tafsir-animate");
+    }
+    resetComparePanel({ hide: true, silent: true });
+    updateCompareButtonState();
+
+    if (window.location.pathname !== "/") {
+      history.pushState(null, "", "/");
+    }
     resetSeoMetaToHome({ removeAyahParam: true });
+    reactivateSearchBeam();
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   });
+
+  // The search input's left padding must clear the مسح + surah-selector
+  // cluster, whose width changes at runtime (the selector is injected by
+  // mushaf.js, hidden in Tafsir mode, and grows with the surah name).
+  // Mirror the cluster's footprint into the CSS var the #textSearch
+  // padding-left calc() reads (see index.html styles).
+  const pillActionsEl = el("searchPillActions");
+  const beamPillEl = pillActionsEl?.closest(".border-beam");
+  if (pillActionsEl && beamPillEl) {
+    const syncActionsWidth = () => {
+      const w = pillActionsEl.offsetLeft + pillActionsEl.offsetWidth;
+      beamPillEl.style.setProperty("--search-actions-w", `${w}px`);
+    };
+    if (window.ResizeObserver) {
+      new ResizeObserver(syncActionsWidth).observe(pillActionsEl);
+    }
+    syncActionsWidth();
+  }
 
   // Click anywhere outside the search panel → drop a stale autofill
   // visual on the input. Only fires when the value actually came from
@@ -5307,6 +5370,9 @@ async function init() {
     stepAyah(e.key === "ArrowLeft" ? 1 : -1);
   });
   compareTafsirsBtn?.addEventListener("click", handleCompareTafsirs);
+  // Pulse-outside glow around مختصر التفاسير — breathing driver + lifecycle
+  // (activates whenever the button is enabled). See src/pulse-beam.js.
+  initMukhtasarPulse();
   compareCloseBtn?.addEventListener("click", () => resetComparePanel({ hide: true }));
   compareStopBtn?.addEventListener("click", () => {
     if (COMPARE_STOPPED) {
@@ -5429,6 +5495,13 @@ async function init() {
     const p = getAyahParamFromUrl();
     if (!p) {
       CURRENT = null;
+      // "/" renders the homepage default — retract the tafsir panel too,
+      // matching what the مسح reset (which pushState'd this entry) shows.
+      if (tafsirSection) {
+        tafsirSection.classList.add("hidden");
+        tafsirSection.classList.remove("is-visible");
+        tafsirSection.classList.remove("tafsir-animate");
+      }
       resetSeoMetaToHome();
       resetComparePanel({ hide: true, silent: true });
       updateCompareButtonState();

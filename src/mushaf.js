@@ -555,6 +555,35 @@ export function closeMushafPanel() {
     commitMode("tafsir");
 }
 
+/**
+ * Full "back to the homepage" reset, used by the مسح button. Beyond
+ * closeMushafPanel() it also drops the remembered anchor ayah — without
+ * that, the next toggle into Mushaf would reopen the ayah the user just
+ * cleared (setAppMode falls back to LAST_VIEWED_AYAH) instead of the
+ * default Al-Fatiha 1:1.
+ */
+export function resetMushafHomeState() {
+    if (PANEL_OPEN) closePanel();
+    LAST_VIEWED_AYAH = null;
+    TARGET_SURAH = null;
+    CURRENT_TARGET_VERSE = null;
+    syncSurahSelectLabel();
+    commitMode("tafsir");
+}
+
+/**
+ * Called by app.js setPrimaryAyah for every Tafsir-mode ayah change, so
+ * the surah selector in the search pill (visible in both modes) tracks
+ * the surah being read. Also keeps LAST_VIEWED_AYAH fresh — it is the
+ * anchor a later toggle into Mushaf falls back to, and "last viewed"
+ * is true regardless of which mode did the viewing.
+ */
+export function noteTafsirViewedAyah(s, a) {
+    LAST_VIEWED_AYAH = { s: Number(s), a: Number(a) };
+    TARGET_SURAH = Number(s);
+    syncSurahSelectLabel();
+}
+
 export async function openMushafAtAyah(s, a, opts = {}) {
     await ensureMushafAssets();
     const key = `${s}:${a}`;
@@ -621,11 +650,18 @@ function openPanel() {
     const wrapper = ROOT_EL.parentElement;
     if (wrapper) wrapper.classList.add("has-mushaf");
     if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.add("hidden");
+    // Opening the Mushaf counts as "an ayah is chosen" — fade the search
+    // pill's border beam, same as picking a search result in Tafsir mode.
+    DEPS?.deactivateSearchBeam?.();
 }
 
 function closePanel({ keepAudio = false } = {}) {
     if (!PANEL_OPEN) return;
     PANEL_OPEN = false;
+    // The surah dropdown lives in the always-visible search pill (not
+    // inside ROOT_EL), so an open panel would otherwise survive the
+    // close and pop back already-open on the next Mushaf entry.
+    closeSurahDropdown();
     ROOT_EL?.classList.remove("is-open");
     const wrapper = ROOT_EL?.parentElement;
     if (wrapper) wrapper.classList.remove("has-mushaf");
@@ -1137,6 +1173,17 @@ function buildShell() {
     </div>
   `;
     wrapper.appendChild(root);
+
+    // The surah selector lives in the hero search pill next to the مسح
+    // button, not in the Mushaf toolbar. It is still rendered by the
+    // template above (keeps all selector markup in one place), then
+    // relocated; listeners are wired by id afterwards so the move is
+    // transparent. RTL flex: prepend ⇒ it lands to the RIGHT of مسح.
+    // Visible in BOTH modes — submitSurahDetail routes the pick to the
+    // active mode (Tafsir panel vs Mushaf navigation).
+    const pillActions = document.getElementById("searchPillActions");
+    const surahWrap = root.querySelector("#mushafSurahWrap");
+    if (pillActions && surahWrap) pillActions.prepend(surahWrap);
 
     ROOT_EL = root;
     PAGES_EL = document.getElementById("mushafPages");
@@ -2108,6 +2155,13 @@ function submitSurahDetail() {
 
     hapticLight();   // confirm tic — the ayah is now chosen
     closeSurahDropdown();
+    // The selector is always visible in the search pill, so honour the
+    // active mode: Tafsir mode opens the ayah in the Tafsir panel, Mushaf
+    // mode navigates the Mushaf (surah view when the wheel is at 1).
+    if (!MUSHAF_MODE && DEPS?.openTafsirForAyah) {
+        DEPS.openTafsirForAyah(s, v, { scroll: true, animate: true });
+        return;
+    }
     if (v === 1) openMushafAtSurah(s);
     else openMushafAtAyah(s, v);
 }

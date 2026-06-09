@@ -1935,6 +1935,99 @@ body.dark .mushaf-surah-detail__input--error {
 }
 
 /* ============================================================
+ * Surah selector relocated into the hero search pill
+ *
+ * The wrap (#mushafSurahWrap) is still rendered by buildShell() inside
+ * the toolbar template, then moved into #searchPillActions (the cluster
+ * holding the مسح button) — see the relocation in src/mushaf.js. It is
+ * always visible (both تفسير and تدبّر modes): picking an ayah opens it
+ * in whichever mode is active (see submitSurahDetail).
+ * ============================================================ */
+#searchPillActions .mushaf-toolbar__btn-wrap--surah {
+    /* The toolbar wrap capped itself against the gear/play group; inside
+       the pill cluster it just hugs its content. */
+    max-width: none;
+    min-width: 0;
+}
+
+/* Restyled to MATCH the مسح chip next to it: same background family
+   (bg-slate-900/5, dark values from body.dark .bg-slate-900\/5 & \/10 in
+   index.html), no border/shadow/card chrome. The GEOMETRY (height,
+   padding, radius, centering) is pinned for BOTH chips by the shared
+   #searchPillActions rule in index.html — keep it there only. */
+#searchPillActions .mushaf-surah-select {
+    gap: 6px;
+    border: 0;
+    background: rgba(15, 23, 42, 0.05);
+    box-shadow: none;
+}
+
+#searchPillActions .mushaf-surah-select:hover {
+    background: rgba(15, 23, 42, 0.10);
+    box-shadow: none;
+}
+
+#searchPillActions .mushaf-surah-select:active,
+#searchPillActions .mushaf-surah-select[aria-expanded="true"] {
+    background: rgba(15, 23, 42, 0.10);
+    border: 0;
+    box-shadow: none;
+}
+
+body.dark #searchPillActions .mushaf-surah-select,
+html.dark #searchPillActions .mushaf-surah-select {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+body.dark #searchPillActions .mushaf-surah-select:hover,
+body.dark #searchPillActions .mushaf-surah-select:active,
+body.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"],
+html.dark #searchPillActions .mushaf-surah-select:hover,
+html.dark #searchPillActions .mushaf-surah-select:active,
+html.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"] {
+    background: rgba(148, 163, 184, 0.18);
+}
+
+#searchPillActions .mushaf-surah-select__name {
+    /* مسح uses the site font at text-xs/font-extrabold — drop the Amiri
+       serif + 17px sizing the toolbar variant used. */
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+#searchPillActions .mushaf-surah-select__chev svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* The selector now sits near the pill's LEFT corner, so anchor the
+   dropdown to the wrap's left edge (expands rightward, stays on-screen)
+   and push it below the input's bottom border. */
+#searchPillActions .mushaf-surah-dropdown {
+    left: 0;
+    right: auto;
+    top: calc(100% + 16px);
+}
+
+/* Same cure as the Tafsir toolbar dropdowns (index.html "nuclear stacking
+   + opacity fix"): inside the backdrop-filtered #searchPanel glass, the
+   rgba(var(--card)) + backdrop-filter combo can composite the open panel
+   semi-transparent. Solid background, no backdrop-filter, own group. */
+#searchPillActions .mushaf-surah-dropdown {
+    background-color: #ffffff;
+    background-image: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    isolation: isolate;
+}
+
+body.dark #searchPillActions .mushaf-surah-dropdown,
+html.dark #searchPillActions .mushaf-surah-dropdown {
+    background-color: #1e293b;
+}
+
+/* ============================================================
  * Ayah wheel picker — transform-driven, no native scroll
  *
  * The list's translateY is set by JS; there's no overflow scroll, so the
