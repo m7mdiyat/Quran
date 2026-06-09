@@ -873,3 +873,33 @@
     }
   }
 }
+
+/* ── App-only native-feel lockdown (mirror) ─────────────────────────
+   NOTE: this dev file is not actually imported by the app (index.html links
+   public/styles.css + public/mushaf.css and inlines the <style> block), so
+   this copy is kept only to honor the dev/prod CSS-sync convention. The
+   authoritative rules live in index.html's inline <style> and
+   public/styles.css.
+   Gated to html.is-app, so the website is unaffected:
+   • touch-action: manipulation → no double-tap zoom + no 300ms tap delay.
+   • user-select / -webkit-touch-callout: none → no native selection/callout.
+   • Editable fields opt back in so inputs stay typeable. */
+html.is-app,
+html.is-app body {
+  touch-action: manipulation;
+}
+html.is-app,
+html.is-app * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.is-app input,
+html.is-app textarea,
+html.is-app select,
+html.is-app [contenteditable="true"],
+html.is-app [contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+}

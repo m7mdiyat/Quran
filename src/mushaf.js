@@ -57,6 +57,51 @@ function getQCF4Base() {
     return isApp() ? QCF4_GCS_BASE : "";
 }
 
+/* ── Capacitor Haptics (app only) ───────────────────────────────────
+ * Reached through the runtime bridge (window.Capacitor.Plugins.Haptics),
+ * the same pattern StatusBar uses — no web-bundle import, so the website
+ * never pulls it in. navigator.vibrate is a no-op inside iOS WKWebView, so
+ * this is the ONLY haptic path that fires on iPhone. selectionChanged() is
+ * the subtle iOS picker "tick"; impact LIGHT is a single confirm tap. Both
+ * are debounced so a fast flick/tap can't flood the Taptic engine. Resolves
+ * to null (silent no-op) until `@capacitor/haptics` is installed in the
+ * native project, so it's safe to ship before then. */
+let _hapticTickTs = 0;
+function _haptics() {
+    return isApp() ? (window.Capacitor?.Plugins?.Haptics || null) : null;
+}
+function hapticSelectionStart() {
+    const h = _haptics();
+    if (h) { try { h.selectionStart(); } catch { } }
+}
+function hapticSelectionEnd() {
+    const h = _haptics();
+    if (h) { try { h.selectionEnd(); } catch { } }
+}
+/* Debounced wheel tick: Capacitor selection haptic in-app, navigator.vibrate
+ * on the web. Fired on each integer the wheel crosses. */
+function wheelTick() {
+    if (isApp()) {
+        const h = _haptics();
+        if (!h) return;
+        const now = performance.now();
+        if (now - _hapticTickTs < 28) return;
+        _hapticTickTs = now;
+        try { h.selectionChanged(); } catch { }
+    } else if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try { navigator.vibrate(2); } catch { }
+    }
+}
+/* Debounced light impact (app only): a discrete "ayah chosen" confirm tap. */
+function hapticLight() {
+    const h = _haptics();
+    if (!h) return;
+    const now = performance.now();
+    if (now - _hapticTickTs < 28) return;
+    _hapticTickTs = now;
+    try { h.impact({ style: "LIGHT" }); } catch { }
+}
+
 let _qcf4CachePromise = null;
 function qcf4Cache() {
     if (!_qcf4CachePromise) _qcf4CachePromise = caches.open(QCF4_CACHE_NAME);
@@ -1735,6 +1780,7 @@ function wireAyahInteractions(pageEl) {
             if (sId) transitionToTargetSurah(sId);
             return;
         }
+        hapticLight();   // light tic when a target ayah is tapped
         toggleAudioForAyah(ayah.dataset.verseKey);
     });
 }
@@ -2060,6 +2106,7 @@ function submitSurahDetail() {
     if (!Number.isFinite(v) || v < 1) v = 1;
     if (v > max) v = max;
 
+    hapticLight();   // confirm tic — the ayah is now chosen
     closeSurahDropdown();
     if (v === 1) openMushafAtSurah(s);
     else openMushafAtAyah(s, v);
@@ -2133,9 +2180,7 @@ function setAyahWheelValue(v, { animated = true } = {}) {
     _wDragOffsetPx = 0;
     applyWheelTransform({ animated });
     updateWheelAria();
-    if (animated && typeof navigator !== "undefined" && navigator.vibrate) {
-        try { navigator.vibrate(2); } catch { }
-    }
+    if (animated) wheelTick();
 }
 
 function getAyahWheelValue() { return _wValue; }
@@ -2146,8 +2191,14 @@ function applyWheelTransform({ animated = true }) {
     if (!list || !wheel) return;
     const h = getWheelItemHeight();
     // The list is padded by H rows top/bottom; translating by -(value-min)*H
-    // centers the row for `value` in the viewport.
-    const ty = -(_wValue - _wMin) * h + _wDragOffsetPx;
+    // centers the row for `value` in the viewport. During an active drag,
+    // _wDragOffsetPx already holds the FULL finger delta from the drag-start
+    // value, so anchor on _wValueAtDragStart — folding the live-updated
+    // _wValue in here too would double-count the finger travel (the wheel
+    // races at ~2x and the committed _wValue lands at ~half the highlighted
+    // ayah, so the اذهب button opens the wrong ayah).
+    const base = _wDragging ? _wValueAtDragStart : _wValue;
+    const ty = -(base - _wMin) * h + _wDragOffsetPx;
     if (animated) wheel.classList.add("mushaf-wheel--animating");
     else wheel.classList.remove("mushaf-wheel--animating");
     list.style.transform = `translate3d(0, ${ty}px, 0)`;
@@ -2165,8 +2216,11 @@ function applyWheelDistAttrs() {
     if (!list) return;
     const h = getWheelItemHeight();
     if (h <= 0) return;
-    // Center index reflects current effective position (value ± drag).
-    const fractionalIdx = (_wValue - _wMin) - (_wDragOffsetPx / h);
+    // Center index reflects current effective position (value ± drag). Anchor
+    // on the drag-start value while dragging (see applyWheelTransform) so the
+    // bold data-dist="0" item tracks the same row the transform centers.
+    const base = _wDragging ? _wValueAtDragStart : _wValue;
+    const fractionalIdx = (base - _wMin) - (_wDragOffsetPx / h);
     const centerIdx = Math.round(fractionalIdx);
     const items = list.children;
     for (let i = 0; i < items.length; i++) {
@@ -2203,6 +2257,7 @@ function wireAyahWheel() {
         _wVelocity = 0;
         wheel.classList.add("mushaf-wheel--dragging");
         wheel.classList.remove("mushaf-wheel--animating");
+        hapticSelectionStart();
         try { wheel.setPointerCapture(e.pointerId); } catch { }
         e.preventDefault();
     });
@@ -2225,9 +2280,7 @@ function wireAyahWheel() {
         if (live !== _wValue) {
             _wValue = live;
             updateWheelAria();
-            if (typeof navigator !== "undefined" && navigator.vibrate) {
-                try { navigator.vibrate(2); } catch { }
-            }
+            wheelTick();
         }
         applyWheelTransform({ animated: false });
         // Track velocity for inertia.
@@ -2242,6 +2295,7 @@ function wireAyahWheel() {
         if (!_wDragging) return;
         _wDragging = false;
         wheel.classList.remove("mushaf-wheel--dragging");
+        hapticSelectionEnd();
         try { wheel.releasePointerCapture(e.pointerId); } catch { }
 
         const h = getWheelItemHeight();

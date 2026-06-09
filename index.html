@@ -45,10 +45,16 @@
               && navigator.userAgent.indexOf("Android") !== -1);
         if (!inApp) return;
         document.documentElement.classList.add("is-app");
+        // App: lock the viewport so the WebView feels native — kill double-tap
+        // zoom AND pinch-zoom (maximum-scale=1 + user-scalable=no) while keeping
+        // the edge-to-edge safe-area layout (viewport-fit=cover). Runs only
+        // inside the app, so the website keeps its fully zoomable viewport
+        // (accessibility pinch-zoom on the web is untouched). The Mushaf's own
+        // zoom is a CSS transform, not browser zoom, so it still works.
         var meta = document.querySelector('meta[name="viewport"]');
-        var content = meta && meta.getAttribute("content") || "";
-        if (meta && !/viewport-fit/.test(content)) {
-          meta.setAttribute("content", content + ",viewport-fit=cover");
+        if (meta) {
+          meta.setAttribute("content",
+            "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
         }
         // Apply previously-measured Android status-bar height (set by JS
         // via StatusBar.getInfo() on a previous launch) so the very first
@@ -3009,6 +3015,39 @@
     body.dark .m7-tip__close { color: #94a3b8; }
     body.dark .m7-tip__close:hover { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; }
     .m7-tip__close svg { width: 13px; height: 13px; }
+
+    /* ── App-only native-feel lockdown ──────────────────────────────
+       Gated to html.is-app (set before first paint by the head script),
+       so the website is completely unaffected. This inline copy loads last,
+       so it wins the cascade; public/styles.css mirrors it.
+       • touch-action: manipulation → no double-tap-to-zoom and no legacy
+         300ms tap delay (panning/scrolling unaffected; the viewport meta
+         disables pinch-zoom).
+       • user-select / -webkit-touch-callout: none → no native text selection
+         and no iOS long-press copy/callout bubble anywhere. The custom
+         long-press copy menu is pure JS + navigator.clipboard, so it keeps
+         working — and is MORE reliable without the native bubble competing.
+       • Editable fields opt back in so users can still type/select their own
+         input (surah search, ayah number, AI question, feedback form). */
+    html.is-app,
+    html.is-app body {
+      touch-action: manipulation;
+    }
+    html.is-app,
+    html.is-app * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html.is-app input,
+    html.is-app textarea,
+    html.is-app select,
+    html.is-app [contenteditable="true"],
+    html.is-app [contenteditable=""] {
+      -webkit-user-select: text;
+      user-select: text;
+    }
   </style>
 </head>
 

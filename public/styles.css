@@ -1158,3 +1158,37 @@ body.dark .ayah-grid-btn:hover {
 body.dark .ayah-grid-btn:hover span {
   color: #60a5fa;
 }
+
+/* ── App-only native-feel lockdown ──────────────────────────────────
+   Gated to html.is-app (set before first paint by the index.html head
+   script), so the website is completely unaffected.
+   • touch-action: manipulation → no double-tap-to-zoom and no legacy 300ms
+     tap delay (panning/scrolling unaffected; the app viewport meta disables
+     pinch-zoom).
+   • user-select / -webkit-touch-callout: none → no native text selection and
+     no iOS long-press copy/callout bubble anywhere. The custom long-press
+     copy menu is pure JS + navigator.clipboard, so it keeps working — and is
+     more reliable without the native bubble competing.
+   • Editable fields opt back in so users can still type/select their own
+     input (surah search, ayah number, AI question, feedback form).
+   NOTE: index.html's inline <style> carries the authoritative copy (it loads
+   last, so it wins the cascade); this mirrors it into the linked sheet. */
+html.is-app,
+html.is-app body {
+  touch-action: manipulation;
+}
+html.is-app,
+html.is-app * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.is-app input,
+html.is-app textarea,
+html.is-app select,
+html.is-app [contenteditable="true"],
+html.is-app [contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+}
