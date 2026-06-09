@@ -1192,3 +1192,17 @@ html.is-app [contenteditable=""] {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ═══════ TEST — Mushaf ayah faux-bold (Option 2) — DELETE THIS BLOCK TO REVERT ═══════
+   Thin synthetic bold on ayah TEXT ONLY, app-only. -webkit-text-stroke is
+   paint-only (no glyph-metric change) so it can't break the nowrap exact-page
+   layout — only the visual diacritic thickness is being judged. paint-order:
+   stroke draws the stroke under the fill so glyph counters stay open. Scope
+   excludes ayah numbers (.mushaf-end), bismillah, surah headers, and UI. Mirror
+   of the index.html inline copy. Revert = delete this block in all three files
+   (then optionally apply Option 3, darker ayah text). */
+html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
+  -webkit-text-stroke: 0.25px currentColor;
+  paint-order: stroke;
+}
+/* ═══════ END TEST block ═══════ */
