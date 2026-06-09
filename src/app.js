@@ -745,9 +745,10 @@ const RECITERS = {
   // timings on GCS — no per-ayah files. Single-mode playback must go
   // through the surah engine (continuous: false) instead of the legacy
   // per-ayah URL, which returns 404 for this folder.
-  dosari: { name: 'ياسر الدوسري', path: 'dosari', color: 'dosari', engineOnly: true }
+  dosari: { name: 'ياسر الدوسري', path: 'dosari', color: 'dosari', engineOnly: true },
+  luhaidan: { name: 'محمد اللحيدان', path: 'luhaidan', color: 'luhaidan', engineOnly: true }
 };
-const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim', 'dosari'];
+const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim', 'dosari', 'luhaidan'];
 let CURRENT_RECITER = 'alijaber';
 
 // Per-reciter surah blocklist — some reciters don't have a recording for a
@@ -756,6 +757,11 @@ let CURRENT_RECITER = 'alijaber';
 // back to another reciter if needed).
 const RECITER_RESTRICTED_SURAHS = {
   qasim: new Set([4]),
+  // Luhaidan's full-surah MP3s cover all 114 surahs, but per-ayah timings
+  // exist only for surahs 1–9 so far. Block 10–114 until the remaining
+  // timing files land in gs://m7mdiyat-tafsir-data/timings/luhaidan/ —
+  // then shrink/remove this Set.
+  luhaidan: new Set(Array.from({ length: 105 }, (_, i) => i + 10)),
 };
 
 function isReciterAllowedForSurah(reciterKey, surahNum) {

@@ -3203,6 +3203,20 @@ function toggleAudioForAyah(verseKey) {
         history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: verseKey }, "", `/read/ayah/${vs}/${va}`);
     }
 
+    /* Per-surah availability gate: if the active reciter has no recording
+     * (or no timings yet — e.g. luhaidan beyond surah 9) for the tapped
+     * surah, fall back to an allowed reciter BEFORE resolving any URLs.
+     * Without this, tapping an ayah on a page outside the reciter's
+     * coverage cold-loads a 404 and surfaces the offline-error card.
+     * Surah-selector navigation already enforces this (see goToSurah);
+     * this covers direct page taps. Stop first so enforce's switchReciter
+     * does a clean swap instead of mid-play resume of the OLD surah. */
+    if (DEPS?.isReciterAllowedForSurah &&
+        !DEPS.isReciterAllowedForSurah(DEPS?.getCurrentReciter?.(), vs)) {
+        stopMushafAudio();
+        DEPS?.enforceReciterForSurah?.(vs);
+    }
+
     /* ── Continuous mode → full-surah engine ──
      * engineOnly reciters (e.g. dosari) have no per-ayah files, so single
      * mode also routes through the engine — startMushafSurahEngine passes
