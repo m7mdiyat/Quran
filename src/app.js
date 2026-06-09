@@ -2872,9 +2872,31 @@ function updateSelectedChip(it) {
   chipIcon.textContent = "✓";
 }
 
+// Border beam on the search pill: once an ayah is chosen the beam has done
+// its job — swap [data-active] → [data-fading] (the ported component's 0.5s
+// beam-fade-out), then drop the attribute on animationend so every beam
+// layer stops existing/painting. Idempotent: no-op after the first run.
+function deactivateSearchBeam() {
+  const el = document.querySelector(".border-beam[data-active]");
+  if (!el) return;
+  el.removeAttribute("data-active");
+  el.setAttribute("data-fading", "");
+  const done = () => el.removeAttribute("data-fading");
+  const onEnd = (e) => {
+    if (e.animationName !== "beam-fade-out") return;
+    el.removeEventListener("animationend", onEnd);
+    done();
+  };
+  el.addEventListener("animationend", onEnd);
+  // Fallback in case the animation never fires (no @property support,
+  // reduced-motion overrides): the fade itself is 0.5s.
+  setTimeout(done, 700);
+}
+
 function collapseResultsToChip(it) {
   if (!resultsShell || !results) return;
   updateSelectedChip(it);
+  deactivateSearchBeam();
   results.classList.add("collapsed");
   resultsShell.classList.add("collapsed");
   results.style.maxHeight = "";
@@ -4237,6 +4259,9 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     stopAudio();
   }
   CURRENT = { s: surahNo, a: ayahNo };
+  // An ayah is now chosen → fade the search-pill border beam away (no-op
+  // after the first time).
+  deactivateSearchBeam();
   // Re-evaluate reciter restrictions for the new surah (auto-fallback off
   // qasim on surah 4, refresh chip disabled states either way).
   enforceReciterForSurah(surahNo);

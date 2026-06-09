@@ -542,6 +542,278 @@
       }
     }
 
+    /* === Border beam on the hero search input pill ===
+     * Ported from https://github.com/Jakubantalik/border-beam
+     * (MIT License, Copyright (c) 2026 Jakub Antalik).
+     * Structure is the exact generateBorderVariantCSS() output for size="md",
+     * strength={0.5}, default duration (1.96s), staticColors (no hue-shift).
+     * Colors adapted from the mono grays to the site's primary-action blue
+     * (#2644cd = the مختصر التفاسير button), shade ramp from that button's own
+     * base/hover/active blues plus two white-mixed tints; the dark theme's
+     * glowing head uses the lighter tint rgb(125, 143, 225) so it reads on dark.
+     * Light-theme opacity factors are pre-divided by the 0.5 strength so the
+     * effective values land on the source's full light preset (.12/.26/.34) —
+     * the mono-halved values were invisible over the white pill.
+     * Radius 18px = the search pill's .input-glass
+     * radius, matching the component's runtime auto-detection. Both theme presets are
+     * inlined as variables and flipped by the site's .dark class (html + body).
+     * Adaptations for a single instance: per-instance id suffixes dropped,
+     * offscreen-pause state + IntersectionObserver omitted, container
+     * overflow:hidden dropped (layers self-clip via clip-path; it would clip
+     * the input's focus ring). The active→fading lifecycle IS ported: the pill
+     * starts [data-active]; choosing an ayah calls deactivateSearchBeam()
+     * (src/app.js), which swaps to [data-fading] → beam-fade-out 0.5s and then
+     * drops the attribute on animationend, removing every beam layer. */
+    @property --beam-angle {
+      syntax: "<angle>";
+      initial-value: 0deg;
+      inherits: true;
+    }
+
+    @property --beam-opacity {
+      syntax: "<number>";
+      initial-value: 0;
+      inherits: true;
+    }
+
+    .border-beam {
+      position: relative;
+      border-radius: 18px;
+      /* md/light preset ÷ 0.5 strength ⇒ effective .12/.26/.34 (source light values) */
+      --beam-strength: 0.5;
+      --beam-stroke-opacity: 0.24;
+      --beam-inner-opacity: 0.52;
+      --beam-bloom-opacity: 0.68;
+      --beam-inner-shadow: rgba(38, 68, 205, 0.14);
+      --beam-saturation: 1.50;
+      --beam-edge-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 54%,
+        rgba(38, 68, 205, 0.08) 57%,
+        rgba(38, 68, 205, 0.2) 60%,
+        rgba(38, 68, 205, 0.4) 63%,
+        rgba(38, 68, 205, 0.55) 66%,
+        rgba(38, 68, 205, 0.4) 69%,
+        rgba(38, 68, 205, 0.2) 72%,
+        rgba(38, 68, 205, 0.08) 75%,
+        transparent 78%, transparent 100%
+      );
+      --beam-bloom-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 58%,
+        rgba(38, 68, 205, 0.02) 62%,
+        rgba(38, 68, 205, 0.08) 65%,
+        rgba(38, 68, 205, 0.2) 67%,
+        rgba(38, 68, 205, 0.4) 69%,
+        rgba(38, 68, 205, 0.6) 70%,
+        rgba(38, 68, 205, 0.6) 70.5%,
+        rgba(38, 68, 205, 0.4) 71.5%,
+        rgba(38, 68, 205, 0.2) 73%,
+        rgba(38, 68, 205, 0.08) 75%,
+        rgba(38, 68, 205, 0.02) 78%,
+        transparent 82%
+      );
+    }
+
+    /* Source lifecycle: animating while active; choosing an ayah swaps the
+       attribute to data-fading (see deactivateSearchBeam() in src/app.js),
+       and when beam-fade-out ends the attribute is removed — no beam layers
+       exist after that, so all per-frame paint work stops. */
+    .border-beam[data-active] {
+      animation:
+        beam-spin 1.96s linear infinite,
+        beam-fade-in 0.6s ease forwards;
+    }
+
+    .border-beam[data-fading] {
+      animation:
+        beam-spin 1.96s linear infinite,
+        beam-fade-out 0.5s ease forwards;
+    }
+
+    body.dark .border-beam,
+    html.dark .border-beam {
+      /* md/dark preset, mono-halved (intensity unchanged — recolored only):
+         stroke .13, inner .21, bloom .12 */
+      --beam-stroke-opacity: 0.13;
+      --beam-inner-opacity: 0.21;
+      --beam-bloom-opacity: 0.12;
+      --beam-inner-shadow: rgba(125, 143, 225, 0.27);
+      --beam-saturation: 1.20;
+      --beam-edge-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 54%,
+        rgba(125, 143, 225, 0.1) 57%,
+        rgba(125, 143, 225, 0.3) 60%,
+        rgba(125, 143, 225, 0.6) 63%,
+        rgba(125, 143, 225, 0.75) 66%,
+        rgba(125, 143, 225, 0.6) 69%,
+        rgba(125, 143, 225, 0.3) 72%,
+        rgba(125, 143, 225, 0.1) 75%,
+        transparent 78%, transparent 100%
+      );
+      --beam-bloom-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 58%,
+        rgba(125, 143, 225, 0.03) 62%,
+        rgba(125, 143, 225, 0.08) 65%,
+        rgba(125, 143, 225, 0.2) 67%,
+        rgba(125, 143, 225, 0.45) 69%,
+        rgba(125, 143, 225, 0.85) 70%,
+        rgba(125, 143, 225, 0.85) 70.5%,
+        rgba(125, 143, 225, 0.45) 71.5%,
+        rgba(125, 143, 225, 0.2) 73%,
+        rgba(125, 143, 225, 0.08) 75%,
+        rgba(125, 143, 225, 0.03) 78%,
+        transparent 82%
+      );
+    }
+
+    /* Beam stroke: mono radial field + theme edge highlight, masked to a
+       1px ring intersected with the rotating conic window. */
+    .border-beam[data-active]::after,
+    .border-beam[data-fading]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 17px;
+      padding: 1px;
+      clip-path: inset(0 round 18px);
+      background: var(--beam-edge-gradient),
+        radial-gradient(ellipse 70px 40px at 33% -7.4%, rgb(92, 115, 218), transparent),
+        radial-gradient(ellipse 60px 35px at 12% -5%, rgb(33, 59, 178), transparent),
+        radial-gradient(ellipse 40px 70px at 2.1% 68.3%, rgb(38, 68, 205), transparent),
+        radial-gradient(ellipse 20px 35px at 2.1% 68.3%, rgb(28, 50, 150), transparent),
+        radial-gradient(ellipse 180px 32px at 74.4% 100%, rgb(92, 115, 218), transparent),
+        radial-gradient(ellipse 85px 26px at 55% 100%, rgb(38, 68, 205), transparent),
+        radial-gradient(ellipse 74px 32px at 93.9% 0%, rgb(136, 152, 228), transparent),
+        radial-gradient(ellipse 26px 42px at 100% 27.1%, rgb(33, 59, 178), transparent),
+        radial-gradient(ellipse 52px 48px at 100% 27.1%, rgb(38, 68, 205), transparent);
+      -webkit-mask:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: source-in, xor;
+      mask:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask-composite: intersect, exclude;
+      pointer-events: none;
+      z-index: 2;
+      opacity: calc(var(--beam-opacity) * var(--beam-stroke-opacity) * var(--beam-strength, 1));
+    }
+
+    /* Inner glow: dimmed radials + inset sheen, masked to a 28px edge band
+       under the same rotating window. */
+    .border-beam[data-active]::before,
+    .border-beam[data-fading]::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      background:
+        radial-gradient(ellipse 63px 36px at 33% -7.4%, rgba(92, 115, 218, 0.225), transparent),
+        radial-gradient(ellipse 54px 32px at 12% -5%, rgba(33, 59, 178, 0.225), transparent),
+        radial-gradient(ellipse 36px 63px at 2.1% 68.3%, rgba(38, 68, 205, 0.225), transparent),
+        radial-gradient(ellipse 18px 32px at 2.1% 68.3%, rgba(28, 50, 150, 0.225), transparent),
+        radial-gradient(ellipse 162px 29px at 74.4% 100%, rgba(92, 115, 218, 0.225), transparent),
+        radial-gradient(ellipse 77px 23px at 55% 100%, rgba(38, 68, 205, 0.225), transparent),
+        radial-gradient(ellipse 67px 29px at 93.9% 0%, rgba(136, 152, 228, 0.225), transparent),
+        radial-gradient(ellipse 23px 38px at 100% 27.1%, rgba(33, 59, 178, 0.225), transparent),
+        radial-gradient(ellipse 47px 43px at 100% 27.1%, rgba(38, 68, 205, 0.225), transparent);
+      box-shadow: inset 0 0 9px 1px var(--beam-inner-shadow);
+      -webkit-mask-image:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+        linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+      -webkit-mask-composite: source-in, source-over;
+      mask-image:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+        linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+      mask-composite: intersect, add;
+      pointer-events: none;
+      z-index: 1;
+      opacity: calc(var(--beam-opacity) * var(--beam-inner-opacity) * var(--beam-strength, 1));
+      clip-path: inset(0 round 18px);
+    }
+
+    /* Blurred bloom "head" riding the 1px ring. */
+    .border-beam [data-beam-bloom] {
+      display: none;
+      position: absolute;
+      inset: 0;
+      border-radius: 17px;
+      clip-path: inset(0 round 18px);
+      background: var(--beam-bloom-gradient);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      padding: 1px;
+      filter: blur(8px) brightness(1.30) saturate(var(--beam-saturation));
+      pointer-events: none;
+      z-index: 3;
+      opacity: 0;
+    }
+
+    .border-beam[data-active] [data-beam-bloom],
+    .border-beam[data-fading] [data-beam-bloom] {
+      display: block;
+      opacity: calc(var(--beam-opacity) * var(--beam-bloom-opacity) * var(--beam-strength, 1));
+    }
+
+    @keyframes beam-spin {
+      to {
+        --beam-angle: 360deg;
+      }
+    }
+
+    @keyframes beam-fade-in {
+      to {
+        --beam-opacity: 1;
+      }
+    }
+
+    @keyframes beam-fade-out {
+      from {
+        --beam-opacity: 1;
+      }
+
+      to {
+        --beam-opacity: 0;
+      }
+    }
+
     /* Updated Container: Adds spacing/gap between items */
     .results-list {
       background: rgba(255, 255, 255, .55);
@@ -3111,13 +3383,14 @@
 
       <div class="mt-8 mx-auto max-w-2xl text-center">
         <div class="glass rounded-3xl p-4">
-          <div class="relative">
+          <div class="relative border-beam" data-active>
             <input id="textSearch"
               class="input-glass w-full bg-white/70 border border-slate-900/10 rounded-2xl px-10 py-4 outline-none focus:ring-4 focus:ring-blue-500/10 transition"
               placeholder="اكتب حرفين فأكثر... ستظهر الآيات ذات الصلة تلقائيا" />
             <button type="button" id="clearBtn"
               class="absolute left-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition"
               title="مسح البحث">مسح</button>
+            <div data-beam-bloom aria-hidden="true"></div>
           </div>
           <div id="indexStatus" class="mt-2 text-xs font-bold text-slate-500 text-center hidden" aria-live="polite">
           </div>
