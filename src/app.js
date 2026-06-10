@@ -756,11 +756,6 @@ let CURRENT_RECITER = 'alijaber';
 // back to another reciter if needed).
 const RECITER_RESTRICTED_SURAHS = {
   qasim: new Set([4]),
-  // Luhaidan's full-surah MP3s cover all 114 surahs, but per-ayah timings
-  // exist only for surahs 1–9 so far. Block 10–114 until the remaining
-  // timing files land in gs://m7mdiyat-tafsir-data/timings/luhaidan/ —
-  // then shrink/remove this Set.
-  luhaidan: new Set(Array.from({ length: 105 }, (_, i) => i + 10)),
 };
 
 function isReciterAllowedForSurah(reciterKey, surahNum) {

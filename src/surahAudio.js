@@ -12,9 +12,10 @@ import { startLoopFor, consumeOne, resetLoop } from "./repeat.js";
  * gap between ayahs (it's literally the same audio stream).
  *
  * Five reciters (qasim, alijaber, shuraim, ayoub, dosari) are
- * no-preamble: ayah 1 starts at 0:00. Luhaidan's files open with an
- * istiadhah (and basmala on surahs 2–8) BEFORE ayah 1 — his timings
- * carry real start offsets, so the engine's seek-to-start handles it.
+ * no-preamble: ayah 1 starts at 0:00. Luhaidan's files open with a
+ * basmala BEFORE ayah 1 (every surah except 1 and 9; surah 2 adds an
+ * istiadhah first) — his timings carry real start offsets, so the
+ * engine's seek-to-start handles it.
  * ============================================================ */
 
 const AUDIO_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/surah";
