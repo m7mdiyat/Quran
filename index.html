@@ -3734,7 +3734,6 @@
 </head>
 
 <body>
-  <div id="netBadge" class="hidden">بدون إنترنت</div>
   <!-- Minimal top bar -->
   <header class="site-header sticky top-0 z-40 border-b border-black/5">
     <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
@@ -3763,8 +3762,13 @@
           </svg>
         </button>
       </div>
-      <button id="themeToggle" type="button"
-        class="theme-toggle px-4 py-2 rounded-2xl border shadow-sm font-extrabold text-sm">فاتح</button>
+      <!-- RTL: #netBadge precedes the button so it renders to its RIGHT,
+           keeping the theme toggle flush at the header's left edge. -->
+      <div class="flex items-center gap-3">
+        <div id="netBadge" class="hidden">بدون إنترنت</div>
+        <button id="themeToggle" type="button"
+          class="theme-toggle px-4 py-2 rounded-2xl border shadow-sm font-extrabold text-sm">فاتح</button>
+      </div>
       <span id="themeLabel" class="sr-only">theme</span>
     </div>
   </header>

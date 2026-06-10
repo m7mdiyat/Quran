@@ -264,20 +264,16 @@
   .hidden {
     display: none !important;
   }
+  /* Offline pill — lives in the header row beside the theme toggle (it was
+   * position:fixed at the top-left, which covered the button). In-flow means
+   * the header's own status-bar inset handles the app's edge-to-edge WebView. */
   #netBadge {
-    position: fixed;
-    /* Nudged down+right from the original 10/10 corner hug for visibility. */
-    top: 18px;
-    left: 18px;
     padding: 6px 10px;
     border-radius: 10px;
     font-size: 12px;
     background: rgba(0, 0, 0, .75);
     color: #fff;
-    z-index: 9999;
-  }
-  html.is-app #netBadge {
-    top: calc(max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) + 10px);
+    white-space: nowrap;
   }
   .inline-block {
     display: inline-block;
