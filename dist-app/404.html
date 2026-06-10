@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>جاري التحميل... | محمديات</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(180deg, #f7fbff 0%, #eff5ff 55%, #edf6fb 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            direction: rtl;
+        }
+
+        .loader {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(29, 143, 255, 0.2);
+            border-top-color: #1d8fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .message {
+            color: #334155;
+            font-size: 18px;
+        }
+    </style>
+    <script>
+        (function () {
+            // Handle GitHub Pages SPA routing
+            // This script runs on 404 and redirects to the correct page
+
+            var path = window.location.pathname;
+            var search = window.location.search;
+            var hash = window.location.hash;
+
+            // Pattern 1: Handle /surah/ayah format (new clean URLs)
+            var ayahMatch = path.match(/^\/(\d+)\/(\d+)\/?$/);
+            if (ayahMatch) {
+                // This is already the correct format, just redirect to index with state
+                sessionStorage.setItem('redirect_surah', ayahMatch[1]);
+                sessionStorage.setItem('redirect_ayah', ayahMatch[2]);
+                window.location.replace('/?redirect=1');
+                return;
+            }
+
+            // Pattern 1b: Mushaf reading-mode routes — preserve them so app.js can pick them up.
+            var mushafMatch = path.match(/^\/read\/(page|surah|ayah)\/[0-9]+(\/[0-9]+)?\/?$/);
+            if (mushafMatch) {
+                sessionStorage.setItem('mushaf_redirect', path);
+                window.location.replace('/');
+                return;
+            }
+
+            // Pattern 2: Handle old ?v=surah-ayah format
+            var params = new URLSearchParams(search);
+            var v = params.get('v') || params.get('ayah');
+            if (v) {
+                var parts = v.split(/[-:\/]/);
+                if (parts.length >= 2) {
+                    // Redirect old URL to new clean URL
+                    window.location.replace('/' + parts[0] + '/' + parts[1]);
+                    return;
+                }
+            }
+
+            // Pattern 3: Handle /surah only (show surah 1 ayah)
+            var surahMatch = path.match(/^\/(\d+)\/?$/);
+            if (surahMatch) {
+                window.location.replace('/' + surahMatch[1] + '/1');
+                return;
+            }
+
+            // Default: redirect to homepage
+            window.location.replace('/');
+        })();
+    </script>
+</head>
+
+<body>
+    <div class="loader">
+        <div class="spinner"></div>
+        <div class="message">جاري التحميل...</div>
+    </div>
+</body>
+
+</html>

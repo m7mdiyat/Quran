@@ -4988,7 +4988,22 @@ async function init() {
   // App-only: lazy-load the offline-downloads panel and the feedback panel so
   // the web bundle stays clean. Each panel reveals its own header icon on init;
   // web users never see either button or load either module.
+  // Resolved once the initial reading position is painted (app only); the splash
+  // overlay awaits it before fading. No-op on the website.
+  let _markAppReady = () => {};
   if (isApp()) {
+    // Opening splash: build the overlay + play the Lottie immediately (before the
+    // big quran.json load) so it covers the cold-start window. The native splash
+    // (launchAutoHide:false) stays up until splash.js calls SplashScreen.hide()
+    // on the Lottie's first frame; the overlay then fades out on the LATER of
+    // animation-complete or app-ready (_markAppReady, signalled below).
+    const _appReady = new Promise((res) => { _markAppReady = res; });
+    import("./splash.js")
+      .then((m) => m.initSplash({
+        appReady: _appReady,
+        isDark: () => document.documentElement.classList.contains("dark"),
+      }))
+      .catch((e) => console.error("splash init failed", e));
     import("./offline-panel.js")
       .then((m) => m.initOfflinePanel())
       .catch((e) => console.error("offline-panel init failed", e));
@@ -5178,6 +5193,10 @@ async function init() {
     } catch { /* resume failure must never block init */ }
   }
 
+  // Splash (app only): core data is loaded and the initial reading position
+  // (URL deep-link / Mushaf route / resume) is resolved & painted — let the
+  // splash overlay fade once its animation also completes. No-op on the website.
+  _markAppReady();
 
   // Build search index without freezing the UI
   if (textSearch) {

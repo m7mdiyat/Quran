@@ -1,0 +1,4057 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8" />
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GDBDK944QZ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-GDBDK944QZ');
+  </script>
+
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("darkMode") === "1") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch { }
+    })();
+    // Detect Capacitor (Android app) context synchronously so safe-area CSS
+    // gated to html.is-app applies before first paint, AND so viewport-fit=cover
+    // is only set inside the app (web layout — including iOS Safari with a
+    // notch — must remain visually unchanged).
+    //
+    // window.Capacitor is injected by the native bridge AFTER scripts evaluate,
+    // so we fall back to the URL: the Capacitor WebView serves from
+    // capacitor://localhost or https://localhost (NO port) and the user agent
+    // contains "Android". The Vite dev server also uses http://localhost but
+    // with an explicit port (5173/5174/…), so the port check excludes it; the
+    // production site origin is m7mdiyat.com, which never matches. Mirrors
+    // isApp() in src/app.js so the inline-script gate stays consistent with
+    // the runtime gate.
+    (function () {
+      try {
+        var loc = window.location;
+        var inApp = (typeof window.Capacitor !== "undefined")
+          || (loc.protocol === "capacitor:")
+          || (loc.hostname === "localhost"
+              && loc.port === ""
+              && navigator.userAgent.indexOf("Android") !== -1);
+        if (!inApp) return;
+        document.documentElement.classList.add("is-app");
+        // App: lock the viewport so the WebView feels native — kill double-tap
+        // zoom AND pinch-zoom (maximum-scale=1 + user-scalable=no) while keeping
+        // the edge-to-edge safe-area layout (viewport-fit=cover). Runs only
+        // inside the app, so the website keeps its fully zoomable viewport
+        // (accessibility pinch-zoom on the web is untouched). The Mushaf's own
+        // zoom is a CSS transform, not browser zoom, so it still works.
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (meta) {
+          meta.setAttribute("content",
+            "width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover");
+        }
+        // Apply previously-measured Android status-bar height (set by JS
+        // via StatusBar.getInfo() on a previous launch) so the very first
+        // paint already pads correctly — no layout shift when the async
+        // re-measurement finishes. First-ever launch still falls back to
+        // the CSS 24px floor for one frame, then jumps to the real value.
+        try {
+          var cached = localStorage.getItem("m7_statusbar_h");
+          if (cached && Number(cached) > 0) {
+            document.documentElement.style.setProperty("--m7-statusbar-height", cached + "px");
+          }
+        } catch {}
+      } catch { }
+    })();
+  </script>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+  <title id="pageTitle">محمديات</title>
+  <meta id="metaDescription" name="description"
+    content="محمديات منصة تُعين على تدبّر القرآن وفهم معانيه، من خلال عرض الآيات مع تفاسيرها وشرحها بلغة بسيطة. هدفه تعلّم القرآن، واكتساب الحكمة والعلم" />
+  <meta name="keywords"
+    content="القرآن,القرآن الكريم,تفسير القرآن,بحث الآيات,الباحث القرآني,محمديات,تفسير الطبري,تفسير ابن كثير,تفسير البغوي,تفسير السعدي,تفسير ابن عاشور,تفسير القرطبي,تفسير الميسر,تلاوة,تدبر القرآن,معاني القرآن,سياق الآيات,محرك بحث القرآن,البحث في القرآن,تفسير آية" />
+  <link id="canonicalLink" rel="canonical" href="https://www.m7mdiyat.com/" />
+  <meta id="ogUrl" property="og:url" content="https://www.m7mdiyat.com/" />
+  <meta id="ogTitle" property="og:title" content="محمديات" />
+
+  <script>
+    (function () {
+      try {
+        var url = new URL(window.location.href);
+        var params = new URLSearchParams(url.search);
+        var cleanOrigin = "https://www.m7mdiyat.com";
+        var surah = null, ayah = null;
+
+        // Pattern 1: New clean URL format /surah/ayah
+        var pathMatch = url.pathname.match(/^\/([0-9]+)\/([0-9]+)\/?$/);
+        if (pathMatch) {
+          surah = pathMatch[1];
+          ayah = pathMatch[2];
+        }
+
+        // Pattern 1b: Mushaf reading-mode routes (direct or via 404.html →
+        // sessionStorage handoff on GitHub Pages). We don't change layout
+        // here — mushaf.js opens the panel inline once app.js init runs.
+        // We only set window._mushafInit so init() knows what to open.
+        var mushafPath = url.pathname;
+        try {
+          var redirected = sessionStorage.getItem('mushaf_redirect');
+          if (redirected) {
+            sessionStorage.removeItem('mushaf_redirect');
+            mushafPath = redirected;
+            history.replaceState(null, "", mushafPath);
+          }
+        } catch {}
+
+        var mushafPageMatch = mushafPath.match(/^\/read\/page\/([0-9]+)\/?$/);
+        var mushafSurahMatch = mushafPath.match(/^\/read\/surah\/([0-9]+)\/?$/);
+        var mushafAyahMatch = mushafPath.match(/^\/read\/ayah\/([0-9]+)\/([0-9]+)\/?$/);
+        if (mushafPageMatch) window._mushafInit = { page: Number(mushafPageMatch[1]) };
+        else if (mushafSurahMatch) window._mushafInit = { surah: Number(mushafSurahMatch[1]) };
+        else if (mushafAyahMatch) window._mushafInit = { surah: Number(mushafAyahMatch[1]), ayah: Number(mushafAyahMatch[2]) };
+
+        // The mode toggle's visual state must match what's about to render.
+        // URL is canonical: /read/* → Mushaf, anything else → Tafsir. Setting
+        // this BEFORE the modules load avoids a brief flash where the toggle
+        // shows the saved preference and then snaps to the URL-driven mode.
+        var bootMushaf = !!(mushafPageMatch || mushafSurahMatch || mushafAyahMatch);
+        var bootMode = bootMushaf ? "mushaf" : "tafsir";
+        document.documentElement.setAttribute("data-app-mode", bootMode);
+        try { localStorage.setItem("app_mode", bootMode); } catch {}
+
+        // Pattern 2: Old query format ?v=surah-ayah (redirect to new format)
+        var v = params.get("v") || params.get("ayah");
+        if (!surah && v) {
+          var parts = v.split(/[-:\/]/);
+          if (parts.length >= 2) {
+            surah = parts[0];
+            ayah = parts[1];
+            // Redirect old URL to new clean URL
+            window.location.replace("/" + surah + "/" + ayah);
+            return;
+          }
+        }
+
+        // Pattern 3: Check sessionStorage for 404 redirect
+        var redirSurah = sessionStorage.getItem('redirect_surah');
+        var redirAyah = sessionStorage.getItem('redirect_ayah');
+        if (!surah && redirSurah && redirAyah) {
+          surah = redirSurah;
+          ayah = redirAyah;
+          sessionStorage.removeItem('redirect_surah');
+          sessionStorage.removeItem('redirect_ayah');
+          // Store in app state for later use
+          window._redirectedAyah = { surah: surah, ayah: ayah };
+        }
+
+        // Build final canonical URL
+        var finalUrl = cleanOrigin + "/";
+        var pageTitle = "محمديات";
+
+        if (surah && ayah) {
+          finalUrl = cleanOrigin + "/" + surah + "/" + ayah;
+          pageTitle = "تفسير سورة " + surah + " آية " + ayah + " | محمديات";
+        }
+
+        // Apply to canonical (most important for SEO)
+        var link = document.getElementById("canonicalLink");
+        if (link) link.href = finalUrl;
+
+        // Apply to Open Graph
+        var ogUrl = document.getElementById("ogUrl");
+        if (ogUrl) ogUrl.content = finalUrl;
+        var ogTitle = document.getElementById("ogTitle");
+        if (ogTitle) ogTitle.content = pageTitle;
+
+        // Apply to browser tab only if not already set by prerender
+        if (document.title === "محمديات") {
+          document.title = pageTitle;
+        }
+
+      } catch (e) { console.error("SEO Patch Error", e); }
+    })();
+  </script>
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ar_AR" />
+  <meta property="og:site_name" content="محمديات" />
+  <meta id="ogDesc" property="og:description"
+    content="محمديات منصة تُعين على تدبّر القرآن وفهم معانيه، من خلال عرض الآيات مع تفاسيرها وشرحها بلغة بسيطة. هدفه تعلّم القرآن، واكتساب الحكمة والعلم، وتقريب معاني كتاب الله لكل قارئ." />
+  <meta property="og:image" content="https://www.m7mdiyat.com/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta id="twTitle" name="twitter:title" content="محمديات | الباحث القرآني" />
+  <meta id="twDesc" name="twitter:description"
+    content="محمديات منصة تُعين على تدبّر القرآن وفهم معانيه، من خلال عرض الآيات مع تفاسيرها وشرحها بلغة بسيطة. هدفه تعلّم القرآن، واكتساب الحكمة والعلم، وتقريب معاني كتاب الله لكل قارئ." />
+  <meta name="twitter:image" content="https://www.m7mdiyat.com/og-image.png" />
+  <meta name="author" content="محمديات" />
+
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "محمديات",
+  "alternateName": ["محمديات | الباحث القرآني", "M7mdiyat", "m7mdiyat.com"],
+  "url": "https://www.m7mdiyat.com/",
+  "inLanguage": "ar",
+  "description": "محمديات منصة تُعين على تدبّر القرآن وفهم معانيه، من خلال عرض الآيات مع تفاسيرها وشرحها بلغة بسيطة. هدفه تعلّم القرآن، واكتساب الحكمة والعلم، وتقريب معاني كتاب الله لكل قارئ.",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://www.m7mdiyat.com/?q={search_term_string}"
+    },
+    "query-input": "required name=search_term_string"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "محمديات",
+    "url": "https://www.m7mdiyat.com/",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.m7mdiyat.com/logo.jpg",
+      "width": 512,
+      "height": 512
+    }
+  }
+}
+</script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://tafsir-api-317751773286.me-central1.run.app" crossorigin>
+  <link rel="dns-prefetch" href="https://tafsir-api-317751773286.me-central1.run.app">
+  <!-- Preload local font to prevent FOUT (Flash of Unstyled Text) -->
+  <link rel="preload" href="/MeQuran.ttf" as="font" type="font/ttf" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/mushaf.css">
+
+  <style>
+    @font-face {
+      font-family: "MeQuran";
+      src: url("/MeQuran.ttf") format("truetype");
+      font-display: swap;
+    }
+
+    :root {
+      --card: rgba(255, 255, 255, .82);
+      --card2: rgba(255, 255, 255, .64);
+      --line: rgba(15, 23, 42, .10);
+      --text: #0b1326;
+      --muted: rgba(15, 23, 42, .62);
+      --accent: #1d8fff;
+      --accent-strong: #0b6bdc;
+      --accent-soft: rgba(14, 165, 233, .14);
+      --accent-muted: rgba(56, 189, 248, .18);
+    }
+
+    body.dark,
+    html.dark body {
+      --card: rgba(40, 46, 54, .92);
+      --card2: rgba(34, 40, 48, .82);
+      --line: rgba(148, 163, 184, .22);
+      --text: #e5e7eb;
+      --muted: rgba(203, 213, 225, .7);
+      --accent: #a0a7b4;
+      --accent-strong: #cbd5e1;
+      --accent-soft: rgba(148, 163, 184, .20);
+      --accent-muted: rgba(148, 163, 184, .22);
+      background:
+        radial-gradient(1300px 820px at 50% -30%, rgba(148, 163, 184, .16), transparent 65%),
+        radial-gradient(1100px 720px at 0% 120%, rgba(148, 163, 184, .18), transparent 60%),
+        radial-gradient(1100px 720px at 100% 120%, rgba(148, 163, 184, .12), transparent 60%),
+        linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
+      background-attachment: fixed;
+    }
+
+    body.dark .glass,
+    html.dark .glass {
+      box-shadow: 0 12px 36px rgba(0, 0, 0, .35);
+    }
+
+    body.dark header,
+    html.dark header {
+      background: rgba(24, 28, 34, .9) !important;
+      border-color: rgba(148, 163, 184, .22) !important;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
+      color: var(--text);
+      /* Performance Fix: Remove fixed background from body directly */
+      background-color: #eff5ff;
+      min-height: 100vh;
+      position: relative;
+      overflow-anchor: none;
+    }
+
+    /* Create a static background layer that never needs repainting */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(1400px 900px at 50% -20%, rgba(191, 219, 254, .35), transparent 65%),
+        radial-gradient(1200px 780px at 0% 110%, rgba(186, 230, 253, .28), transparent 60%),
+        radial-gradient(1200px 780px at 100% 120%, rgba(165, 243, 252, .24), transparent 60%),
+        linear-gradient(180deg, #f7fbff 0%, #eff5ff 55%, #edf6fb 100%);
+    }
+
+    /* Dark mode override for the pseudo-element */
+    body.dark::before {
+      background:
+        radial-gradient(1300px 820px at 50% -30%, rgba(148, 163, 184, .16), transparent 65%),
+        radial-gradient(1100px 720px at 0% 120%, rgba(148, 163, 184, .18), transparent 60%),
+        radial-gradient(1100px 720px at 100% 120%, rgba(148, 163, 184, .12), transparent 60%),
+        linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
+    }
+
+    header.site-header {
+      background: rgba(247, 251, 255, .72);
+      border-color: var(--line);
+      backdrop-filter: blur(8px);
+    }
+
+    /* Capacitor app only: status bar / notch / cutout safe-area padding.
+     * Under Android 15+ (target SDK 35+) the WebView is forced edge-to-edge
+     * and overlaysWebView:true makes that consistent on older Android too,
+     * so the sticky header must pad its own top + left/right insets — the
+     * system no longer reserves the space. Gated to html.is-app (set by
+     * the inline script above) so web layout is byte-identical.
+     *
+     * For the TOP inset we use max(env(...), 24px). Reason: on Android 14
+     * with overlaysWebView:true the WebView genuinely renders edge-to-edge,
+     * but the Android 14 WebView's window-insets propagation to the
+     * renderer is unreliable — env(safe-area-inset-top) often reports 0
+     * instead of the real ~30dp status-bar height. With a 0-padding header,
+     * the buttons render BEHIND the status bar overlay (the "top eaten up"
+     * symptom on Pixel 8). 24px is the Android default status-bar height,
+     * so max() guarantees at least that much padding even when env() lies.
+     * Android 15+ propagates correctly (env returns ~30+) → max picks env,
+     * unchanged behavior. */
+    html.is-app header.site-header {
+      padding-top: max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px));
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+    }
+
+    .theme-toggle {
+      /* White button in light mode */
+      background: linear-gradient(135deg, #ffffff, #f8fafc);
+      border-color: rgba(15, 23, 42, .12);
+      color: #334155;
+      letter-spacing: .3px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Hover styles are the visual INVERSE of the normal styles (dark in
+     * light mode, light in dark mode). On touch devices :hover sticks
+     * after a tap until the next touch elsewhere, so the post-tap button
+     * froze in this inverse state — looking exactly like the previous
+     * mode and creating the "one tap behind" perception. Gating hover
+     * to @media (hover: hover) ensures only true pointer devices (mouse,
+     * trackpad) get hover effects; touch never sticks. Same pattern is
+     * used elsewhere in public/styles.css:879-907. */
+    @media (hover: hover) {
+      .theme-toggle:hover {
+        /* Dark on hover in light mode */
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border-color: rgba(15, 23, 42, .2);
+        color: #f1f5f9;
+        transform: translateY(-1px);
+      }
+    }
+
+    body.dark .theme-toggle {
+      /* Dark button matching page background in dark mode */
+      background: linear-gradient(135deg, #232933, #1f252e) !important;
+      border-color: rgba(148, 163, 184, .2) !important;
+      color: #e2e8f0 !important;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+
+    @media (hover: hover) {
+      body.dark .theme-toggle:hover {
+        /* Light on hover in dark mode */
+        background: linear-gradient(135deg, #ffffff, #f1f5f9) !important;
+        border-color: rgba(148, 163, 184, .3) !important;
+        color: #1e293b !important;
+        transform: translateY(-1px);
+      }
+    }
+
+    .quran-font {
+      font-family: "Amiri", serif;
+    }
+
+    /* Smooth, iOS-like feel */
+    * {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Global Smoothness: Force pointer cursor on all interactive elements */
+    button,
+    select,
+    a,
+    [role="button"],
+    .cursor-pointer {
+      cursor: pointer !important;
+    }
+
+    /* Optional: Add a tiny smooth lift to all buttons on hover for extra polish */
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    /* Reset cursor for disabled buttons */
+    button:disabled {
+      cursor: not-allowed !important;
+      transform: none !important;
+    }
+
+    .glass {
+      background: linear-gradient(180deg, var(--card), var(--card2));
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, .10);
+      backdrop-filter: blur(8px);
+    }
+
+    .subtle {
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .08);
+    }
+
+    /* AI panel accordion */
+    #aiPanel {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transform: translateY(-4px);
+      transition: max-height .45s ease, opacity .35s ease, transform .35s ease;
+    }
+
+    #aiPanel.is-open {
+      max-height: 4000px;
+      opacity: 1;
+      transform: translateY(0);
+      overflow: visible;
+    }
+
+    /* Results collapse chip behavior (keeps compatibility with app.js) */
+    .results {
+      transition: max-height .35s ease, opacity .25s ease, transform .25s ease;
+    }
+
+    .results.collapsed {
+      max-height: 0 !important;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-2px) scale(.99);
+    }
+
+    .results-shell.collapsed .selected-chip {
+      display: flex;
+    }
+
+    .results-shell.is-empty .selected-chip {
+      display: none;
+    }
+
+    .results-shell.is-empty {
+      margin-top: 0;
+      display: none;
+    }
+
+    .selected-chip {
+      display: none;
+    }
+
+    .results.is-empty {
+      border-color: transparent !important;
+      background: transparent !important;
+      padding: 0 !important;
+    }
+
+    /* Smooth staggered fade-in for result cards */
+    @keyframes resultCardEnter {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .result-card-enter {
+      animation: resultCardEnter 0.25s ease-out forwards;
+      opacity: 0;
+    }
+
+    /* Keep scrollbar always visible to prevent layout shift */
+    .results-list {
+      scrollbar-gutter: stable;
+    }
+
+    .input-glass {
+      background: rgba(255, 255, 255, .75);
+      border: 1px solid rgba(15, 23, 42, .12);
+      border-radius: 18px;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: none;
+      box-shadow: none;
+    }
+
+    /* The input's left padding must clear the #searchPillActions cluster
+     * (مسح + the Mushaf-mode surah selector). The cluster's width varies —
+     * the selector is injected/hidden per mode and grows with the surah
+     * name — so app.js mirrors its footprint (offsetLeft + offsetWidth)
+     * into --search-actions-w via a ResizeObserver. Fallback covers the
+     * مسح-only cluster before JS runs. */
+    #textSearch {
+      padding-left: calc(var(--search-actions-w, 60px) + 12px);
+    }
+
+    /* The cluster (and the surah dropdown inside it) must paint above the
+     * border-beam layers (z-index 1–3 pseudo-elements/bloom on the pill). */
+    #searchPillActions {
+      z-index: 4;
+    }
+
+    /* مسح and the surah selector are visual twins — pin BOTH to the same
+     * explicit box (height, padding, radius, flex centering) so Arabic
+     * line-box differences across OS font stacks can't desync them. This
+     * is the single source of geometry for the pair; mushaf.css only
+     * colors/fonts the selector. */
+    #searchPillActions #clearBtn,
+    #searchPillActions .mushaf-surah-select {
+      box-sizing: border-box;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
+      line-height: 1;
+      border-radius: 12px;
+    }
+
+    /* The surah dropdown hangs below the search panel, over the next .glass
+     * section (Mushaf/tafsir card). Both panels are backdrop-filter stacking
+     * contexts, and later siblings paint on top — lift the search panel so
+     * the dropdown wins. Stays under the sticky header (z-40). */
+    #searchPanel {
+      position: relative;
+      z-index: 30;
+    }
+
+    /* Older / smaller phones (~ ≤ 400 CSS px wide — iPhone SE, older Androids,
+     * etc.) saw an oversized gap between the placeholder text and the input's
+     * right edge from the default px-10 (40px) padding. The left side is
+     * handled by the --search-actions-w calc above; tighten the right side
+     * to 16px so the text starts close to the edge. Modern phones (Pixel 8
+     * ≈ 412 CSS px, iPhone 14 ≈ 390) and up keep the original px-10. */
+    @media (max-width: 400px) {
+      #textSearch {
+        padding-right: 1rem;
+      }
+    }
+
+    /* === Border beam on the hero search input pill ===
+     * Ported from https://github.com/Jakubantalik/border-beam
+     * (MIT License, Copyright (c) 2026 Jakub Antalik).
+     * Structure is the exact generateBorderVariantCSS() output for size="md",
+     * strength={0.5}, default duration (1.96s), staticColors (no hue-shift).
+     * Colors adapted from the mono grays to the site's primary-action blue
+     * (#2644cd = the مختصر التفاسير button), shade ramp from that button's own
+     * base/hover/active blues plus two white-mixed tints; the dark theme's
+     * glowing head uses the lighter tint rgb(125, 143, 225) so it reads on dark.
+     * Light-theme opacity factors are pre-divided by the 0.5 strength so the
+     * effective values land on the source's full light preset (.12/.26/.34) —
+     * the mono-halved values were invisible over the white pill.
+     * Radius 18px = the search pill's .input-glass
+     * radius, matching the component's runtime auto-detection. Both theme presets are
+     * inlined as variables and flipped by the site's .dark class (html + body).
+     * Adaptations for a single instance: per-instance id suffixes dropped,
+     * offscreen-pause state + IntersectionObserver omitted, container
+     * overflow:hidden dropped (layers self-clip via clip-path; it would clip
+     * the input's focus ring). The active→fading lifecycle IS ported: the pill
+     * starts [data-active]; choosing an ayah calls deactivateSearchBeam()
+     * (src/app.js), which swaps to [data-fading] → beam-fade-out 0.5s and then
+     * drops the attribute on animationend, removing every beam layer. */
+    @property --beam-angle {
+      syntax: "<angle>";
+      initial-value: 0deg;
+      inherits: true;
+    }
+
+    @property --beam-opacity {
+      syntax: "<number>";
+      initial-value: 0;
+      inherits: true;
+    }
+
+    .border-beam {
+      position: relative;
+      border-radius: 18px;
+      /* md/light preset ÷ 0.5 strength ⇒ effective .12/.26/.34 (source light values) */
+      --beam-strength: 0.5;
+      --beam-stroke-opacity: 0.24;
+      --beam-inner-opacity: 0.52;
+      --beam-bloom-opacity: 0.68;
+      --beam-inner-shadow: rgba(38, 68, 205, 0.14);
+      --beam-saturation: 1.50;
+      --beam-edge-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 54%,
+        rgba(38, 68, 205, 0.08) 57%,
+        rgba(38, 68, 205, 0.2) 60%,
+        rgba(38, 68, 205, 0.4) 63%,
+        rgba(38, 68, 205, 0.55) 66%,
+        rgba(38, 68, 205, 0.4) 69%,
+        rgba(38, 68, 205, 0.2) 72%,
+        rgba(38, 68, 205, 0.08) 75%,
+        transparent 78%, transparent 100%
+      );
+      --beam-bloom-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 58%,
+        rgba(38, 68, 205, 0.02) 62%,
+        rgba(38, 68, 205, 0.08) 65%,
+        rgba(38, 68, 205, 0.2) 67%,
+        rgba(38, 68, 205, 0.4) 69%,
+        rgba(38, 68, 205, 0.6) 70%,
+        rgba(38, 68, 205, 0.6) 70.5%,
+        rgba(38, 68, 205, 0.4) 71.5%,
+        rgba(38, 68, 205, 0.2) 73%,
+        rgba(38, 68, 205, 0.08) 75%,
+        rgba(38, 68, 205, 0.02) 78%,
+        transparent 82%
+      );
+    }
+
+    /* Source lifecycle: animating while active; choosing an ayah swaps the
+       attribute to data-fading (see deactivateSearchBeam() in src/app.js),
+       and when beam-fade-out ends the attribute is removed — no beam layers
+       exist after that, so all per-frame paint work stops. */
+    /* Spin slowed to 2× the component default (1.96s → 3.92s) — site
+       preference for calmer motion. */
+    .border-beam[data-active] {
+      animation:
+        beam-spin 3.92s linear infinite,
+        beam-fade-in 0.6s ease forwards;
+    }
+
+    .border-beam[data-fading] {
+      animation:
+        beam-spin 3.92s linear infinite,
+        beam-fade-out 0.5s ease forwards;
+    }
+
+    body.dark .border-beam,
+    html.dark .border-beam {
+      /* md/dark preset, mono-halved (intensity unchanged — recolored only):
+         stroke .13, inner .21, bloom .12 */
+      --beam-stroke-opacity: 0.13;
+      --beam-inner-opacity: 0.21;
+      --beam-bloom-opacity: 0.12;
+      --beam-inner-shadow: rgba(125, 143, 225, 0.27);
+      --beam-saturation: 1.20;
+      --beam-edge-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 54%,
+        rgba(125, 143, 225, 0.1) 57%,
+        rgba(125, 143, 225, 0.3) 60%,
+        rgba(125, 143, 225, 0.6) 63%,
+        rgba(125, 143, 225, 0.75) 66%,
+        rgba(125, 143, 225, 0.6) 69%,
+        rgba(125, 143, 225, 0.3) 72%,
+        rgba(125, 143, 225, 0.1) 75%,
+        transparent 78%, transparent 100%
+      );
+      --beam-bloom-gradient: conic-gradient(
+        from var(--beam-angle),
+        transparent 0%, transparent 58%,
+        rgba(125, 143, 225, 0.03) 62%,
+        rgba(125, 143, 225, 0.08) 65%,
+        rgba(125, 143, 225, 0.2) 67%,
+        rgba(125, 143, 225, 0.45) 69%,
+        rgba(125, 143, 225, 0.85) 70%,
+        rgba(125, 143, 225, 0.85) 70.5%,
+        rgba(125, 143, 225, 0.45) 71.5%,
+        rgba(125, 143, 225, 0.2) 73%,
+        rgba(125, 143, 225, 0.08) 75%,
+        rgba(125, 143, 225, 0.03) 78%,
+        transparent 82%
+      );
+    }
+
+    /* Beam stroke: mono radial field + theme edge highlight, masked to a
+       1px ring intersected with the rotating conic window. */
+    .border-beam[data-active]::after,
+    .border-beam[data-fading]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 17px;
+      padding: 1px;
+      clip-path: inset(0 round 18px);
+      background: var(--beam-edge-gradient),
+        radial-gradient(ellipse 70px 40px at 33% -7.4%, rgb(92, 115, 218), transparent),
+        radial-gradient(ellipse 60px 35px at 12% -5%, rgb(33, 59, 178), transparent),
+        radial-gradient(ellipse 40px 70px at 2.1% 68.3%, rgb(38, 68, 205), transparent),
+        radial-gradient(ellipse 20px 35px at 2.1% 68.3%, rgb(28, 50, 150), transparent),
+        radial-gradient(ellipse 180px 32px at 74.4% 100%, rgb(92, 115, 218), transparent),
+        radial-gradient(ellipse 85px 26px at 55% 100%, rgb(38, 68, 205), transparent),
+        radial-gradient(ellipse 74px 32px at 93.9% 0%, rgb(136, 152, 228), transparent),
+        radial-gradient(ellipse 26px 42px at 100% 27.1%, rgb(33, 59, 178), transparent),
+        radial-gradient(ellipse 52px 48px at 100% 27.1%, rgb(38, 68, 205), transparent);
+      -webkit-mask:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: source-in, xor;
+      mask:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask-composite: intersect, exclude;
+      pointer-events: none;
+      z-index: 2;
+      opacity: calc(var(--beam-opacity) * var(--beam-stroke-opacity) * var(--beam-strength, 1));
+    }
+
+    /* Inner glow: dimmed radials + inset sheen, masked to a 28px edge band
+       under the same rotating window. */
+    .border-beam[data-active]::before,
+    .border-beam[data-fading]::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      background:
+        radial-gradient(ellipse 63px 36px at 33% -7.4%, rgba(92, 115, 218, 0.225), transparent),
+        radial-gradient(ellipse 54px 32px at 12% -5%, rgba(33, 59, 178, 0.225), transparent),
+        radial-gradient(ellipse 36px 63px at 2.1% 68.3%, rgba(38, 68, 205, 0.225), transparent),
+        radial-gradient(ellipse 18px 32px at 2.1% 68.3%, rgba(28, 50, 150, 0.225), transparent),
+        radial-gradient(ellipse 162px 29px at 74.4% 100%, rgba(92, 115, 218, 0.225), transparent),
+        radial-gradient(ellipse 77px 23px at 55% 100%, rgba(38, 68, 205, 0.225), transparent),
+        radial-gradient(ellipse 67px 29px at 93.9% 0%, rgba(136, 152, 228, 0.225), transparent),
+        radial-gradient(ellipse 23px 38px at 100% 27.1%, rgba(33, 59, 178, 0.225), transparent),
+        radial-gradient(ellipse 47px 43px at 100% 27.1%, rgba(38, 68, 205, 0.225), transparent);
+      box-shadow: inset 0 0 9px 1px var(--beam-inner-shadow);
+      -webkit-mask-image:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+        linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+      -webkit-mask-composite: source-in, source-over;
+      mask-image:
+        conic-gradient(
+          from var(--beam-angle),
+          transparent 0%, transparent 30%,
+          rgba(255, 255, 255, 0.1) 36%, rgba(255, 255, 255, 0.35) 44%,
+          white 52%, white 80%,
+          rgba(255, 255, 255, 0.35) 86%, rgba(255, 255, 255, 0.1) 92%,
+          transparent 95%, transparent 100%
+        ),
+        linear-gradient(white, transparent 28px, transparent calc(100% - 28px), white),
+        linear-gradient(to right, white, transparent 28px, transparent calc(100% - 28px), white);
+      mask-composite: intersect, add;
+      pointer-events: none;
+      z-index: 1;
+      opacity: calc(var(--beam-opacity) * var(--beam-inner-opacity) * var(--beam-strength, 1));
+      clip-path: inset(0 round 18px);
+    }
+
+    /* Blurred bloom "head" riding the 1px ring. */
+    .border-beam [data-beam-bloom] {
+      display: none;
+      position: absolute;
+      inset: 0;
+      border-radius: 17px;
+      clip-path: inset(0 round 18px);
+      background: var(--beam-bloom-gradient);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      padding: 1px;
+      filter: blur(8px) brightness(1.30) saturate(var(--beam-saturation));
+      pointer-events: none;
+      z-index: 3;
+      opacity: 0;
+    }
+
+    .border-beam[data-active] [data-beam-bloom],
+    .border-beam[data-fading] [data-beam-bloom] {
+      display: block;
+      opacity: calc(var(--beam-opacity) * var(--beam-bloom-opacity) * var(--beam-strength, 1));
+    }
+
+    @keyframes beam-spin {
+      to {
+        --beam-angle: 360deg;
+      }
+    }
+
+    @keyframes beam-fade-in {
+      to {
+        --beam-opacity: 1;
+      }
+    }
+
+    @keyframes beam-fade-out {
+      from {
+        --beam-opacity: 1;
+      }
+
+      to {
+        --beam-opacity: 0;
+      }
+    }
+
+    /* Updated Container: Adds spacing/gap between items */
+    .results-list {
+      background: rgba(255, 255, 255, .55);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      /* The "Gap" that stops them from morphing into each other */
+      padding: 12px;
+      /* Breathing room inside the box */
+      /* Smooth scrollbar that doesn't flicker */
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Custom scrollbar for results */
+    .results-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .results-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .results-list::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 10px;
+    }
+
+    .results-list::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+
+    /* Updated Card: Distinct, White, and Floating */
+    .result-card {
+      background: #ffffff !important;
+      /* Solid white (Pop out) */
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      /* Subtle border */
+      border-radius: 16px;
+      /* Smooth corners */
+      /* Professional Shadow for Depth */
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      /* Ensure no margins are interfering since we use gap in parent */
+      margin: 0;
+    }
+
+    /* Hover Effect: Lift the card slightly */
+    .result-card:hover {
+      transform: translateY(-2px);
+      background: #ffffff;
+      border-color: rgba(37, 99, 235, 0.3);
+      /* Subtle blue tint on borders */
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.1);
+      /* Blue glow */
+    }
+
+    .result-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .result-meta-pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-weight: 800;
+    }
+
+    .result-meta-ayah {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .06);
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    body.dark .result-meta-ayah {
+      background: rgba(148, 163, 184, .18);
+      color: #e2e8f0;
+    }
+
+    .result-meta-divider {
+      opacity: .6;
+    }
+
+    .result-meta-text {
+      color: var(--text);
+    }
+
+    #results .result-ayah {
+      display: block;
+      white-space: normal;
+      overflow: visible;
+    }
+
+    .mark-ayah {
+      background: rgba(56, 189, 248, .24);
+      color: inherit;
+      border-radius: 6px;
+      padding: 0 4px;
+    }
+
+    .ai-card {
+      border: 1px solid var(--line);
+      box-shadow: 0 16px 40px rgba(15, 23, 42, .10);
+    }
+
+    .ai-bullet {
+      color: var(--accent-strong);
+      font-weight: 800;
+    }
+
+    .ai-answer strong {
+      color: var(--accent-strong);
+      font-weight: 800;
+    }
+
+    .ai-paragraph {
+      margin-top: 10px;
+    }
+
+    .ai-paragraph:first-child {
+      margin-top: 0;
+    }
+
+    .skeleton-line {
+      height: 12px;
+      margin: 10px 0;
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(0, 0, 0, .06), rgba(0, 0, 0, .12), rgba(0, 0, 0, .06));
+      background-size: 200% 100%;
+      animation: sk 1.1s infinite;
+    }
+
+    .skeleton-line.short {
+      width: 65%;
+    }
+
+    @keyframes sk {
+      0% {
+        background-position: 200% 0
+      }
+
+      100% {
+        background-position: -200% 0
+      }
+    }
+
+    .ai-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .ai-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+    }
+
+    .ai-section {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .ai-section.ai-first {
+      margin-top: 10px;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .ai-answer-block {
+      background: rgba(255, 255, 255, .55);
+      border-radius: 20px;
+      padding: 14px;
+    }
+
+    #aiQuestion {
+      text-align: center;
+      overflow: hidden;
+      scrollbar-width: none;
+    }
+
+    #aiQuestion::placeholder {
+      text-align: center;
+    }
+
+    #aiQuestion::-webkit-scrollbar {
+      display: none;
+    }
+
+    body.dark .ai-answer-block {
+      background: rgba(26, 30, 36, .7);
+    }
+
+    .ai-verse-card {
+      backdrop-filter: blur(4px);
+    }
+
+    /* Performance: backdrop-filter can be expensive while scrolling */
+    @media (max-width: 768px) {
+
+      header.site-header,
+      .glass,
+      .ai-verse-card {
+        backdrop-filter: none !important;
+      }
+    }
+
+    #aiAskBtn,
+    #toggleVersesBtn,
+    .ai-open-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #fff;
+    }
+
+    .ayah-nav-btn {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      min-height: 48px;
+      border-radius: 12px;
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      color: #64748b;
+      transition: all 0.2s ease-out;
+      flex-shrink: 0;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+
+    .ayah-nav-btn svg {
+      display: block !important;
+      visibility: visible !important;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
+    }
+
+    .ayah-nav-btn:hover {
+      background: rgba(148, 163, 184, 0.12);
+      color: #0f172a;
+      border-color: rgba(148, 163, 184, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .ayah-nav-btn:active {
+      background: rgba(148, 163, 184, 0.2);
+      transform: translateY(0);
+    }
+
+    .ayah-nav-btn:disabled {
+      opacity: 0.3 !important;
+      cursor: not-allowed;
+      border-color: transparent;
+      color: #cbd5e1;
+    }
+
+    /* Mobile-specific: ensure buttons are always visible */
+    @media (max-width: 640px) {
+      .ayah-nav-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        background: rgba(148, 163, 184, 0.15);
+        border: 2px solid rgba(148, 163, 184, 0.3);
+      }
+
+      .ayah-nav-btn svg {
+        width: 22px;
+        height: 22px;
+      }
+    }
+
+    body.dark .ayah-nav-btn {
+      border-color: rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    body.dark .ayah-nav-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8fafc;
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Dark mode mobile */
+    @media (max-width: 640px) {
+      body.dark .ayah-nav-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+      }
+    }
+
+    /* Ayah Grid Buttons (Surah Landing Page) */
+    .ayah-grid-btn {
+      transition: all 0.2s ease-out;
+      border: 2px solid #93c5fd;
+      /* Light blue for light theme */
+    }
+
+    .ayah-grid-btn:hover {
+      border-color: #3b82f6;
+    }
+
+    body.dark .ayah-grid-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    body.dark .ayah-grid-btn span {
+      color: #94a3b8;
+    }
+
+    body.dark .ayah-grid-btn:hover {
+      background: rgba(96, 165, 250, 0.15);
+      border-color: rgba(96, 165, 250, 0.4);
+    }
+
+    body.dark .ayah-grid-btn:hover span {
+      color: #60a5fa;
+    }
+
+    /* Audio Player - Professional Minimalist Design */
+    .audio-player-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    /* Desktop only - hide on mobile */
+    .audio-player-wrapper.desktop-only {
+      display: inline-flex;
+    }
+
+    /* Mobile only - hide on desktop */
+    .audio-player-wrapper.mobile-only {
+      display: none;
+    }
+
+    /* Anchor the first-launch download overlay (position:absolute; inset:0) to the tab */
+    #tafsirSection {
+      position: relative;
+    }
+
+    /* Tafsir audio toolbar (Mushaf-style): sits to the right of the compare button */
+    .tafsir-audio-toolbar {
+      margin-bottom: 0;
+      align-self: center;
+    }
+
+    .audio-main-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.2s ease-out;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .audio-main-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .audio-main-btn:hover {
+      background: rgba(37, 99, 235, 0.1);
+      border-color: rgba(37, 99, 235, 0.3);
+      color: #2563eb;
+    }
+
+    .audio-main-btn.playing {
+      background: rgba(37, 99, 235, 0.15);
+      border-color: rgba(37, 99, 235, 0.4);
+      color: #2563eb;
+    }
+
+    /* Listening Mode Button - Active state styling */
+    .listening-mode-btn {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .listening-mode-btn svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .listening-mode-btn:hover {
+      background: rgba(245, 158, 11, 0.15) !important;
+      border-color: rgba(245, 158, 11, 0.4) !important;
+      color: #f59e0b !important;
+    }
+
+    .listening-mode-btn:hover svg {
+      transform: rotate(15deg);
+    }
+
+    /* Active state - amber/gold glow with pulse */
+    .listening-mode-btn.active {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(234, 179, 8, 0.28)) !important;
+      border-color: rgba(245, 158, 11, 0.6) !important;
+      color: #f59e0b !important;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.3), 0 0 20px rgba(245, 158, 11, 0.15);
+      animation: listeningPulse 2s ease-in-out infinite;
+    }
+
+    .listening-mode-btn.active svg {
+      animation: listeningRotate 3s linear infinite;
+    }
+
+    @keyframes listeningPulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 10px rgba(245, 158, 11, 0.3), 0 0 20px rgba(245, 158, 11, 0.15);
+      }
+
+      50% {
+        box-shadow: 0 0 16px rgba(245, 158, 11, 0.4), 0 0 28px rgba(245, 158, 11, 0.2);
+      }
+    }
+
+    @keyframes listeningRotate {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Dark mode - listening mode button active */
+    body.dark .listening-mode-btn:hover {
+      background: rgba(251, 191, 36, 0.15) !important;
+      border-color: rgba(251, 191, 36, 0.4) !important;
+      color: #fbbf24 !important;
+    }
+
+    body.dark .listening-mode-btn.active {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.25)) !important;
+      border-color: rgba(251, 191, 36, 0.55) !important;
+      color: #fbbf24 !important;
+      box-shadow: 0 0 12px rgba(251, 191, 36, 0.25), 0 0 24px rgba(251, 191, 36, 0.1);
+    }
+
+    /* Hover Dropdown */
+    .audio-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(0);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease-out, visibility 0.2s ease-out, transform 0.2s ease-out;
+      z-index: 50;
+      pointer-events: none;
+      padding-top: 8px;
+      /* Bridge gap for hover continuity */
+    }
+
+    .audio-player-wrapper:hover .audio-dropdown,
+    .audio-dropdown:hover,
+    .audio-player-wrapper.controls-visible .audio-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+      pointer-events: auto;
+    }
+
+
+    .audio-dropdown-content {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      border-radius: 14px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-width: 160px;
+    }
+
+    .audio-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    .audio-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .audio-vol-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(148, 163, 184, 0.1);
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .audio-vol-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .audio-vol-btn:hover {
+      background: rgba(37, 99, 235, 0.12);
+      color: #2563eb;
+    }
+
+    .audio-slider {
+      width: 70px;
+      height: 4px;
+      border-radius: 4px;
+      background: rgba(148, 163, 184, 0.2);
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+
+    .audio-slider::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+      transition: transform 0.15s ease;
+    }
+
+    .audio-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+
+    .audio-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+      border: none;
+    }
+
+    /* Dark mode */
+    body.dark .audio-main-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #94a3b8;
+    }
+
+    body.dark .audio-main-btn:hover {
+      background: rgba(96, 165, 250, 0.12);
+      border-color: rgba(96, 165, 250, 0.3);
+      color: #60a5fa;
+    }
+
+    body.dark .audio-main-btn.playing {
+      background: rgba(96, 165, 250, 0.15);
+      border-color: rgba(96, 165, 250, 0.4);
+      color: #60a5fa;
+    }
+
+    body.dark .audio-dropdown-content {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    body.dark .audio-label {
+      color: #94a3b8;
+    }
+
+    body.dark .audio-vol-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+    }
+
+    body.dark .audio-vol-btn:hover {
+      background: rgba(96, 165, 250, 0.15);
+      color: #60a5fa;
+    }
+
+    body.dark .audio-slider {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    body.dark .audio-slider::-webkit-slider-thumb {
+      background: #60a5fa;
+    }
+
+    /* Reciter Row Styles */
+    .audio-reciter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      margin-bottom: 4px;
+    }
+
+    .audio-reciter-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    body.dark .audio-reciter-name {
+      color: #e2e8f0;
+    }
+
+    .reciter-switch-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(148, 163, 184, 0.12);
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .reciter-switch-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .reciter-switch-btn:hover {
+      background: rgba(37, 99, 235, 0.15);
+      color: #2563eb;
+      transform: rotate(45deg);
+    }
+
+    body.dark .reciter-switch-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #94a3b8;
+    }
+
+    body.dark .reciter-switch-btn:hover {
+      background: rgba(96, 165, 250, 0.2);
+      color: #60a5fa;
+    }
+
+    /* Speed Control Button */
+    .audio-speed-btn {
+      position: relative;
+      min-width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 10px;
+      letter-spacing: -0.02em;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .audio-speed-label {
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .audio-speed-btn:hover {
+      background: rgba(139, 92, 246, 0.15) !important;
+      border-color: rgba(139, 92, 246, 0.4) !important;
+      color: #8b5cf6 !important;
+      transform: scale(1.08);
+    }
+
+    .audio-speed-btn.speed-active {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.18), rgba(168, 85, 247, 0.24)) !important;
+      border-color: rgba(139, 92, 246, 0.5) !important;
+      color: #8b5cf6 !important;
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.25);
+    }
+
+    body.dark .audio-speed-btn:hover {
+      background: rgba(167, 139, 250, 0.18) !important;
+      border-color: rgba(167, 139, 250, 0.4) !important;
+      color: #a78bfa !important;
+    }
+
+    body.dark .audio-speed-btn.speed-active {
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.18), rgba(139, 92, 246, 0.22)) !important;
+      border-color: rgba(167, 139, 250, 0.5) !important;
+      color: #a78bfa !important;
+      box-shadow: 0 0 10px rgba(167, 139, 250, 0.2);
+    }
+
+    /* Reciter Color Themes */
+    /* Ali Jaber - Blue */
+    .audio-player-wrapper.reciter-alijaber .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-alijaber .audio-main-btn:hover {
+      background: rgba(37, 99, 235, 0.12);
+      border-color: rgba(37, 99, 235, 0.35);
+      color: #2563eb;
+    }
+
+    .reciter-alijaber .audio-reciter-name {
+      color: #2563eb;
+    }
+
+    body.dark .reciter-alijaber .audio-reciter-name {
+      color: #60a5fa;
+    }
+
+    .reciter-alijaber .audio-slider::-webkit-slider-thumb {
+      background: #2563eb;
+    }
+
+    body.dark .reciter-alijaber .audio-slider::-webkit-slider-thumb {
+      background: #60a5fa;
+    }
+
+    /* Shuraim - Emerald Green */
+    .audio-player-wrapper.reciter-shuraim .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-shuraim .audio-main-btn:hover {
+      background: rgba(5, 150, 105, 0.12);
+      border-color: rgba(5, 150, 105, 0.35);
+      color: #059669;
+    }
+
+    .reciter-shuraim .audio-reciter-name {
+      color: #059669;
+    }
+
+    body.dark .reciter-shuraim .audio-reciter-name {
+      color: #34d399;
+    }
+
+    .reciter-shuraim .audio-slider::-webkit-slider-thumb {
+      background: #059669;
+    }
+
+    body.dark .reciter-shuraim .audio-slider::-webkit-slider-thumb {
+      background: #34d399;
+    }
+
+    /* Ayoub - Purple */
+    .audio-player-wrapper.reciter-ayoub .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-ayoub .audio-main-btn:hover {
+      background: rgba(124, 58, 237, 0.12);
+      border-color: rgba(124, 58, 237, 0.35);
+      color: #7c3aed;
+    }
+
+    .reciter-ayoub .audio-reciter-name {
+      color: #7c3aed;
+    }
+
+    body.dark .reciter-ayoub .audio-reciter-name {
+      color: #a78bfa;
+    }
+
+    .reciter-ayoub .audio-slider::-webkit-slider-thumb {
+      background: #7c3aed;
+    }
+
+    body.dark .reciter-ayoub .audio-slider::-webkit-slider-thumb {
+      background: #a78bfa;
+    }
+
+    /* Qasim - Amber/Orange */
+    .audio-player-wrapper.reciter-qasim .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-qasim .audio-main-btn:hover {
+      background: rgba(217, 119, 6, 0.12);
+      border-color: rgba(217, 119, 6, 0.35);
+      color: #d97706;
+    }
+
+    .reciter-qasim .audio-reciter-name {
+      color: #d97706;
+    }
+
+    body.dark .reciter-qasim .audio-reciter-name {
+      color: #fbbf24;
+    }
+
+    .reciter-qasim .audio-slider::-webkit-slider-thumb {
+      background: #d97706;
+    }
+
+    body.dark .reciter-qasim .audio-slider::-webkit-slider-thumb {
+      background: #fbbf24;
+    }
+
+    /* Dosari - Rose */
+    .audio-player-wrapper.reciter-dosari .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-dosari .audio-main-btn:hover {
+      background: rgba(225, 29, 72, 0.12);
+      border-color: rgba(225, 29, 72, 0.35);
+      color: #e11d48;
+    }
+
+    .reciter-dosari .audio-reciter-name {
+      color: #e11d48;
+    }
+
+    body.dark .reciter-dosari .audio-reciter-name {
+      color: #fb7185;
+    }
+
+    .reciter-dosari .audio-slider::-webkit-slider-thumb {
+      background: #e11d48;
+    }
+
+    body.dark .reciter-dosari .audio-slider::-webkit-slider-thumb {
+      background: #fb7185;
+    }
+
+    /* Luhaidan - Cyan */
+    .audio-player-wrapper.reciter-luhaidan .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-luhaidan .audio-main-btn:hover {
+      background: rgba(8, 145, 178, 0.12);
+      border-color: rgba(8, 145, 178, 0.35);
+      color: #0891b2;
+    }
+
+    .reciter-luhaidan .audio-reciter-name {
+      color: #0891b2;
+    }
+
+    body.dark .reciter-luhaidan .audio-reciter-name {
+      color: #22d3ee;
+    }
+
+    .reciter-luhaidan .audio-slider::-webkit-slider-thumb {
+      background: #0891b2;
+    }
+
+    body.dark .reciter-luhaidan .audio-slider::-webkit-slider-thumb {
+      background: #22d3ee;
+    }
+
+    /* Audio Seek Row */
+
+    .audio-seek-row {
+      margin-top: 8px;
+      width: 100%;
+    }
+
+    .audio-seek-row .audio-controls {
+      justify-content: center;
+    }
+
+    body.dark .audio-slider::-moz-range-thumb {
+      background: #60a5fa;
+    }
+
+
+    body.dark #toggleVersesBtn {
+      background: linear-gradient(135deg, #1d8fff, #0b6bdc);
+    }
+
+    #chipAction {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+
+    body.dark .input-glass {
+      background: rgba(34, 40, 48, .9);
+      border-color: rgba(148, 163, 184, .22);
+      color: var(--text);
+    }
+
+    /* Browser autofill (saved-search dropdown) paints the input white from
+     * outside CSS — defeat it by overriding with a giant inset box-shadow,
+     * the only property that beats -webkit-autofill's background.
+     *
+     * Notes:
+     * - Opaque inset (no rgba alpha) so the browser's frozen autofill
+     *   background-color cannot bleed through during a theme toggle.
+     * - transition: none kills the Tailwind 150ms easing on this state
+     *   so theme toggles swap colors instantly — no laggy fade where
+     *   the inset is mid-transition while the underlying background
+     *   sits in the old theme. */
+    .input-glass:-webkit-autofill,
+    .input-glass:-webkit-autofill:hover,
+    .input-glass:-webkit-autofill:focus,
+    .input-glass:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 1000px #f1f5f9 inset !important;
+      -webkit-text-fill-color: #0f172a !important;
+      caret-color: #0f172a !important;
+      transition: none !important;
+    }
+
+    body.dark .input-glass:-webkit-autofill,
+    body.dark .input-glass:-webkit-autofill:hover,
+    body.dark .input-glass:-webkit-autofill:focus,
+    body.dark .input-glass:-webkit-autofill:active {
+      -webkit-box-shadow: 0 0 0 1000px #222830 inset !important;
+      -webkit-text-fill-color: var(--text) !important;
+      caret-color: var(--text) !important;
+    }
+
+    body.dark .results-list {
+      background: rgba(28, 34, 41, .6);
+    }
+
+    /* Dark Mode: "Theme Grey" (Matches website's Slate tone) */
+    body.dark .result-card {
+      background: #282e36 !important;
+      /* Matches your --card variable color */
+      border-color: rgba(255, 255, 255, 0.06);
+      /* Very subtle edge */
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      color: #e2e8f0;
+      /* Standard Slate-200 text */
+    }
+
+    body.dark .result-card:hover {
+      background: #333b45 !important;
+      /* Slightly lighter Slate on hover */
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    body.dark .mark-ayah {
+      background: rgba(148, 163, 184, .24);
+    }
+
+    body.dark .ai-card {
+      box-shadow: 0 16px 44px rgba(15, 23, 42, .12);
+    }
+
+    body.dark .text-slate-900 {
+      color: #f1f5f9 !important;
+    }
+
+    body.dark .text-slate-800 {
+      color: #e2e8f0 !important;
+    }
+
+    body.dark .text-slate-700 {
+      color: #cbd5e1 !important;
+    }
+
+    body.dark .text-slate-600 {
+      color: #b0bccb !important;
+    }
+
+    body.dark .text-slate-500 {
+      color: #9aa4b2 !important;
+    }
+
+    body.dark .text-slate-400 {
+      color: #8a94a4 !important;
+    }
+
+    body.dark .bg-white\/75,
+    body.dark .bg-white\/70,
+    body.dark .bg-white\/65,
+    body.dark .bg-white\/60,
+    body.dark .bg-white\/55,
+    body.dark .bg-white\/50 {
+      background: rgba(34, 40, 48, .9) !important;
+    }
+
+    body.dark .bg-slate-900\/5 {
+      background: rgba(148, 163, 184, .12) !important;
+    }
+
+    body.dark .bg-slate-900\/10 {
+      background: rgba(148, 163, 184, .18) !important;
+    }
+
+    body.dark .border-slate-900\/10,
+    body.dark .border-black\/10,
+    body.dark .border-black\/5 {
+      border-color: rgba(148, 163, 184, .18) !important;
+    }
+
+    body.dark .bg-blue-500\/10,
+    body.dark .bg-sky-500\/10 {
+      background: rgba(148, 163, 184, .18) !important;
+    }
+
+    body.dark .text-blue-700,
+    body.dark .text-sky-700 {
+      color: #cbd5e1 !important;
+    }
+
+    body.dark .text-slate-300 {
+      color: #cbd5e1 !important;
+    }
+
+    .results-shell {
+      transition: transform .35s ease, opacity .35s ease;
+    }
+
+    .result-ayah {
+      transition: color .2s ease;
+    }
+
+    #ayahContext {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .ayah-line {
+      padding: 12px 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .6);
+      cursor: pointer;
+      transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    .ayah-line:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, .85);
+      box-shadow: 0 12px 26px rgba(15, 23, 42, .10);
+    }
+
+    body.dark .ayah-line {
+      background: rgba(26, 30, 36, .9);
+      border-color: rgba(148, 163, 184, .2);
+    }
+
+    body.dark .ayah-line:hover {
+      background: rgba(34, 39, 46, .92);
+      box-shadow: 0 12px 26px rgba(0, 0, 0, .35);
+    }
+
+    .ayah-line .num {
+      font-weight: 800;
+      color: var(--accent-strong);
+      margin-left: 6px;
+    }
+
+    .ayah-line.active {
+      outline: 2px solid rgba(148, 163, 184, .25);
+    }
+
+    .ayah-line .en {
+      display: block;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      direction: ltr;
+      text-align: left;
+      font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
+      letter-spacing: 0;
+    }
+
+    .context-animate {
+      animation: contextFade .35s ease;
+    }
+
+    #tafsirSection {
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .55s ease, transform .55s ease;
+      overflow-anchor: none;
+    }
+
+    #tafsirSection.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #tafsirSection.tafsir-animate {
+      animation: tafsirGlow .55s ease;
+    }
+
+    #tafsirBox {
+      overflow-anchor: none;
+    }
+
+    .tafsir-swap {
+      animation: tafsirSwap .45s ease;
+    }
+
+    .tafsir-brace,
+    .tafsir-paren,
+    .tafsir-bracket {
+      color: #2563eb;
+      font-weight: 700;
+    }
+
+    body.dark .tafsir-brace,
+    body.dark .tafsir-paren,
+    body.dark .tafsir-bracket {
+      color: #7dd3fc;
+    }
+
+    .ayah-quote,
+    .quran-word {
+      font-family: "MeQuran", "Amiri", serif;
+    }
+
+    @keyframes tafsirGlow {
+      from {
+        opacity: .7;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes tafsirSwap {
+      from {
+        opacity: .5;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes contextFade {
+      from {
+        opacity: .6;
+        transform: translateY(4px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    #versePanel.is-open {
+      max-height: 480px !important;
+      opacity: 1 !important;
+      transform: translateY(0) !important;
+      overflow: auto !important;
+    }
+
+    #versePanel {
+      scroll-behavior: smooth;
+      overscroll-behavior: contain;
+      /* ? prevents scroll chaining to the page */
+      -webkit-overflow-scrolling: touch;
+      /* ? smoother scrolling on mobile */
+    }
+
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-center {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    @media (min-width: 640px) {
+      .tafsir-compare-btn {
+        width: 150px !important;
+      }
+
+      .tafsir-select {
+        width: 150px !important;
+      }
+    }
+
+    .tafsir-top-row {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @media (min-width: 640px) {
+
+      /* 1. MAIN LAYOUT: Rigid & Aligned */
+      .tafsir-top-row {
+        display: flex !important;
+        flex-direction: row !important;
+        /* RTL: Right to Left */
+        justify-content: space-between !important;
+        align-items: flex-start !important;
+        /* Align to top so text can grow downwards */
+        gap: 20px !important;
+        width: 100% !important;
+      }
+
+      /* 2. TEXT SECTION: Allow Wrapping (Fix for Truncation) */
+      .tafsir-meta {
+        flex: 1 1 auto !important;
+        text-align: right !important;
+        order: 1 !important;
+        /* Visual Start (Right) */
+        min-width: 0 !important;
+        /* Prevent flexbox overflow issues */
+      }
+
+
+      /* 3. CONTROLS CONTAINER: Stable & Ordered */
+      .tafsir-controls {
+        order: 2 !important;
+        /* Visual End (Left) */
+        flex: 0 0 auto !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: flex-start !important;
+        /* Align with top of text */
+        gap: 12px !important;
+        margin-top: 0 !important;
+      }
+
+      /* 4. SWAP POSITIONS: Explicit Order for Buttons */
+      /* Order 1 appears first (Rightmost in RTL) */
+
+      /* A. Compare Button -> Position 1 (Right). The flex-ITEM properties
+         (order/width/margins) live on the .mukhtasar-beam wrapper — the
+         button is no longer the direct flex child since the pulse-beam
+         glow wrapper was added around it. */
+      .mukhtasar-beam {
+        order: 1 !important;
+        width: auto !important;
+        min-width: 160px !important;
+        margin: 0 !important;
+        margin-left: 20px !important;
+      }
+
+      #compareTafsirsBtn {
+        padding-left: 24px !important;
+        padding-right: 24px !important;
+        margin: 0 !important;
+      }
+
+      /* B. Dropdown Wrapper -> Position 2 (Middle) */
+      .tafsir-controls>div:nth-child(2) {
+        order: 2 !important;
+      }
+
+      /* C. Next/Prev Wrapper -> Position 3 (Left) */
+      .tafsir-controls>div:last-child {
+        order: 3 !important;
+      }
+
+      /* 5. THE FIX: Lock Dropdown Width, Custom Arrow & Centered Text */
+      #tafsirSelect {
+        width: 170px !important;
+        min-width: 170px !important;
+        max-width: 170px !important;
+        text-overflow: ellipsis !important;
+
+        /* A. Center the Text */
+        text-align: center !important;
+        text-align-last: center !important;
+        padding-left: 30px !important;
+        padding-right: 6px !important;
+
+        /* B. Custom Arrow Positioning */
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        background-color: rgba(255, 255, 255, 0.7) !important;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2.5'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3e%3c/svg%3e") !important;
+        background-repeat: no-repeat !important;
+        background-size: 14px !important;
+        background-position: left 14px center !important;
+      }
+
+      /* DARK MODE FIX: Switch to dark background & light arrow */
+      body.dark #tafsirSelect {
+        background-color: rgba(30, 41, 59, 0.9) !important;
+        color: #e2e8f0 !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23e2e8f0' stroke-width='2.5'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3e%3c/svg%3e") !important;
+      }
+
+      /* Reset Wrapper Display */
+      .tafsir-controls>div {
+        display: flex !important;
+        flex-direction: row !important;
+        width: auto !important;
+      }
+    }
+
+    .tafsir-controls {
+      display: grid;
+      grid-auto-flow: row;
+      gap: 10px;
+      justify-items: center;
+      align-items: center;
+    }
+
+    /* The actions wrapper (مختصر + dropdown) is transparent everywhere except the
+       mobile pill layout, so existing desktop flex/order rules keep applying to
+       the button and dropdown directly — desktop stays exactly as before. */
+    .tafsir-actions {
+      display: contents;
+    }
+
+    .tafsir-actions__divider {
+      display: none;
+    }
+
+    @media (min-width: 640px) {
+      .tafsir-controls>.tafsir-actions {
+        display: contents !important;
+      }
+
+      .tafsir-actions>.tafsir-select-wrap {
+        order: 3 !important;
+      }
+    }
+
+    /* Mobile/app only — match the reference layout:
+         Row 1 (header): ⚙ settings (left) · centered identity · ▶ play (right)
+         Row 2: one tinted pill → مختصر التفاسير (left) | divider | dropdown (right)
+       `display: contents` on .tafsir-controls AND the audio toolbar flattens
+       them so the settings/play wraps and the actions pill become direct grid
+       items. RTL → the first grid column is on the right. */
+    @media (max-width: 640px) {
+      .tafsir-top-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas:
+          "play identity settings"
+          "actions actions actions";
+        column-gap: 10px;
+        row-gap: 16px;
+        align-items: center;
+      }
+
+      .tafsir-top-row .tafsir-controls,
+      .tafsir-top-row .tafsir-audio-toolbar {
+        display: contents;
+      }
+
+      /* centered identity (ayah ref + title + ⓘ) */
+      .tafsir-top-row .tafsir-meta {
+        grid-area: identity;
+        width: auto;
+        min-width: 0;
+        text-align: center;
+      }
+
+      .tafsir-top-row #tafsirHeader {
+        text-align: center;
+      }
+
+      .tafsir-top-row .tafsir-title-row {
+        justify-content: center;
+      }
+
+      /* ⚙ on the left edge, ▶ on the right edge */
+      .tafsir-top-row #tafsirPlayWrap {
+        grid-area: play;
+        justify-self: start;
+        /* RTL: start = right */
+      }
+
+      .tafsir-top-row #tafsirSettingsWrap {
+        grid-area: settings;
+        justify-self: end;
+        /* RTL: end = left */
+      }
+
+      /* keep the play/volume dropdown anchored inside the card (it sits at the
+         right edge, so open it leftwards) */
+      #tafsirVolDropdown {
+        left: auto;
+        right: 0;
+      }
+
+      /* the combined control pill — subtle blue-tinted container */
+      .tafsir-actions {
+        grid-area: actions;
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        gap: 8px;
+        padding: 7px;
+        border-radius: 1.1rem;
+        background: rgba(38, 68, 205, 0.05);
+        border: 1px solid rgba(38, 68, 205, 0.12);
+      }
+
+      body.dark .tafsir-actions {
+        background: rgba(38, 68, 205, 0.13);
+        border-color: rgba(99, 130, 246, 0.2);
+      }
+
+      .tafsir-actions .tafsir-select-wrap {
+        order: 1;
+        /* right */
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+      }
+
+      /* divider replaced by the gap between the two pills */
+      .tafsir-actions__divider {
+        display: none;
+      }
+
+      .tafsir-actions .mukhtasar-beam {
+        order: 2;
+        /* left */
+        flex: 1 1 0;
+        width: auto;
+        min-width: 0;
+        margin: 0;
+        /* keep the beam ring hugging the compact radius below */
+        --mukhtasar-r: 0.85rem;
+      }
+
+      .tafsir-actions #compareTafsirsBtn {
+        margin: 0;
+        padding: 0.6rem 0.5rem;
+        border-radius: 0.85rem;
+        font-size: 0.9rem;
+      }
+
+      /* dropdown reads as a crisp white pill with an accent chevron */
+      .tafsir-actions .tafsir-dd__trigger {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 0.85rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+        color: #1e293b;
+        font-weight: 800;
+      }
+
+      body.dark .tafsir-actions .tafsir-dd__trigger {
+        background: rgba(30, 41, 59, 0.96);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #e2e8f0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
+
+      .tafsir-actions .tafsir-dd__chevron {
+        color: #2644cd;
+      }
+
+      body.dark .tafsir-actions .tafsir-dd__chevron {
+        color: #60a5fa;
+      }
+    }
+
+    #tafsirSelect {
+      text-align: center;
+      text-align-last: center;
+      padding-left: 18px;
+      padding-inline-start: 18px;
+    }
+
+    /* Custom tafsir dropdown — replaces the native <select> popup (which the OS
+       renders tiny/detached and can't be styled). The native <select> stays in
+       the DOM (hidden) as the state source. */
+    .tafsir-select-native-hidden {
+      display: none !important;
+    }
+
+    .tafsir-dd {
+      position: relative;
+      width: 100%;
+    }
+
+    .tafsir-dd__trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      border-radius: 1rem;
+      padding: 0.75rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #0f172a;
+      cursor: pointer;
+    }
+
+    body.dark .tafsir-dd__trigger {
+      background: rgba(30, 41, 59, 0.9);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+    }
+
+    .tafsir-dd__chevron {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      transition: transform .2s ease;
+    }
+
+    .tafsir-dd--open .tafsir-dd__chevron {
+      transform: rotate(180deg);
+    }
+
+    .tafsir-dd__menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 60;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      /* at least as wide as the trigger, but grow to fit the longest name */
+      min-width: 100%;
+      width: max-content;
+      max-width: min(280px, 80vw);
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+      max-height: 60vh;
+      overflow: auto;
+      opacity: 0;
+      transform: translateY(-6px);
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+
+    body.dark .tafsir-dd__menu {
+      background: #1e293b;
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .tafsir-dd--open .tafsir-dd__menu {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .tafsir-dd__option {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.6;
+      color: #0f172a;
+      cursor: pointer;
+      text-align: center;
+      transition: background .12s ease, color .12s ease;
+    }
+
+    .tafsir-dd__option:hover {
+      background: rgba(11, 107, 220, 0.08);
+    }
+
+    .tafsir-dd__option[aria-selected="true"] {
+      background: rgba(11, 107, 220, 0.12);
+      color: #0b6bdc;
+    }
+
+    body.dark .tafsir-dd__option {
+      color: #f1f5f9;
+    }
+
+    body.dark .tafsir-dd__option:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    body.dark .tafsir-dd__option[aria-selected="true"] {
+      background: rgba(96, 165, 250, 0.18);
+      color: #93c5fd;
+    }
+
+    /* Desktop: slightly smaller dropdown, aligned with the مختصر button,
+       nudged right + a touch down. */
+    @media (min-width: 640px) {
+      .tafsir-dd {
+        width: 154px;
+        align-self: center;
+        transform: translate(8px, -3px);
+      }
+
+      .tafsir-dd__trigger {
+        padding: 0.8rem 1rem;
+        font-size: 0.95rem;
+      }
+    }
+
+    #compareTafsirsBtn {
+      font-size: 0.95rem;
+    }
+
+    /* Touch devices: the ayah text is tappable to play/pause its recitation */
+    @media (pointer: coarse) {
+      #tafsirAyahTag {
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+    }
+
+    /* App-only "audio needs internet" notice at the top of the Tafsir tab */
+    .tafsir-audio-msg {
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto 10px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      color: #b91c1c;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    body.dark .tafsir-audio-msg {
+      background: rgba(248, 113, 113, 0.14);
+      border-color: rgba(248, 113, 113, 0.28);
+      color: #fca5a5;
+    }
+
+    .tafsir-audio-msg[hidden] {
+      display: none;
+    }
+
+    /* "Now playing" state for the ayah text: a quick, clean settle on start —
+       no color change, no continuous motion. */
+    #tafsirAyahTag.is-playing {
+      animation: ayahPlayIn .3s ease-out;
+    }
+
+    @keyframes ayahPlayIn {
+      from {
+        opacity: .6;
+        transform: scale(.99);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #tafsirAyahTag.is-playing {
+        animation: none;
+      }
+    }
+
+    /* ============================================================
+     * Tafsir controls — static, professional solid-blue buttons
+     * (Tafsir tab only; Mushaf page untouched).
+     * ============================================================ */
+
+    /* Primary مختصر التفاسير — royal blue (#2644cd) */
+    #compareTafsirsBtn {
+      background: #2644cd;
+      border: none;
+      box-shadow: 0 2px 8px rgba(38, 68, 205, 0.34);
+      transition: background .18s ease, box-shadow .18s ease;
+    }
+
+    #compareTafsirsBtn:not(:disabled):hover {
+      background: #213bb2;
+      box-shadow: 0 4px 12px rgba(38, 68, 205, 0.4);
+    }
+
+    #compareTafsirsBtn:not(:disabled):active {
+      background: #1c3296;
+    }
+
+    #compareTafsirsBtn:disabled {
+      box-shadow: none;
+    }
+
+    /* ============================================================
+     * مختصر التفاسير — BorderBeam "Pulse Outside" glow
+     * Ported from https://github.com/Jakubantalik/border-beam
+     * (MIT License, Copyright (c) 2026 Jakub Antalik).
+     * Exact generatePulseOuterVariantCSS() output for
+     *   size="pulse-outside" colorVariant="ocean" strength={0.5}
+     * (the playground settings), instance id "mukhtasar", radius 16px
+     * (the button's rounded-2xl). Breathing runs at duration 4.6s — 2×
+     * the component default, set in src/pulse-beam.js. Site adaptations:
+     *   - both component theme presets are emitted (light as base,
+     *     body.dark/html.dark overrides) since the site theme-toggles;
+     *     each preset's values are the component's own, untouched;
+     *   - radius via --mukhtasar-r so the compact ≤640px layout
+     *     (radius .85rem) keeps the ring flush with the button;
+     *   - the core/stroke gradient list is shared via --mukhtasar-core-bg
+     *     (the generator emits the same list twice verbatim);
+     *   - breathing/hue motion + lifecycle (data-active off the button's
+     *     disabled state, glow scale, offscreen pause) live in
+     *     src/pulse-beam.js — a port of the repo's pulseDriver.ts.
+     * ============================================================ */
+    @property --bw1-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bh1-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bw2-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bh2-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bw3-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bh3-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bgh-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bop-tl-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bop-tr-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bop-bl-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bop-br-mukhtasar { syntax: "<number>"; initial-value: 1; inherits: true; }
+    @property --bx1-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --by1-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --bx2-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --by2-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --bx3-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --by3-mukhtasar { syntax: "<length>"; initial-value: 0px; inherits: true; }
+    @property --beam-opacity-mukhtasar { syntax: "<number>"; initial-value: 0; inherits: true; }
+    @property --beam-hue-mukhtasar { syntax: "<angle>"; initial-value: 0deg; inherits: true; }
+
+    .mukhtasar-beam {
+      display: flex;
+      width: 100%;
+      --mukhtasar-r: 16px;
+      --beam-strength: 0.5;
+      /* PULSE_OUTER_CORE × ocean palette — shared by ::after (stroke ring)
+         and ::before (blurred core). Gradient geometry breathes via the
+         driver-set --bw/--bh/--bx/--by/--bgh vars; per-quadrant opacity
+         via --bop-*; --pulse-glow-sx/sy scale the fixed-pixel reference
+         geometry (350×140) to the real button box. */
+      --mukhtasar-core-bg:
+        radial-gradient(ellipse calc(80px * var(--bw1-mukhtasar) * var(--pulse-glow-sx, 1)) calc(19px * var(--bh1-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(27% + var(--bx1-mukhtasar)) calc(0% + var(--by1-mukhtasar)), rgba(100, 80, 220, var(--bop-tl-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(74px * var(--bw2-mukhtasar) * var(--pulse-glow-sx, 1)) calc(11px * var(--bh2-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(73% + var(--bx2-mukhtasar)) calc(-1% + var(--by2-mukhtasar)), rgba(140, 100, 240, var(--bop-tr-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(15px * var(--bw3-mukhtasar) * var(--pulse-glow-sx, 1)) calc(44px * var(--bh3-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(100% + var(--bx3-mukhtasar)) calc(33% + var(--by3-mukhtasar)), rgba(90, 110, 230, var(--bop-tr-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(19px * var(--bw1-mukhtasar) * var(--pulse-glow-sx, 1)) calc(38px * var(--bh1-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(101% + var(--bx1-mukhtasar)) calc(72% + var(--by1-mukhtasar)), rgba(130, 70, 255, var(--bop-br-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(84px * var(--bw2-mukhtasar) * var(--pulse-glow-sx, 1)) calc(13px * var(--bh2-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(67% + var(--bx2-mukhtasar)) calc(100% + var(--by2-mukhtasar)), rgba(120, 80, 255, var(--bop-br-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(60px * var(--bw3-mukhtasar) * var(--pulse-glow-sx, 1)) calc(21px * var(--bh3-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(24% + var(--bx3-mukhtasar)) calc(101% + var(--by3-mukhtasar)), rgba(60, 120, 255, var(--bop-bl-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(17px * var(--bw1-mukhtasar) * var(--pulse-glow-sx, 1)) calc(40px * var(--bh1-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(0% + var(--bx1-mukhtasar)) calc(60% + var(--by1-mukhtasar)), rgba(80, 100, 200, var(--bop-bl-mukhtasar)), transparent),
+        radial-gradient(ellipse calc(13px * var(--bw2-mukhtasar) * var(--pulse-glow-sx, 1)) calc(32px * var(--bh2-mukhtasar) * var(--bgh-mukhtasar) * var(--pulse-glow-sy, 1)) at calc(-1% + var(--bx2-mukhtasar)) calc(28% + var(--by2-mukhtasar)), rgba(50, 140, 220, var(--bop-tl-mukhtasar)), transparent);
+      /* PULSE_OUTER_BLOOM × ocean, frozen at the light-theme breathing
+         time-average (op=0 → alpha 1). Painted once and cached by the
+         compositor; only the cheap hue-rotate varies per frame. */
+      --mukhtasar-bloom-bg:
+        radial-gradient(ellipse calc(110px * var(--pulse-glow-sx, 1)) calc(30px * var(--pulse-glow-sy, 1)) at 27% 3%, rgba(100, 80, 220, 1), transparent),
+        radial-gradient(ellipse calc(100px * var(--pulse-glow-sx, 1)) calc(20px * var(--pulse-glow-sy, 1)) at 73% 1%, rgba(140, 100, 240, 1), transparent),
+        radial-gradient(ellipse calc(26px * var(--pulse-glow-sx, 1)) calc(62px * var(--pulse-glow-sy, 1)) at 100% 33%, rgba(90, 110, 230, 1), transparent),
+        radial-gradient(ellipse calc(30px * var(--pulse-glow-sx, 1)) calc(56px * var(--pulse-glow-sy, 1)) at 101% 72%, rgba(130, 70, 255, 1), transparent),
+        radial-gradient(ellipse calc(120px * var(--pulse-glow-sx, 1)) calc(22px * var(--pulse-glow-sy, 1)) at 67% 99%, rgba(120, 80, 255, 1), transparent),
+        radial-gradient(ellipse calc(88px * var(--pulse-glow-sx, 1)) calc(32px * var(--pulse-glow-sy, 1)) at 24% 99%, rgba(60, 120, 255, 1), transparent),
+        radial-gradient(ellipse calc(28px * var(--pulse-glow-sx, 1)) calc(58px * var(--pulse-glow-sy, 1)) at 0% 60%, rgba(80, 100, 200, 1), transparent);
+    }
+
+    /* Dark frozen bloom alpha: 1 - op/2 with op=.46 → 0.77 */
+    body.dark .mukhtasar-beam,
+    html.dark .mukhtasar-beam {
+      --mukhtasar-bloom-bg:
+        radial-gradient(ellipse calc(110px * var(--pulse-glow-sx, 1)) calc(30px * var(--pulse-glow-sy, 1)) at 27% 3%, rgba(100, 80, 220, 0.77), transparent),
+        radial-gradient(ellipse calc(100px * var(--pulse-glow-sx, 1)) calc(20px * var(--pulse-glow-sy, 1)) at 73% 1%, rgba(140, 100, 240, 0.77), transparent),
+        radial-gradient(ellipse calc(26px * var(--pulse-glow-sx, 1)) calc(62px * var(--pulse-glow-sy, 1)) at 100% 33%, rgba(90, 110, 230, 0.77), transparent),
+        radial-gradient(ellipse calc(30px * var(--pulse-glow-sx, 1)) calc(56px * var(--pulse-glow-sy, 1)) at 101% 72%, rgba(130, 70, 255, 0.77), transparent),
+        radial-gradient(ellipse calc(120px * var(--pulse-glow-sx, 1)) calc(22px * var(--pulse-glow-sy, 1)) at 67% 99%, rgba(120, 80, 255, 0.77), transparent),
+        radial-gradient(ellipse calc(88px * var(--pulse-glow-sx, 1)) calc(32px * var(--pulse-glow-sy, 1)) at 24% 99%, rgba(60, 120, 255, 0.77), transparent),
+        radial-gradient(ellipse calc(28px * var(--pulse-glow-sx, 1)) calc(58px * var(--pulse-glow-sy, 1)) at 0% 60%, rgba(80, 100, 200, 0.77), transparent);
+    }
+
+    /* The button fills the wrapper (which is now the flex/grid item in the
+       row layouts). !important beats `.tafsir-compare-btn { width: 150px }`. */
+    .mukhtasar-beam > #compareTafsirsBtn {
+      width: 100% !important;
+    }
+
+    [data-beam="mukhtasar"] {
+      position: relative;
+      border-radius: var(--mukhtasar-r);
+      overflow: visible;
+      isolation: isolate;
+    }
+
+    [data-beam="mukhtasar"][data-active] {
+      animation: beam-fade-in-mukhtasar 0.6s ease forwards;
+    }
+
+    [data-beam="mukhtasar"][data-fading] {
+      animation: beam-fade-out-mukhtasar 0.5s ease forwards;
+    }
+
+    /* Crisp 1px colored stroke hugging the outer edge (masked ring). */
+    [data-beam="mukhtasar"][data-active]::after,
+    [data-beam="mukhtasar"][data-fading]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: var(--mukhtasar-r);
+      padding: 1px;
+      clip-path: inset(0 round var(--mukhtasar-r));
+      background: var(--mukhtasar-core-bg);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      pointer-events: none;
+      z-index: 2;
+      will-change: opacity, filter;
+      opacity: calc(var(--beam-opacity-mukhtasar) * 1.96 * var(--beam-strength, 1));
+      filter: hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.70) saturate(0.60);
+    }
+
+    body.dark [data-beam="mukhtasar"][data-active]::after,
+    body.dark [data-beam="mukhtasar"][data-fading]::after,
+    html.dark [data-beam="mukhtasar"][data-active]::after,
+    html.dark [data-beam="mukhtasar"][data-fading]::after {
+      opacity: calc(var(--beam-opacity-mukhtasar) * 0.94 * var(--beam-strength, 1));
+      filter: hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.90) saturate(1.20);
+    }
+
+    /* Colorful core radiating OUTWARD behind the opaque button (z:-1). */
+    [data-beam="mukhtasar"][data-active]::before,
+    [data-beam="mukhtasar"][data-fading]::before {
+      content: "";
+      position: absolute;
+      inset: -10px;
+      z-index: -1;
+      border-radius: calc(var(--mukhtasar-r) + 10px);
+      background: var(--mukhtasar-core-bg);
+      transform: scale(0.95, 0.9);
+      pointer-events: none;
+      will-change: opacity, filter;
+      opacity: calc(var(--beam-opacity-mukhtasar) * 1.04 * var(--beam-strength, 1));
+      filter: blur(6px) hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.70) saturate(0.60);
+    }
+
+    body.dark [data-beam="mukhtasar"][data-active]::before,
+    body.dark [data-beam="mukhtasar"][data-fading]::before,
+    html.dark [data-beam="mukhtasar"][data-active]::before,
+    html.dark [data-beam="mukhtasar"][data-fading]::before {
+      opacity: calc(var(--beam-opacity-mukhtasar) * 0.34 * var(--beam-strength, 1));
+      filter: blur(3px) hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.90) saturate(1.20);
+    }
+
+    /* Soft wide halo (heaviest blur — gradients frozen, hue-only motion). */
+    [data-beam="mukhtasar"] [data-beam-bloom] {
+      display: none;
+      position: absolute;
+      inset: -30px;
+      z-index: -1;
+      border-radius: calc(var(--mukhtasar-r) + 30px);
+      background: var(--mukhtasar-bloom-bg);
+      transform: scale(0.95, 0.9);
+      pointer-events: none;
+      will-change: transform;
+      opacity: 0;
+    }
+
+    [data-beam="mukhtasar"][data-active] [data-beam-bloom],
+    [data-beam="mukhtasar"][data-fading] [data-beam-bloom] {
+      display: block;
+      opacity: calc(var(--beam-opacity-mukhtasar) * 0.42 * var(--beam-strength, 1));
+      filter: blur(15px) hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.70) saturate(0.60);
+    }
+
+    body.dark [data-beam="mukhtasar"][data-active] [data-beam-bloom],
+    body.dark [data-beam="mukhtasar"][data-fading] [data-beam-bloom],
+    html.dark [data-beam="mukhtasar"][data-active] [data-beam-bloom],
+    html.dark [data-beam="mukhtasar"][data-fading] [data-beam-bloom] {
+      opacity: calc(var(--beam-opacity-mukhtasar) * 0.30 * var(--beam-strength, 1));
+      filter: blur(22.5px) hue-rotate(var(--beam-hue-mukhtasar)) brightness(1.90) saturate(1.20);
+    }
+
+    @keyframes beam-fade-in-mukhtasar {
+      to { --beam-opacity-mukhtasar: 1; }
+    }
+
+    @keyframes beam-fade-out-mukhtasar {
+      from { --beam-opacity-mukhtasar: 1; }
+      to { --beam-opacity-mukhtasar: 0; }
+    }
+
+    [data-beam="mukhtasar"][data-paused],
+    [data-beam="mukhtasar"][data-paused]::after,
+    [data-beam="mukhtasar"][data-paused]::before,
+    [data-beam="mukhtasar"][data-paused] [data-beam-bloom] {
+      animation-play-state: paused !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      [data-beam="mukhtasar"][data-active],
+      [data-beam="mukhtasar"][data-fading],
+      [data-beam="mukhtasar"][data-active]::after,
+      [data-beam="mukhtasar"][data-fading]::after,
+      [data-beam="mukhtasar"][data-active]::before,
+      [data-beam="mukhtasar"][data-fading]::before,
+      [data-beam="mukhtasar"][data-active] [data-beam-bloom],
+      [data-beam="mukhtasar"][data-fading] [data-beam-bloom] {
+        animation: none !important;
+      }
+    }
+
+    /* Audio toolbar buttons (⚙ / ▶) — INHERIT from public/mushaf.css's base
+       .mushaf-toolbar__btn so they look and behave identically to the Tadabbur
+       (Mushaf) toolbar: 38×38, neutral var(--card2), hover tint via
+       --accent-soft, gear rotation on hover, green tint when playing. The
+       previous Tafsir-specific solid-blue + static-gear overrides created a
+       visual divergence from Tadabbur and are no longer needed.
+
+       Desktop: keep the toolbar vertical alignment + slight nudge against the
+       taller pills next to it, but NOT the button-size override (38×38 stays). */
+    @media (min-width: 640px) {
+      .tafsir-audio-toolbar {
+        align-self: center;
+        transform: translate(8px, -2px);
+      }
+    }
+
+    /* ============================================================
+     * Tafsir toolbar dropdowns — nuclear stacking + opacity fix
+     *
+     * Root cause: .mushaf-toolbar__dropdown has opacity:0→1 (animated),
+     * backdrop-filter:blur, and rgba(--card) background. The parent
+     * #tafsirSection (.glass) ALSO has backdrop-filter. Sibling #tafsirBox /
+     * #tafsirAyahTag spawn transient stacking contexts (transform + opacity
+     * animations). The combination made the dropdown panel partially
+     * transparent — tafsir text visibly bled through.
+     *
+     * Applied with !important and at every viewport so nothing inherited
+     * from the base mushaf-toolbar__dropdown rule can overpower it:
+     *  - Solid bg color (no rgba, no var, no gradient).
+     *  - backdrop-filter completely off.
+     *  - Open state uses visibility, not opacity, so there's no mid-fade
+     *    semi-transparent frame.
+     *  - z-index 99999 on dropdowns + their wraps so they win against
+     *    every sibling stacking context.
+     *  - isolation:isolate on each dropdown so the panel always composites
+     *    as its own group regardless of parent backdrop-filter quirks.
+     * ============================================================ */
+
+    #tafsirVolDropdown,
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
+      background-color: #ffffff !important;
+      background-image: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      opacity: 1 !important;
+      z-index: 99999 !important;
+      isolation: isolate !important;
+      transition: transform 180ms ease !important;
+    }
+
+    html.dark #tafsirVolDropdown,
+    body.dark #tafsirVolDropdown,
+    html.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown],
+    body.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
+      background-color: #1e293b !important;
+    }
+
+    /* Closed state via visibility — no opacity fade that could ever
+       expose content behind the panel for even a frame. */
+    #tafsirVolDropdown:not(.mushaf-toolbar__dropdown--open),
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown]:not(.mushaf-toolbar__dropdown--open) {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    #tafsirVolDropdown.mushaf-toolbar__dropdown--open,
+    #tafsirSettingsWrap > [data-tafsir-settings-dropdown].mushaf-toolbar__dropdown--open {
+      visibility: visible !important;
+      pointer-events: auto !important;
+    }
+
+    /* Wraps + the whole toolbar row need to be above the tafsir content
+       row beneath them — because tafsir-top-row and the mt-6 (compare panel /
+       ayah nav / tafsir box) are siblings with z-index:auto, the later
+       (mt-6) paints on top of the earlier (top-row) by document order.
+       Lift the row out of that order. */
+    #tafsirPlayWrap,
+    #tafsirSettingsWrap {
+      z-index: 99999 !important;
+    }
+
+    #tafsirSection .tafsir-top-row {
+      position: relative;
+      z-index: 50;
+    }
+
+    .compare-scroll {
+      max-height: 60vh;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+
+    #tafsirComparePanel.is-expanded .compare-scroll {
+      max-height: none;
+      overflow: visible;
+    }
+
+    #tafsirCompareContent {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .fade-in {
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity .24s ease, transform .24s ease;
+    }
+
+    /* Tafsir title + info button. The description is now a click-to-open
+       popover anchored to this row instead of always-visible text. */
+    .tafsir-title-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tafsir-desc-btn {
+      display: inline-grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted, #64748b);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color .15s ease, background .15s ease;
+    }
+
+    .tafsir-desc-btn:hover,
+    .tafsir-desc-btn[aria-expanded="true"] {
+      color: var(--accent-strong, #0b6bdc);
+      background: rgba(148, 163, 184, 0.14);
+    }
+
+    .tafsir-desc-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    #tafsirDesc.tafsir-desc-pop {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 50;
+      max-width: min(280px, 78vw);
+      width: max-content;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--card, #ffffff);
+      border: 1px solid var(--line, rgba(15, 23, 42, 0.1));
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1.6;
+      color: var(--muted, #64748b);
+      text-align: right;
+      white-space: normal;
+      opacity: 0;
+      transform: translateY(-4px);
+      pointer-events: none;
+      transition: opacity .15s ease, transform .15s ease;
+    }
+
+    #tafsirDesc.tafsir-desc-pop.is-open {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .fade-in.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ====================================================================
+     * Offline downloads panel (APP ONLY — button revealed by JS via isApp())
+     * ==================================================================== */
+
+    /* App-only header actions cluster (offline + feedback buttons). Empty on
+       the website — both children start display:none and are revealed by their
+       respective panel modules behind isApp(). */
+    .header-app-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .offline-menu-btn,
+    .feedback-menu-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff, #f8fafc);
+      border: 1px solid rgba(15, 23, 42, .12);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+      color: #334155;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+
+    /* Hover styles are the visual INVERSE of the normal styles (dark in
+     * light mode, light in dark mode). On touch devices :hover sticks
+     * after a tap until the next touch elsewhere, so the post-tap button
+     * froze in this inverse state — looking like a "selected in opposite
+     * theme color" highlight. Gating hover to @media (hover: hover) ensures
+     * only true pointer devices (mouse, trackpad) get hover effects; touch
+     * never sticks. Same pattern as .theme-toggle:hover above.
+     * Covers all three header buttons — #notesMenuBtn reuses .offline-menu-btn. */
+    @media (hover: hover) {
+      .offline-menu-btn:hover,
+      .feedback-menu-btn:hover {
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border-color: rgba(15, 23, 42, .2);
+        color: #f1f5f9;
+        transform: translateY(-1px);
+      }
+    }
+
+    body.dark .offline-menu-btn,
+    body.dark .feedback-menu-btn {
+      background: linear-gradient(135deg, #232933, #1f252e);
+      border-color: rgba(148, 163, 184, .2);
+      color: #e2e8f0;
+    }
+
+    @media (hover: hover) {
+      body.dark .offline-menu-btn:hover,
+      body.dark .feedback-menu-btn:hover {
+        background: linear-gradient(135deg, #ffffff, #f1f5f9);
+        border-color: rgba(148, 163, 184, .3);
+        color: #1e293b;
+      }
+    }
+
+    .offline-menu-btn svg,
+    .feedback-menu-btn svg { width: 18px; height: 18px; }
+
+    /* Backdrop + centered card */
+    .offline-sheet {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      direction: rtl;
+    }
+
+    .offline-sheet--open { display: flex; }
+
+    .offline-sheet__backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, .42);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      animation: offline-sheet-fade 180ms ease forwards;
+    }
+
+    .offline-sheet__card {
+      position: relative;
+      width: min(440px, 100%);
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+      background: rgba(247, 251, 255, .96);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 22px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
+      animation: offline-sheet-pop 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    body.dark .offline-sheet__card {
+      background: rgba(35, 41, 51, .98);
+      border-color: rgba(148, 163, 184, .18);
+      color: #e2e8f0;
+    }
+
+    @keyframes offline-sheet-fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes offline-sheet-pop {
+      from { opacity: 0; transform: translateY(8px) scale(.98) }
+      to { opacity: 1; transform: translateY(0) scale(1) }
+    }
+
+    .offline-sheet__close {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      border: none;
+      background: rgba(15, 23, 42, .06);
+      color: #475569;
+      cursor: pointer;
+      transition: background .15s ease;
+    }
+
+    .offline-sheet__close:hover { background: rgba(15, 23, 42, .12); }
+    .offline-sheet__close svg { width: 16px; height: 16px; }
+
+    body.dark .offline-sheet__close {
+      background: rgba(148, 163, 184, .14);
+      color: #cbd5e1;
+    }
+
+    body.dark .offline-sheet__close:hover { background: rgba(148, 163, 184, .24); }
+
+    .offline-sheet__head { text-align: center; margin-bottom: 18px; padding-top: 4px; }
+
+    .offline-sheet__icon {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 10px;
+      border-radius: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(29, 143, 255, .15), rgba(29, 143, 255, .05));
+      color: #1d8fff;
+    }
+
+    .offline-sheet__icon svg { width: 28px; height: 28px; }
+
+    .offline-sheet__title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+    }
+
+    .offline-sheet__desc {
+      margin: 6px 0 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted, #64748b);
+      line-height: 1.7;
+    }
+
+    .offline-sheet__rows { display: flex; flex-direction: column; gap: 12px; }
+
+    .offline-row {
+      background: rgba(255, 255, 255, .7);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 16px;
+      padding: 14px 14px 14px;
+    }
+
+    body.dark .offline-row {
+      background: rgba(255, 255, 255, .03);
+      border-color: rgba(148, 163, 184, .16);
+    }
+
+    .offline-row__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .offline-row__title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+    }
+
+    .offline-row__size {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted, #64748b);
+      background: rgba(15, 23, 42, .05);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    body.dark .offline-row__size { background: rgba(148, 163, 184, .14); }
+
+    .offline-row__desc {
+      font-size: 12.5px;
+      color: var(--muted, #64748b);
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .offline-row__status { min-height: 38px; }
+
+    /* States */
+    .offline-row__progress { display: flex; flex-direction: column; gap: 8px; }
+    .offline-row__progress .mushaf-download__bar { margin: 0; }
+    .offline-row__progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .offline-row__progress-msg {
+      color: var(--text, #0b1326);
+      font-weight: 600;
+      line-height: 1.5;
+      min-height: 1.5em;
+      transition: opacity .25s ease;
+    }
+    .offline-row__progress-pct {
+      color: var(--muted, #64748b);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .03em;
+    }
+
+    .offline-row__pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: flex-start;
+    }
+    .offline-row__pill svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .offline-row__pill--warn {
+      background: rgba(245, 158, 11, .12);
+      color: #b45309;
+    }
+    body.dark .offline-row__pill--warn { background: rgba(245, 158, 11, .14); color: #fbbf24; }
+    .offline-row__pill--err {
+      background: rgba(239, 68, 68, .12);
+      color: #b91c1c;
+      justify-content: space-between;
+    }
+    body.dark .offline-row__pill--err { background: rgba(239, 68, 68, .14); color: #fca5a5; }
+
+    .offline-row__done {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .offline-row__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, .14);
+      color: #047857;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+    body.dark .offline-row__badge { background: rgba(16, 185, 129, .16); color: #6ee7b7; }
+    .offline-row__badge svg { width: 14px; height: 14px; }
+
+    .offline-row__done-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .offline-row__confirm {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(245, 158, 11, .08);
+      border: 1px solid rgba(245, 158, 11, .25);
+    }
+    body.dark .offline-row__confirm { background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .3); }
+    .offline-row__confirm-text {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text, #0b1326);
+      line-height: 1.6;
+    }
+    .offline-row__confirm-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+
+    /* Buttons */
+    .offline-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+    }
+    .offline-btn svg { width: 15px; height: 15px; }
+
+    .offline-btn--primary {
+      width: 100%;
+      background: linear-gradient(135deg, #1d8fff, #1976d2);
+      color: #ffffff;
+      box-shadow: 0 4px 10px rgba(29, 143, 255, .26);
+    }
+    .offline-btn--primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(29, 143, 255, .32);
+    }
+
+    .offline-btn--ghost {
+      background: rgba(15, 23, 42, .05);
+      color: var(--text, #0b1326);
+    }
+    .offline-btn--ghost:hover { background: rgba(15, 23, 42, .1); }
+    body.dark .offline-btn--ghost {
+      background: rgba(148, 163, 184, .12);
+      color: #e2e8f0;
+    }
+    body.dark .offline-btn--ghost:hover { background: rgba(148, 163, 184, .2); }
+
+    .offline-btn--danger {
+      background: rgba(239, 68, 68, .15);
+      color: #b91c1c;
+    }
+    .offline-btn--danger:hover { background: rgba(239, 68, 68, .22); }
+    body.dark .offline-btn--danger { background: rgba(239, 68, 68, .2); color: #fecaca; }
+    body.dark .offline-btn--danger:hover { background: rgba(239, 68, 68, .28); }
+
+    .offline-btn--danger-text { color: #b91c1c; }
+    body.dark .offline-btn--danger-text { color: #fecaca; }
+
+    /* ---------- Feedback section (app-only, inside offline sheet) ---------- */
+    .feedback-section {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(15, 23, 42, .08);
+    }
+    body.dark .feedback-section { border-top-color: rgba(148, 163, 184, .18); }
+
+    .feedback-section__head { margin-bottom: 12px; }
+    .feedback-section__title {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text, #0b1326);
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    }
+    body.dark .feedback-section__title { color: #e2e8f0; }
+    .feedback-section__desc {
+      margin: 0;
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.55;
+    }
+    body.dark .feedback-section__desc { color: #94a3b8; }
+
+    .feedback-form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+    .feedback-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
+    .feedback-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    }
+    body.dark .feedback-label { color: #cbd5e1; }
+    .feedback-optional { color: #94a3b8; font-weight: 500; }
+    body.dark .feedback-optional { color: #64748b; }
+
+    .feedback-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(15, 23, 42, .12);
+      background: #ffffff;
+      color: var(--text, #0b1326);
+      font-size: 14px;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      outline: none;
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .feedback-input:focus {
+      border-color: #1d8fff;
+      box-shadow: 0 0 0 3px rgba(29, 143, 255, .15);
+    }
+    body.dark .feedback-input {
+      background: rgba(15, 23, 42, .35);
+      color: #e2e8f0;
+      border-color: rgba(148, 163, 184, .25);
+    }
+    body.dark .feedback-input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 3px rgba(96, 165, 250, .2);
+    }
+
+    .feedback-textarea {
+      resize: vertical;
+      min-height: 88px;
+      max-height: 220px;
+      line-height: 1.55;
+    }
+
+    .feedback-counter {
+      align-self: flex-start;
+      font-size: 11px;
+      color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+    body.dark .feedback-counter { color: #64748b; }
+
+    .feedback-honeypot {
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .feedback-submit { margin-top: 4px; }
+    .feedback-submit:disabled { opacity: .65; cursor: default; transform: none; box-shadow: 0 4px 10px rgba(29, 143, 255, .18); }
+
+    .feedback-status {
+      min-height: 0;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      padding: 0;
+      border-radius: 12px;
+      transition: padding 120ms ease;
+    }
+    .feedback-status:empty { display: none; }
+    .feedback-status--info { padding: 8px 10px; background: rgba(29, 143, 255, .08); color: #1976d2; }
+    .feedback-status--ok { padding: 8px 10px; background: rgba(34, 197, 94, .12); color: #15803d; }
+    .feedback-status--err { padding: 8px 10px; background: rgba(239, 68, 68, .12); color: #b91c1c; }
+    body.dark .feedback-status--info { background: rgba(96, 165, 250, .14); color: #bfdbfe; }
+    body.dark .feedback-status--ok { background: rgba(34, 197, 94, .18); color: #bbf7d0; }
+    body.dark .feedback-status--err { background: rgba(239, 68, 68, .2); color: #fecaca; }
+
+    /* --- Notes editor (sheet contents) --- */
+    .notes-editor { display: flex; flex-direction: column; gap: 10px; }
+    .notes-editor__ayah {
+      font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+      font-size: 14px; color: #475569; background: rgba(15, 23, 42, .04);
+      padding: 10px 12px; border-radius: 12px; line-height: 1.7;
+      max-height: 78px; overflow: auto; text-align: justify;
+    }
+    body.dark .notes-editor__ayah { background: rgba(148, 163, 184, .1); color: #cbd5e1; }
+    .notes-editor__textarea { min-height: 110px; max-height: 240px; }
+    .notes-editor__counter {
+      align-self: flex-start; font-size: 11px; color: #94a3b8;
+      font-variant-numeric: tabular-nums;
+    }
+    body.dark .notes-editor__counter { color: #64748b; }
+    .notes-editor__actions {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;
+      justify-content: flex-end;
+    }
+    .notes-editor__actions .offline-btn { min-width: 90px; }
+    .notes-editor__hint {
+      font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 6px;
+    }
+    body.dark .notes-editor__hint { color: #64748b; }
+
+    /* --- Notes list (sheet contents) --- */
+    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; padding-inline-end: 2px; }
+    .notes-list__row {
+      background: rgba(15, 23, 42, .04); border: 1px solid rgba(15, 23, 42, .06);
+      border-radius: 14px; padding: 12px; cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+    .notes-list__row:hover { background: rgba(29, 143, 255, .08); }
+    body.dark .notes-list__row {
+      background: rgba(148, 163, 184, .08); border-color: rgba(148, 163, 184, .14);
+    }
+    body.dark .notes-list__row:hover { background: rgba(96, 165, 250, .15); }
+    .notes-list__row-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; margin-bottom: 6px;
+    }
+    .notes-list__row-ref { font-weight: 800; font-size: 13.5px; color: #0f172a; }
+    body.dark .notes-list__row-ref { color: #e2e8f0; }
+    .notes-list__row-time { font-size: 11px; color: #94a3b8; }
+    .notes-list__row-preview {
+      font-size: 13px; color: #475569; line-height: 1.55;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    body.dark .notes-list__row-preview { color: #cbd5e1; }
+    .notes-list__row-actions {
+      display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end;
+    }
+    .notes-list__row-actions .offline-btn { padding: 4px 10px; font-size: 12px; min-width: 60px; }
+    .notes-list__empty {
+      text-align: center; color: #94a3b8; font-size: 13.5px; font-weight: 600;
+      padding: 28px 8px; line-height: 1.7;
+    }
+    body.dark .notes-list__empty { color: #64748b; }
+    .notes-list__hint {
+      font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 8px;
+    }
+    body.dark .notes-list__hint { color: #64748b; }
+
+    /* --- First-launch offline tooltip (neutral grey, not blue) --- */
+    .m7-tip {
+      position: fixed;
+      z-index: 1100;
+      transform: translateX(-50%) translateY(-6px);
+      background: #f8fafc;
+      color: #334155;
+      border-radius: 12px;
+      padding: 8px 12px 8px 10px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14), 0 1px 4px rgba(15, 23, 42, 0.05);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+      font-size: 13px; font-weight: 600; line-height: 1.2;
+      opacity: 0;
+      transition: opacity 220ms ease, transform 220ms ease;
+      pointer-events: auto;
+      max-width: calc(100vw - 16px);
+    }
+    .m7-tip--show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    body.dark .m7-tip {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.16);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+    .m7-tip__text { color: #334155; font-weight: 600; white-space: nowrap; }
+    body.dark .m7-tip__text { color: #cbd5e1; }
+    .m7-tip__arrow {
+      position: absolute;
+      top: -5px;
+      left: 50%;                                       /* JS may override per-position */
+      transform: translateX(-50%) rotate(45deg);
+      width: 10px; height: 10px;
+      background: #f8fafc;
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+      border-left: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 2px;
+    }
+    body.dark .m7-tip__arrow {
+      background: #1e293b;
+      border-top-color: rgba(148, 163, 184, 0.16);
+      border-left-color: rgba(148, 163, 184, 0.16);
+    }
+    .m7-tip__close {
+      width: 20px; height: 20px;
+      border: 0; background: transparent; padding: 0;
+      color: #94a3b8;
+      display: grid; place-items: center;
+      border-radius: 50%; cursor: pointer;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .m7-tip__close:hover { background: rgba(15, 23, 42, 0.06); color: #475569; }
+    body.dark .m7-tip__close { color: #94a3b8; }
+    body.dark .m7-tip__close:hover { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; }
+    .m7-tip__close svg { width: 13px; height: 13px; }
+
+    /* ── App-only native-feel lockdown ──────────────────────────────
+       Gated to html.is-app (set before first paint by the head script),
+       so the website is completely unaffected. This inline copy loads last,
+       so it wins the cascade; public/styles.css mirrors it.
+       • touch-action: manipulation → no double-tap-to-zoom and no legacy
+         300ms tap delay (panning/scrolling unaffected; the viewport meta
+         disables pinch-zoom).
+       • user-select / -webkit-touch-callout: none → no native text selection
+         and no iOS long-press copy/callout bubble anywhere. The custom
+         long-press copy menu is pure JS + navigator.clipboard, so it keeps
+         working — and is MORE reliable without the native bubble competing.
+       • Editable fields opt back in so users can still type/select their own
+         input (surah search, ayah number, AI question, feedback form). */
+    html.is-app,
+    html.is-app body {
+      touch-action: manipulation;
+    }
+    html.is-app,
+    html.is-app * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html.is-app input,
+    html.is-app textarea,
+    html.is-app select,
+    html.is-app [contenteditable="true"],
+    html.is-app [contenteditable=""] {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* ═══════ TEST — Mushaf ayah faux-bold (Option 2) — DELETE THIS BLOCK TO REVERT ═══════
+       Thin synthetic bold on ayah TEXT ONLY, app-only (authoritative copy; this
+       inline <style> loads last so it wins). -webkit-text-stroke is paint-only
+       (no glyph-metric change), so it canNOT break the nowrap exact-page layout —
+       only the visual diacritic thickness is being judged. paint-order:stroke
+       draws the stroke UNDER the fill so glyph counters stay open. Scope excludes
+       ayah numbers (.mushaf-end), bismillah (outside .mushaf-ayah), surah headers,
+       and all UI. Mirrored in public/styles.css + public/mushaf.css. Isolated from
+       commit b4004e5 — to revert, delete this block in all three files (then
+       optionally apply Option 3, darker ayah text). */
+    html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
+      -webkit-text-stroke: 0.25px currentColor;
+      paint-order: stroke;
+    }
+    /* ═══════ END TEST block ═══════ */
+  </style>
+  <script type="module" crossorigin src="/assets/index-D5rnC_2S.js"></script>
+</head>
+
+<body>
+  <div id="netBadge" class="hidden">بدون إنترنت</div>
+  <!-- Minimal top bar -->
+  <header class="site-header sticky top-0 z-40 border-b border-black/5">
+    <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
+      <!-- App-only action buttons (offline downloads + feedback). Empty wrapper
+           on the website — both buttons start display:none and are revealed by
+           their respective panel modules behind isApp(). -->
+      <div class="header-app-actions">
+        <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
+          </svg>
+        </button>
+        <button id="feedbackMenuBtn" type="button" class="feedback-menu-btn"
+          style="display:none;" aria-label="إرسال ملاحظة">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/>
+          </svg>
+        </button>
+        <button id="notesMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="تدبرياتي">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
+          </svg>
+        </button>
+      </div>
+      <button id="themeToggle" type="button"
+        class="theme-toggle px-4 py-2 rounded-2xl border shadow-sm font-extrabold text-sm">فاتح</button>
+      <span id="themeLabel" class="sr-only">theme</span>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-5xl px-4">
+    <!-- Hero / Manual search -->
+    <section class="pt-14 pb-10 text-center">
+      <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900">محمديات</h1>
+      <p class="mt-3 text-slate-500 font-semibold">علمٌ يُحمد، وأثرٌ يُذكر</p>
+
+      <div class="mt-8 mx-auto max-w-2xl text-center">
+        <div class="glass rounded-3xl p-4" id="searchPanel">
+          <div class="relative border-beam" data-active>
+            <input id="textSearch"
+              class="input-glass w-full bg-white/70 border border-slate-900/10 rounded-2xl px-10 py-4 outline-none focus:ring-4 focus:ring-blue-500/10 transition"
+              placeholder="اكتب حرفين فأكثر... ستظهر الآيات ذات الصلة تلقائيا" />
+            <!-- Left-corner action cluster: مسح + (Mushaf mode only) the surah
+                 selector, which mushaf.js relocates here from its toolbar at
+                 shell-build time. RTL flex ⇒ مسح (last child) is the leftmost. -->
+            <div id="searchPillActions" class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <button type="button" id="clearBtn"
+                class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition"
+                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
+            </div>
+            <div data-beam-bloom aria-hidden="true"></div>
+          </div>
+          <div id="indexStatus" class="mt-2 text-xs font-bold text-slate-500 text-center hidden" aria-live="polite">
+          </div>
+
+          <!-- Mode toggle (Tafsir ↔ Mushaf). Wired by mushaf.js -->
+          <div id="modeToggleSearchPanel" class="mode-toggle--in-search">
+            <div class="mode-toggle">
+              <button type="button" class="mode-toggle__btn" data-mode-toggle aria-label="التبديل بين تفسير وتدبّر">
+                <span class="mode-toggle__knob"></span>
+                <span class="mode-toggle__labels">
+                  <span class="mode-toggle__label mode-toggle__label--tafsir">تفسير</span>
+                  <span class="mode-toggle__label mode-toggle__label--mushaf">تدبّر</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Results area (IDs preserved) -->
+          <div class="results-shell mt-3 collapsed is-empty" id="resultsShell">
+            <button type="button" class="selected-chip w-full text-right glass rounded-2xl p-4 flex items-center gap-3"
+              id="selectedChip" aria-live="polite">
+              <div class="w-10 h-10 rounded-2xl bg-slate-900/5 grid place-items-center font-black text-slate-700"
+                id="chipIcon">✓</div>
+              <div class="flex-1 min-w-0">
+                <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
+                <div class="text-xs font-semibold text-slate-500 truncate" id="chipSnippet">—</div>
+              </div>
+              <div class="text-xs font-extrabold px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-700" id="chipAction">
+                تغيير</div>
+            </button>
+
+            <div
+              class="results results-list mt-3 rounded-2xl overflow-hidden border border-slate-900/10 bg-white/50 is-empty collapsed"
+              id="results" style="max-height:480px; overflow:auto;"></div>
+          </div>
+        </div>
+        <div class="mt-6">
+          <div class="mx-auto max-w-4xl">
+            <div id="tafsirSection" class="glass hidden rounded-3xl p-6">
+              <!-- App-only "audio needs internet" notice (top of the tab) -->
+              <div id="tafsirAudioMsg" class="tafsir-audio-msg" aria-live="polite" hidden></div>
+              <!-- Controls layout: tafsir menu up, compare centered, nav centered -->
+              <div class="w-full tafsir-top-row">
+                <div class="w-full sm:w-auto text-right tafsir-meta">
+                  <div id="tafsirHeader" class="text-xs font-extrabold text-slate-500">اختر آية من نتائج البحث</div>
+                  <div id="tafsirTitleRow" class="tafsir-title-row mt-2">
+                    <div id="tafsirTitle" class="text-xl font-extrabold tracking-tight">&mdash;</div>
+                    <button type="button" id="tafsirDescBtn" class="tafsir-desc-btn" aria-label="عن هذا التفسير"
+                      aria-expanded="false">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 16v-4" />
+                        <path d="M12 8h.01" />
+                      </svg>
+                    </button>
+                    <div id="tafsirDesc" class="tafsir-desc-pop" role="tooltip" aria-hidden="true">&mdash;</div>
+                  </div>
+                  <div id="tafsirMetaAyah" class="hidden mt-2 text-xs font-bold text-slate-500">&mdash;</div>
+                </div>
+                <div class="w-full sm:w-auto tafsir-controls">
+                  <!-- Audio toolbar: settings cog + play button (Mushaf-style) -->
+                  <div class="mushaf-toolbar tafsir-audio-toolbar" id="tafsirAudioToolbar">
+                    <div class="mushaf-toolbar__btn-wrap" id="tafsirSettingsWrap" data-tafsir-settings-wrap>
+                      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings"
+                        data-tafsir-settings-btn aria-label="إعدادات الصوت">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                          stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                      </button>
+                      <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--settings"
+                        data-tafsir-settings-dropdown>
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">القارئ</div>
+                          <div class="mushaf-settings__row mushaf-settings__row--pills" data-tafsir-settings="reciter">
+                          </div>
+                        </div>
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">طريقة التشغيل</div>
+                          <div class="mushaf-settings__row" data-tafsir-settings="audio-mode">
+                            <button type="button" class="mushaf-settings__chip" data-val="continuous">تشغيل متواصل</button>
+                            <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
+                          </div>
+                        </div>
+                        <div class="mushaf-settings__section" data-repeat-section>
+                          <div class="mushaf-settings__label">تكرار الآية</div>
+                          <div class="mushaf-settings__row" data-tafsir-settings="repeat">
+                            <button type="button" class="mushaf-settings__chip" data-val="1">بدون تكرار</button>
+                            <button type="button" class="mushaf-settings__chip" data-val="inf">تكرار</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mushaf-toolbar__btn-wrap" id="tafsirPlayWrap">
+                      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="tafsirPlayBtn"
+                        data-playing="false" aria-label="تشغيل/إيقاف">
+                        <svg id="tafsirPlayIcon" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                          <path d="M7 4.5v15a.75.75 0 0 0 1.15.633l12-7.5a.75.75 0 0 0 0-1.266l-12-7.5A.75.75 0 0 0 7 4.5z" />
+                        </svg>
+                        <svg id="tafsirPauseIcon" class="hidden" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                          <rect x="6" y="4.5" width="4" height="15" rx="1" /><rect x="14" y="4.5" width="4" height="15"
+                            rx="1" />
+                        </svg>
+                      </button>
+                      <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="tafsirVolDropdown">
+                        <div class="mushaf-settings__section">
+                          <div class="mushaf-settings__label">مستوى الصوت</div>
+                          <div class="mushaf-toolbar__vol-row">
+                            <button type="button" class="mushaf-toolbar__vol-btn" id="tafsirVolDown" aria-label="خفض"><svg
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19.5 12h-15" />
+                              </svg></button>
+                            <input type="range" id="tafsirVolSlider" min="0" max="100" value="80"
+                              class="mushaf-toolbar__slider">
+                            <button type="button" class="mushaf-toolbar__vol-btn" id="tafsirVolUp" aria-label="رفع"><svg
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 4.5v15m7.5-7.5h-15" />
+                              </svg></button>
+                          </div>
+                        </div>
+                        <div class="mushaf-settings__section" style="margin-top: 4px;">
+                          <div class="mushaf-settings__label">السرعة</div>
+                          <div class="mushaf-toolbar__vol-row" style="gap: 8px;">
+                            <button type="button" class="mushaf-settings__chip" id="tafsirSpeedBtn"
+                              style="min-width: 3.5rem; padding: 0.25rem 0.5rem; flex-shrink: 0;"
+                              aria-label="تغيير السرعة">1x</button>
+                            <input type="range" id="tafsirSpeedSlider" min="0.5" max="2" step="0.05" value="1"
+                              class="mushaf-toolbar__slider">
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="tafsir-actions">
+                  <!-- BorderBeam pulse-outside wrapper (ocean, strength 0.5).
+                       The glow layers live on this span (::before/::after +
+                       the bloom child) so the opaque button covers the inner
+                       part and only the outward halo shows. Activated by
+                       src/pulse-beam.js while the button is enabled. -->
+                  <span class="mukhtasar-beam" data-beam="mukhtasar">
+                  <button type="button" id="compareTafsirsBtn" disabled
+                    class="w-full px-4 py-3 rounded-2xl bg-blue-600 text-white font-extrabold text-sm hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed tafsir-compare-btn flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                      style="width:16px;height:16px;flex-shrink:0;">
+                      <path fill-rule="evenodd"
+                        d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z"
+                        clip-rule="evenodd" />
+                    </svg>
+                    مختصر التفاسير
+                  </button>
+                  <span data-beam-bloom aria-hidden="true"></span>
+                  </span>
+                  <span class="tafsir-actions__divider" aria-hidden="true"></span>
+                  <div class="w-full sm:w-auto flex justify-center tafsir-select-wrap">
+                    <select id="tafsirSelect"
+                      class="w-full bg-white/70 border border-slate-900/10 rounded-2xl px-1 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition tafsir-select">
+                      <option value="muyassar">التفسير الميسّر</option>
+                      <option value="saadi">تفسير السعدي</option>
+                      <option value="tabari">تفسير الطبري</option>
+                      <option value="ibn_kathir">تفسير ابن كثير</option>
+                      <option value="qurtubi">تفسير القرطبي</option>
+                      <option value="baghawi">تفسير البغوي</option>
+                      <option value="ibn_ashur">تفسير ابن عاشور</option>
+                    </select>
+                  </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-6">
+                <div id="tafsirComparePanel" class="mt-6 hidden" aria-hidden="true">
+                  <div class="rounded-3xl border border-slate-900/10 bg-white/60 p-5">
+                    <div class="compare-header-row flex items-center justify-between gap-3 flex-wrap"
+                      style="cursor: pointer;">
+                      <div class="text-sm font-extrabold text-slate-700 flex items-center gap-2">
+                        <span>مقارنة بين التفاسير</span>
+                        <svg id="compareToggleIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                          stroke-width="2.5" stroke="currentColor"
+                          style="width:14px;height:14px;transition:transform 0.25s ease;">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button type="button" id="compareWritePauseBtn"
+                          class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition">إيقاف</button>
+                        <button type="button" id="compareStopBtn"
+                          class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إيقاف</button>
+                        <button type="button" id="compareCloseBtn"
+                          class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إغلاق</button>
+                      </div>
+                    </div>
+
+                    <div id="tafsirCompareStatus" class="mt-3 text-sm font-semibold text-slate-500" aria-live="polite">
+                      <span class="inline-flex items-center gap-2">
+                        <span id="tafsirCompareSpinner"
+                          class="hidden inline-block h-4 w-4 rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin"></span>
+                        <span id="tafsirCompareStatusText"></span>
+                      </span>
+                    </div>
+
+                    <div class="compare-scroll mt-4">
+                      <div id="tafsirCompareContent" class="text-[15px] leading-7 text-slate-800"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-8 flex items-center justify-between gap-4 w-full">
+                  <button type="button" id="prevAyahBtn" class="ayah-nav-btn group" aria-label="الآية السابقة">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                      stroke="currentColor" class="w-6 h-6 ml-0.5 transition-transform group-hover:translate-x-1">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </button>
+
+                  <div class="flex-1 px-2 text-center">
+                    <div id="tafsirBasmala" class="quran-font text-center text-lg font-bold text-slate-700 hidden mb-4">
+                    </div>
+                    <div id="tafsirAyahTag"
+                      class="quran-font text-2xl sm:text-3xl leading-[2.4] text-slate-900 transition-all text-center">—
+                    </div>
+                  </div>
+
+                  <button type="button" id="nextAyahBtn" class="ayah-nav-btn group" aria-label="الآية التالية">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                      stroke="currentColor" class="w-6 h-6 mr-0.5 transition-transform group-hover:-translate-x-1">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div id="tafsirBox"
+                  class="mt-6 rounded-3xl border border-slate-900/10 bg-white/65 p-5 leading-[2.2] text-[18px] text-slate-900"
+                  style="max-height:520px; overflow:auto;">—</div>
+
+
+              </div>
+
+              <div class="mt-6 border-t border-slate-900/5 pt-5">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span id="tafsirMetaInterpreter"
+                      class="text-xs font-extrabold px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700">نص
+                      التفسير</span>
+                    <span class="text-xs font-bold text-slate-500" id="contextHeader">اختر آية من نتائج البحث</span>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <select id="langSelect"
+                      class="bg-white/70 border border-slate-900/10 rounded-2xl px-4 py-2 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition">
+                      <option value="en" selected>English</option>
+                      <option value="both">English + العربية</option>
+                    </select>
+                    <button type="button" id="toggleVersesBtn" aria-expanded="false"
+                      class="px-4 py-2 rounded-2xl bg-blue-600 text-white font-extrabold text-sm hover:opacity-90 transition">
+                      ترجمة الآيات
+                    </button>
+                  </div>
+                </div>
+
+                <div id="versePanel" aria-hidden="true"
+                  class="mt-4 rounded-3xl border border-slate-900/10 bg-white/55 p-4" style="max-height:0; overflow:hidden; opacity:0; transform: translateY(-4px);
+                     transition:max-height .45s ease, opacity .35s ease, transform .35s ease;">
+                  <div id="ayahContext" class="text-[18px] leading-[2.2]"
+                    style="transition: opacity 0.2s ease, transform 0.2s ease;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- AI (collapsed) -->
+    <section class="pb-10">
+      <div class="mx-auto max-w-2xl text-center">
+        <button type="button" id="aiToggleBtn" aria-expanded="false" aria-disabled="true" disabled
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/70 border border-slate-900/10 transition font-extrabold text-sm text-slate-800 subtle cursor-not-allowed opacity-60">
+          سؤال الذكاء الاصطناعي - قريبًا
+          <span id="aiChevron" class="transition-transform">⌄</span>
+        </button>
+
+        <div id="aiPanel" data-open="0" class="mt-4">
+          <div class="mt-8 mx-auto max-w-2xl glass rounded-3xl p-3">
+            <div class="relative">
+              <textarea id="aiQuestion" rows="1"
+                class="input-glass w-full resize-none bg-transparent outline-none px-6 py-4 text-slate-900 placeholder:text-slate-400 text-base leading-6"
+                placeholder="Ask a Quranic question... (Ctrl+Enter)"></textarea>
+            </div>
+
+            <div
+              class="mt-3 flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap px-2 pb-1 text-center">
+              <div class="flex gap-2 flex-wrap justify-center w-full">
+                <button type="button"
+                  class="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-900/5 hover:bg-slate-900/10 transition"
+                  data-ai-prompt="ما معنى الصبر في القرآن؟">الصبر</button>
+                <button type="button"
+                  class="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-900/5 hover:bg-slate-900/10 transition"
+                  data-ai-prompt="هل الصدقة واجبة؟">الصدقة</button>
+                <button type="button"
+                  class="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-900/5 hover:bg-slate-900/10 transition"
+                  data-ai-prompt="ما آيات التوكل على الله؟">التوكل</button>
+              </div>
+
+              <div class="flex gap-2 w-full justify-center">
+                <button type="button" id="aiAskBtn"
+                  class="px-4 py-2 rounded-2xl font-extrabold text-sm bg-slate-900 text-white hover:opacity-90 transition subtle">
+                  ابحث
+                </button>
+                <button type="button" id="aiClearBtn"
+                  class="px-4 py-2 rounded-2xl font-extrabold text-sm bg-white/60 border border-slate-900/10 hover:bg-white transition">
+                  مسح
+                </button>
+              </div>
+            </div>
+
+            <div id="aiStatus" class="mt-2 text-xs font-bold text-slate-500 text-center px-2" aria-live="polite"></div>
+          </div>
+          <div id="aiResults" class="mt-8 mx-auto max-w-3xl"></div>
+        </div>
+      </div>
+    </section>
+    <!-- Tafsir + Context (shows after selecting an ayah) -->
+
+  </main>
+
+  <script>
+    // Make the AI question textarea behave like a single-line field (auto grow to 3 lines max)
+    (function () {
+      const t = document.getElementById("aiQuestion");
+      if (!t) return;
+      const resize = () => {
+        t.style.height = "auto";
+        const max = 3 * 24; // approx
+        t.style.height = Math.min(t.scrollHeight, max) + "px";
+      };
+      t.addEventListener("input", resize);
+      resize();
+    })();
+    (function () {
+      const btn = document.getElementById("aiToggleBtn");
+      const panel = document.getElementById("aiPanel");
+      const chevron = document.getElementById("aiChevron");
+      if (!btn || !panel) return;
+      const setOpen = (open) => {
+        panel.dataset.open = open ? "1" : "0";
+        panel.classList.toggle("is-open", !!open);
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (chevron) chevron.style.transform = open ? "rotate(180deg)" : "rotate(0deg)";
+      };
+      setOpen(panel.dataset.open === "1" || panel.classList.contains("is-open"));
+      btn.addEventListener("click", () => {
+        const isOpen = panel.dataset.open === "1";
+        setOpen(!isOpen);
+      });
+    })();
+  </script>
+
+  <!-- cache bust -->
+</body>
+
+</html>

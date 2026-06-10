@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
  * build-app.js
- * Creates a lean app-specific build targeting ~45MB.
+ * Creates a lean app-specific build for the Capacitor wrapper.
  * Run from m7mdiyat-vite root: node scripts/build-app.js
+ *
+ * Bundled data files are shipped as plain .json (not gzipped). The Capacitor
+ * iOS local-server bridge does NOT transparently remap foo.json → foo.json.gz
+ * the way Android's WebViewLocalServer does, so gzipping in the bundle breaks
+ * iOS while loadJson() always requests plain paths.
  */
 
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import zlib from 'zlib';
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, 'dist');
@@ -17,12 +21,12 @@ const DIST_APP = path.join(ROOT, 'dist-app');
 console.log('📦 Building m7mdiyat for app...\n');
 
 // Step 1: Run normal Vite build
-console.log('Step 1/4: Running Vite build...');
+console.log('Step 1/3: Running Vite build...');
 execSync('npm run build', { stdio: 'inherit' });
 console.log('✅ Vite build complete\n');
 
 // Step 2: Copy dist → dist-app
-console.log('Step 2/4: Copying to dist-app...');
+console.log('Step 2/3: Copying to dist-app...');
 if (fs.existsSync(DIST_APP)) {
   fs.rmSync(DIST_APP, { recursive: true });
 }
@@ -30,7 +34,7 @@ fs.cpSync(DIST, DIST_APP, { recursive: true });
 console.log('✅ Copied\n');
 
 // Step 3: Remove unnecessary files
-console.log('Step 3/4: Removing unnecessary files...');
+console.log('Step 3/3: Removing unnecessary files...');
 
 const toRemove = [
   // QCF4 Mushaf assets — fetched from GCS at runtime
@@ -44,6 +48,19 @@ const toRemove = [
   // Hadith collections — already on GCS, fetched on demand
   path.join(DIST_APP, 'Bukhari.json'),
   path.join(DIST_APP, 'Muslim.json'),
+
+  // Tafsir books + comparisons summary — all served from the GCS bucket
+  // (m7mdiyat-tafsir-data) via tafsirAssetFetch() and cached into the Cache API.
+  // The runtime never loads these from the bundle, so they're dead weight (~150MB
+  // plain / ~28MB gzipped) that just inflates the APK/IPA.
+  path.join(DIST_APP, 'tafseer_muyassar.json'),
+  path.join(DIST_APP, 'tafseer_saadi.json'),
+  path.join(DIST_APP, 'tafseer_tabari.json'),
+  path.join(DIST_APP, 'tafseer_ibn_kathir.json'),
+  path.join(DIST_APP, 'tafseer_qurtubi.json'),
+  path.join(DIST_APP, 'tafseer_baghawi.json'),
+  path.join(DIST_APP, 'tafseer_ibn_ashur.json'),
+  path.join(DIST_APP, 'comparisons.json'),
 
   // SEO files useless in app
   path.join(DIST_APP, 'sitemap.xml'),
@@ -69,46 +86,13 @@ for (const target of toRemove) {
   }
 }
 
-// Step 4: Compress all JSON files in place
-console.log('\nStep 4/4: Compressing JSON files...');
-
-const jsonFiles = findJsonFiles(DIST_APP);
-let compressedCount = 0;
-let compressionSavedMB = 0;
-
-for (const jsonFile of jsonFiles) {
-  const original = fs.readFileSync(jsonFile);
-  const originalSize = original.length;
-
-  // Skip tiny files (under 100KB) — not worth compressing
-  if (originalSize < 100 * 1024) continue;
-
-  const compressed = zlib.gzipSync(original, { level: 9 });
-  const compressedSize = compressed.length;
-  const savedBytes = originalSize - compressedSize;
-  const savedFileMB = savedBytes / (1024 * 1024);
-
-  // Write compressed file alongside original
-  fs.writeFileSync(jsonFile + '.gz', compressed);
-  fs.unlinkSync(jsonFile); // remove original
-
-  const ratio = Math.round((1 - compressedSize / originalSize) * 100);
-  console.log(`  📦 ${path.relative(DIST_APP, jsonFile)}: ${(originalSize/1024/1024).toFixed(1)}MB → ${(compressedSize/1024/1024).toFixed(1)}MB (${ratio}% smaller)`);
-  compressedCount++;
-  compressionSavedMB += savedFileMB;
-}
-
 // Final size report
 const finalMB = getDirSizeMB(DIST_APP);
 console.log(`\n✅ Done!`);
 console.log(`   Removed:    ~${savedMB}MB`);
-console.log(`   Compressed: ~${Math.round(compressionSavedMB)}MB saved from ${compressedCount} JSON files`);
 console.log(`   Final size: ~${finalMB}MB`);
 console.log(`   Output:     dist-app/`);
-console.log(`\n⚠️  IMPORTANT: Your app's JS code must request .json.gz files`);
-console.log(`   OR add this to your Android web server config to serve .gz transparently.`);
-console.log(`   See README for details.`);
-console.log(`\nNext step: Update capacitor.config.json webDir to dist-app, then run: npx cap sync android`);
+console.log(`\nNext step: npx cap sync ios && npx cap sync android (from the Capacitor wrapper)`);
 
 function getDirSizeMB(dirPath) {
   try {
@@ -119,19 +103,4 @@ function getDirSizeMB(dirPath) {
   } catch {
     return 0;
   }
-}
-
-function findJsonFiles(dir) {
-  const results = [];
-  const items = fs.readdirSync(dir);
-  for (const item of items) {
-    const fullPath = path.join(dir, item);
-    const stat = fs.statSync(fullPath);
-    if (stat.isDirectory()) {
-      results.push(...findJsonFiles(fullPath));
-    } else if (item.endsWith('.json')) {
-      results.push(fullPath);
-    }
-  }
-  return results;
 }

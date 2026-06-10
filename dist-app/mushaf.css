@@ -1,0 +1,2780 @@
+/*
+ * Mushaf reading mode styles.
+ *
+ * Inline panel that mirrors #tafsirSection chrome. All colors come from
+ * the site's CSS vars (--card, --card2, --line, --text, --muted, --accent,
+ * --accent-soft, --accent-muted, --accent-strong) so light/dark mode
+ * adapt automatically.
+ */
+
+/* ============================================================
+ * QCF4 fonts (page-specific Hafs_NN fonts are declared lazily by JS)
+ * ============================================================ */
+@font-face {
+    font-family: "QCF4_QBSML";
+    src: url("/fonts/qcf4/QCF4_QBSML.woff2") format("woff2");
+    font-display: block;
+}
+
+@font-face {
+    font-family: "QCF4_Hafs_01";
+    src: url("/fonts/qcf4/QCF4_Hafs_01_W.woff2") format("woff2");
+    font-display: block;
+}
+
+/* ============================================================
+ * Mode toggle — iOS-style segmented control with Arabic labels
+ * ============================================================ */
+.mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.mode-toggle__btn {
+    direction: ltr;
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    width: 240px;
+    height: 36px;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.06);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: background 200ms ease, border-color 200ms ease;
+}
+
+.mode-toggle__btn:hover {
+    background: rgba(15, 23, 42, 0.09);
+}
+
+body.dark .mode-toggle__btn {
+    background: rgba(148, 163, 184, 0.15);
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+body.dark .mode-toggle__btn:hover {
+    background: rgba(148, 163, 184, 0.20);
+}
+
+.mode-toggle__labels {
+    /* RTL so the first label in source order (Tafsir) renders on the right */
+    direction: rtl;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    z-index: 2;
+}
+
+.mode-toggle__label {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    pointer-events: none;
+    transition: color 200ms ease, font-weight 200ms ease;
+    white-space: nowrap;
+    padding: 0 6px;
+}
+
+/* Active label: dark text on the white pill knob */
+[data-app-mode="tafsir"] .mode-toggle__label--tafsir,
+[data-app-mode="mushaf"] .mode-toggle__label--mushaf {
+    color: var(--accent-strong);
+    font-weight: 800;
+}
+
+/* Dark mode: inactive labels brighter, active label is
+ * pure black on the white pill for maximum contrast. */
+body.dark .mode-toggle__label {
+    color: #e2e8f0;
+}
+
+[data-app-mode="tafsir"] body.dark .mode-toggle__label--tafsir,
+[data-app-mode="mushaf"] body.dark .mode-toggle__label--mushaf {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+/* The pill-shaped knob behind the active label */
+.mode-toggle__knob {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Dark mode: keep knob WHITE for contrast against dark bg */
+body.dark .mode-toggle__knob {
+    background: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Tafsir mode: knob on the visual RIGHT (covers the Tafsir label
+   which renders on the right because of direction:rtl on the labels). */
+[data-app-mode="tafsir"] .mode-toggle__knob {
+    transform: translateX(100%);
+}
+
+/* Mushaf mode: knob on the visual LEFT (covers the Mushaf label). */
+[data-app-mode="mushaf"] .mode-toggle__knob {
+    transform: translateX(0);
+}
+
+.mode-toggle--in-search {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+/* ============================================================
+ * Mushaf panel — inline, mirrors #tafsirSection chrome
+ * ============================================================ */
+.mushaf-root {
+    display: none;
+    position: relative;
+}
+
+.mushaf-root.is-open {
+    display: block;
+}
+
+.mx-auto.max-w-4xl.has-mushaf>#tafsirSection,
+.mx-auto.max-w-4xl.has-mushaf>#versePanel {
+    display: none !important;
+}
+
+/* Fix 4: opacity transitions used by setAppMode to fade panels in/out
+ * sequentially during a mode toggle. mode-fade-out: fade to 0 over 120ms.
+ * mode-fade-in: starts at 0; JS removes the class on the next frame so the
+ * panel animates back to 1. Duration was 180ms; shortened to 120ms together
+ * with the matching setTimeout in mushaf.js fadeOutPanel so the toggle
+ * floor drops from ~360ms to ~240ms while the fade stays visible. */
+.mushaf-root,
+#tafsirSection {
+    transition: opacity 120ms ease;
+}
+
+.mode-fade-out {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+.mode-fade-in {
+    opacity: 0;
+}
+
+/* ============================================================
+ * Surah header — small "سورة" label above the large Arabic name.
+ * The whole header fades together when dimmed (non-target surah).
+ * ============================================================ */
+.mushaf-surah-header {
+    text-align: center;
+    margin: 0 auto 22px;
+    line-height: 1.15;
+    transition: opacity 250ms ease, filter 250ms ease;
+}
+
+.mushaf-surah-header:first-child {
+    margin-top: 0;
+}
+
+.mushaf-surah-header__label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+}
+
+.mushaf-surah-header__name {
+    display: block;
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+}
+
+/* ============================================================
+ * Page footer (centered "صفحة N")
+ * ============================================================ */
+.mushaf-page-footer {
+    text-align: center;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+}
+
+/* ============================================================
+ * Page area + transitions (200ms for snappier feel)
+ * ============================================================ */
+.mushaf-stage {
+    position: relative;
+    min-height: 320px;
+}
+
+.mushaf-pages {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.mushaf-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms ease;
+    border-radius: 12px;
+}
+
+body.dark .mushaf-loader {
+    background: rgba(30, 41, 59, 0.5);
+}
+
+.mushaf-loader--visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.mushaf-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent-strong);
+    border-radius: 50%;
+    animation: mushafSpin 800ms linear infinite;
+}
+
+@keyframes mushafSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ============================================================
+ * First-launch QCF4 download prompt (app only). Mirrors the loader:
+ * fills the page area with a blurred backdrop, centered prompt + bar.
+ * ============================================================ */
+.mushaf-download {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 60;
+    border-radius: 12px;
+}
+
+body.dark .mushaf-download {
+    background: rgba(30, 41, 59, 0.6);
+}
+
+.mushaf-download--visible {
+    display: flex;
+}
+
+.mushaf-download__inner {
+    width: min(420px, 86%);
+    text-align: center;
+}
+
+.mushaf-download__title {
+    font-family: "IBM Plex Sans Arabic", sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.6;
+    margin-bottom: 18px;
+    opacity: 1;
+    transition: opacity 400ms ease;
+}
+
+.mushaf-download__bar {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--line);
+    overflow: hidden;
+}
+
+.mushaf-download__fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--accent-strong);
+    transition: width 200ms ease;
+}
+
+.mushaf-download__pct {
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+}
+
+.mushaf-page {
+    --line-gap: 6px;
+    --font-size: 32px;
+    width: 100%;
+    padding: 0 8px 8px;
+    text-align: center;
+    direction: rtl;
+}
+
+.mushaf-page--animating {
+    position: absolute;
+    inset: 0;
+}
+
+/* Keyframe fade: 0% → 100% opacity — guaranteed to run */
+@keyframes mushafFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes mushafFadeOut {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+.mushaf-page--fade-in {
+    animation: mushafFadeIn 250ms ease-out both;
+}
+
+.mushaf-page--fade-out {
+    animation: mushafFadeOut 200ms ease-in both;
+}
+
+/* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
+[data-font-size="m"] .mushaf-page {
+    --font-size: 32px;
+    --line-gap: 6px;
+}
+
+[data-font-size="s"] .mushaf-page {
+    --font-size: 26px;
+    --line-gap: 4px;
+}
+
+/* ============================================================
+ * Lines + words
+ * ============================================================ */
+.mushaf-line {
+    line-height: 1.85;
+    margin-bottom: var(--line-gap);
+    font-size: var(--font-size);
+    text-align: center;
+    word-spacing: 0;
+    letter-spacing: 0;
+    white-space: nowrap; /* Mushaf lines must never wrap — each line is an exact replica of the printed page */
+}
+
+.mushaf-line--bismillah {
+    font-family: "QCF4_Hafs_01", serif;
+    text-align: center;
+    margin: 8px 0 10px;
+    /* Bismillah is INDEPENDENT of the verse --font-size. The QCF4 bismillah
+       PUA glyph is a wide calligraphic ornament whose natural width is much
+       greater than its height; sizing it by the verse autoFit value made the
+       flourish stretch across the container while the letters looked thin
+       (distorted). A viewport-relative clamp keeps it compact and
+       proportional like the printed Mushaf on any device. */
+    font-size: clamp(18px, 4vw, 28px);
+}
+
+.mushaf-ayah {
+    cursor: pointer;
+    border-radius: 6px;
+    /* In RTL, the right side is the start of the ayah. We add 4px padding to the right
+       to extend the box slightly, while keeping 0px on the left to keep it tight. */
+    padding: 2px 4px 2px 0px;
+    transition: background 600ms ease, box-shadow 600ms ease, opacity 250ms ease, filter 250ms ease;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+
+/* Hover effect disabled per user request */
+
+.mushaf-ayah--target {
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent-soft);
+    border-radius: 6px;
+}
+
+.mushaf-ayah--playing {
+    background: rgba(34, 197, 94, 0.14);
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.14);
+    border-radius: 6px;
+}
+
+body.dark .mushaf-ayah--playing {
+    background: rgba(110, 231, 183, 0.16);
+    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.16);
+}
+
+.mushaf-word {
+    display: inline-block;
+}
+
+.mushaf-end {
+    display: inline-block;
+    /* In RTL, the right margin separates the symbol from the text.
+       Left margin is 0 to prevent the highlight box from extending too far left. */
+    margin: 0 4px 0 0;
+}
+
+/* ============================================================
+ * Target-surah focus dimming (Fix 3: dimmed surahs are now clickable
+ * — click any dimmed ayah or its dimmed header to focus that surah)
+ * ============================================================ */
+/* The "dim" classes are still applied by JS (target-surah-switch logic
+ * needs them as a marker), but per user feedback the actual fade/shadow
+ * was distracting when two surahs share a page. Both surahs now render at
+ * full opacity. The `cursor: pointer` stays so tapping the other surah
+ * still switches the focus. */
+.mushaf-ayah--dimmed,
+.mushaf-surah-header--dimmed,
+.mushaf-line--bismillah.mushaf-line--dimmed {
+    opacity: 1;
+    filter: none;
+    cursor: pointer;
+}
+
+/* ============================================================
+ * On-screen page nav arrows
+ * ============================================================ */
+.mushaf-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    color: var(--text);
+    cursor: pointer;
+    /* The button box itself never transitions or moves. Only the chevron
+       icon inside reacts on hover (see .mushaf-nav svg rules below). */
+    transition: none;
+    appearance: none;
+    -webkit-appearance: none;
+    text-decoration: none;
+    outline: none;
+    z-index: 4;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+/* Hard-lock EVERY visual property of the box on every interactive state.
+ * Position, scale, background, color, shadow, border, outline — all
+ * pinned to the resting values. The button box is glued in place. */
+.mushaf-nav:hover,
+.mushaf-nav:focus,
+.mushaf-nav:focus-visible,
+.mushaf-nav:active {
+    transform: translateY(-50%) !important;
+    background: linear-gradient(180deg, var(--card), var(--card2)) !important;
+    color: var(--text) !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+    border-color: var(--line) !important;
+    outline: none !important;
+    text-decoration: none !important;
+}
+
+.mushaf-nav svg {
+    width: 18px;
+    height: 18px;
+    /* The chevron is the ONLY thing that animates on hover. It scales up
+     * slightly so the button feels alive without the box itself moving.
+     * Eased with a cubic-bezier for a soft snap. */
+    transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.mushaf-nav:hover svg,
+.mushaf-nav:focus-visible svg,
+.mushaf-nav:active svg {
+    transform: scale(1.18);
+}
+
+.mushaf-nav svg {
+    width: 18px;
+    height: 18px;
+}
+
+.mushaf-nav--prev {
+    right: -6px;
+}
+
+.mushaf-nav--next {
+    left: -6px;
+}
+
+.mushaf-nav[disabled] {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* ============================================================
+ * Floating ayah action menu (two views: main, settings)
+ * ============================================================ */
+.mushaf-ayah-menu {
+    position: absolute;
+    padding: 6px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16),
+        0 2px 8px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 30;
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.mushaf-ayah-menu--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+/* Invisible "hover bridge": extends the menu's hoverable area up across the
+ * gap to the ayah, so moving the cursor menu-ward never crosses dead space
+ * that would start the hide timer. Inherits pointer-events, so it's inert
+ * while the menu is closed. */
+.mushaf-ayah-menu::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: -10px;
+    height: 12px;
+}
+
+body.dark .mushaf-ayah-menu {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+}
+
+.mushaf-ayah-menu__main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mushaf-ayah-menu__settings {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    width: 280px;
+    padding: 6px 4px;
+}
+
+.mushaf-ayah-menu[data-view="settings"] .mushaf-ayah-menu__main {
+    display: none;
+}
+
+.mushaf-ayah-menu[data-view="settings"] .mushaf-ayah-menu__settings {
+    display: flex;
+}
+
+.mushaf-ayah-menu__btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 150ms ease;
+    padding: 0;
+}
+
+.mushaf-ayah-menu__btn:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-ayah-menu__btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.mushaf-ayah-menu__btn--mukhtasar {
+    color: var(--accent-strong);
+}
+
+/* Copy button: icon + small label, pill shape so the label reads cleanly
+ * next to the icon-only sparkles button. */
+.mushaf-ayah-menu__btn--copy {
+    width: auto;
+    min-width: 40px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.mushaf-ayah-menu__btn--copy .mushaf-ayah-menu__btn-icon {
+    display: inline-flex;
+}
+
+.mushaf-ayah-menu__btn--copy .mushaf-ayah-menu__btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Note button — same pill shape as copy, blue accent. */
+.mushaf-ayah-menu__btn--note {
+    width: auto;
+    min-width: 40px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    color: var(--accent-strong);
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: inherit;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.mushaf-ayah-menu__btn--note .mushaf-ayah-menu__btn-icon {
+    display: inline-flex;
+}
+
+.mushaf-ayah-menu__btn--note .mushaf-ayah-menu__btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Ayah-has-note indicator: a tiny dot placed directly on top of the
+ * ornate ayah-number marker (the .mushaf-end glyph). Targeting .mushaf-end
+ * (rather than the whole .mushaf-ayah box) gives us exactly ONE dot per
+ * ayah even when that ayah is split across multiple lines — each line
+ * fragment carries the .mushaf-ayah--has-note class, but only ONE of them
+ * contains the end-of-ayah marker. */
+.mushaf-ayah--has-note .mushaf-end {
+    position: relative;
+}
+
+.mushaf-ayah--has-note .mushaf-end::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #2A52C8;
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.92);
+    pointer-events: none;
+}
+
+body.dark .mushaf-ayah--has-note .mushaf-end::after {
+    background: #7aa1ff;
+    box-shadow: 0 0 0 1.5px rgba(15, 23, 42, 0.92);
+}
+
+/* ∞ badge on the play button. The badge is ALWAYS rendered (opacity 0
+ * by default) so toggling the --repeat-inf class fades it in / out, rather
+ * than snapping it on / off. */
+.mushaf-toolbar__btn--play {
+    position: relative;
+}
+
+.mushaf-toolbar__btn--play::after {
+    content: "∞";
+    position: absolute;
+    bottom: -2px;
+    inset-inline-end: -2px;
+    background: #2A52C8;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 8px;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.65);
+    transform-origin: bottom right;
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.mushaf-toolbar__btn--play.mushaf-toolbar__btn--repeat-inf::after {
+    opacity: 1;
+    transform: scale(1);
+}
+
+body.dark .mushaf-toolbar__btn--play::after {
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.95);
+}
+
+/* Selected-ayah highlight: intentionally NO visual style. The class is
+ * still applied by JS for menu anchoring, but it must not change the
+ * background or shadow — otherwise it overrides the green playing
+ * highlight (CSS source order) and hides which ayah is actually playing
+ * during a long-press. The popup menu is feedback enough. */
+.mushaf-ayah--selected {
+    /* no visual properties — see comment above */
+}
+
+/* Copy-confirmation toast — single shared element, bottom-center. */
+.copy-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translate(-50%, 8px);
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: #2644cd;
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 800;
+    box-shadow: 0 8px 22px rgba(38, 68, 205, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2000;
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.copy-toast--show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+body.dark .copy-toast {
+    background: #3b5bd9;
+}
+
+/* ============================================================
+ * مختصر التفاسير — quick-view card
+ * ============================================================ */
+.mushaf-mukhtasar {
+    /* Lives on <body> when open so it can be dragged freely across the
+       whole page; position:fixed anchors it to the viewport. */
+    position: fixed;
+    width: min(340px, calc(100vw - 32px));
+    padding: 14px 16px 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2),
+        0 3px 10px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    /* Fade only — NO transform on open. If we animate transform here,
+       grabbing the card mid-transition makes the --dragging class snap
+       it to translateY(0), which visually yanks the card upward by
+       however many pixels were left in the animation. */
+    transition: opacity 170ms ease;
+}
+
+.mushaf-mukhtasar--open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.dark .mushaf-mukhtasar {
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+.mushaf-mukhtasar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    /* The header acts as the drag handle. Hide text-selection and stop the
+       browser from claiming touch gestures so a touch-drag actually moves
+       the card instead of scrolling/zooming the page. The close button
+       opts back into pointer/touch behaviour via its own rule below.
+       Two-line cursor declaration: older WebKit falls through to the first
+       valid value (-webkit-grab); modern engines pick the standard `grab`. */
+    cursor: -webkit-grab;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+/* The title span inherits cursor from the header, but the chip/icon
+   children sometimes get a different default — pin grab here too. */
+.mushaf-mukhtasar__title,
+.mushaf-mukhtasar__title * {
+    cursor: inherit;
+}
+
+.mushaf-mukhtasar--dragging,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__header,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__title,
+.mushaf-mukhtasar--dragging .mushaf-mukhtasar__title * {
+    cursor: -webkit-grabbing;
+    cursor: grabbing;
+}
+
+/* While the card is being dragged, suppress the open-state transition so
+   the position updates don't lag behind the pointer. */
+.mushaf-mukhtasar--dragging {
+    transition: none !important;
+}
+
+.mushaf-mukhtasar__title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.mushaf-mukhtasar__title svg {
+    width: 16px;
+    height: 16px;
+    color: var(--accent-strong);
+}
+
+.mushaf-mukhtasar__close {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+    /* Restore normal pointer/touch behaviour so taps register cleanly even
+       though the surrounding header is a drag handle. */
+    touch-action: auto;
+    user-select: auto;
+}
+
+.mushaf-mukhtasar__close:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.mushaf-mukhtasar__close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.mushaf-mukhtasar__ref {
+    margin: 4px 0 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.mushaf-mukhtasar__body {
+    font-size: 0.92rem;
+    line-height: 1.85;
+    color: var(--text);
+    max-height: 220px;
+    overflow-y: auto;
+    text-align: justify;
+    /* Stop scroll chaining: when the inner Mukhtasar text hits its top/bottom,
+       don't bubble the remaining wheel/touch delta to the page underneath. */
+    overscroll-behavior: contain;
+}
+
+.mushaf-mukhtasar__loading {
+    display: grid;
+    place-items: center;
+    padding: 18px 0;
+}
+
+.mushaf-mukhtasar__msg {
+    padding: 6px 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.mushaf-mukhtasar__footer {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.mushaf-mukhtasar__more {
+    border: 0;
+    border-radius: 10px;
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #fff;
+    /* Same royal blue as #compareTafsirsBtn (مختصر التفاسير) so the two
+       buttons read as one consistent action color. Previously used
+       var(--accent-strong) (#0b6bdc) which next to the deeper #2644cd royal
+       blue read as teal/green. */
+    background: #2644cd;
+    box-shadow: 0 2px 8px rgba(38, 68, 205, 0.34);
+    cursor: pointer;
+    transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.mushaf-mukhtasar__more:hover {
+    background: #213bb2;
+    box-shadow: 0 4px 12px rgba(38, 68, 205, 0.40);
+}
+
+.mushaf-mukhtasar__more:active {
+    background: #1c3296;
+}
+
+.mushaf-mukhtasar__more:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mushaf-spinner--sm {
+    width: 22px;
+    height: 22px;
+    border-width: 2.5px;
+}
+
+/* Volume mute toggle (lives inside the playback bar). */
+.mushaf-volume-icon--muted {
+    color: var(--muted);
+}
+
+/* ============================================================
+ * Settings sub-view (sections, labels, chips)
+ * ============================================================ */
+.mushaf-settings__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mushaf-settings__label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: right;
+    padding-right: 2px;
+}
+
+.mushaf-settings__row {
+    display: flex;
+    gap: 6px;
+}
+
+/* Reciter row: compact horizontal pills, wraps to a second line on narrow
+ * screens. Pills feel like controls, not list items. */
+.mushaf-settings__row--pills {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mushaf-settings__row--pills .mushaf-settings__chip {
+    flex: 0 1 auto;
+    min-height: 28px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true"] {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #fff;
+}
+
+body.dark .mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true"] {
+    color: #0b1326;
+}
+
+.mushaf-settings__chip {
+    flex: 1;
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--card2);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    font-family: inherit;
+}
+
+.mushaf-settings__chip:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-settings__chip[aria-checked="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent-muted);
+    color: var(--accent-strong);
+}
+
+.mushaf-settings__chip:disabled,
+.mushaf-settings__chip--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--card2);
+    color: var(--muted);
+    border-color: var(--line);
+}
+
+.mushaf-settings__chip:disabled:hover,
+.mushaf-settings__chip--disabled:hover {
+    background: var(--card2);
+}
+
+/* ============================================================
+ * Floating playback bar (Fix 1b)
+ *   - sits below the mushaf page content
+ *   - frosted-glass card, hairline border, low elevation
+ *   - fades in when audio starts, fades out 3s after audio stops
+ * ============================================================ */
+.mushaf-playback-bar {
+    margin-top: 18px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.mushaf-playback-bar--visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+body.dark .mushaf-playback-bar {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.32);
+}
+
+.mushaf-playback-bar__indicator {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    direction: rtl;
+    padding-inline-start: 6px;
+}
+
+.mushaf-playback-bar__controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mushaf-playback-btn {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 150ms ease, transform 150ms ease;
+    padding: 0;
+}
+
+.mushaf-playback-btn:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-playback-btn:active {
+    transform: scale(0.94);
+}
+
+.mushaf-playback-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.mushaf-playback-btn--primary {
+    width: 40px;
+    height: 40px;
+    background: var(--accent-strong);
+    color: #fff;
+}
+
+.mushaf-playback-btn--primary:hover {
+    background: var(--accent-strong);
+    filter: brightness(1.05);
+}
+
+.mushaf-playback-btn--primary svg {
+    width: 18px;
+    height: 18px;
+}
+
+body.dark .mushaf-playback-btn--primary {
+    color: #0b1326;
+}
+
+/* ============================================================
+ * Mushaf toolbar — settings + play/stop at top of mushaf panel
+ * ============================================================ */
+.mushaf-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    direction: ltr;
+}
+
+.mushaf-toolbar__spacer {
+    flex: 1;
+    min-width: 0;
+}
+
+.mushaf-toolbar__btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.mushaf-toolbar__btn-wrap--surah {
+    /* Cap at 75% (was 60%) so common surah names ("آل عمران", "المؤمنون")
+     * fit without ellipsis. The surah-select button inside now sizes to its
+     * content via min-width: max-content, so the wrap just provides a safe
+     * upper bound to keep the gear/play group from being pushed off-screen
+     * on the narrowest phones. */
+    max-width: 75%;
+    min-width: max-content;
+}
+
+/* App-only "audio needs internet" notice, shown to the right of the buttons */
+.mushaf-toolbar__msg {
+    display: none;
+    direction: rtl;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #dc2626;
+    max-width: 190px;
+}
+
+body.dark .mushaf-toolbar__msg {
+    color: #fca5a5;
+}
+
+.mushaf-toolbar__msg--show {
+    display: block;
+}
+
+.mushaf-toolbar__btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, transform 200ms ease;
+    padding: 0;
+}
+
+.mushaf-toolbar__btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.mushaf-toolbar__btn:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.mushaf-toolbar__btn--settings:hover {
+    transform: rotate(30deg);
+}
+
+/* The play button gets a green tint when audio is active */
+.mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+body.dark .mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(110, 231, 183, 0.15);
+    color: #6ee7b7;
+    border-color: rgba(110, 231, 183, 0.25);
+}
+
+/* Dropdown panels shared styling */
+.mushaf-toolbar__dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14),
+        0 4px 12px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 40;
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+body.dark .mushaf-toolbar__dropdown {
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+.mushaf-toolbar__dropdown--open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.mushaf-toolbar__dropdown--settings {
+    width: 300px;
+}
+
+/* Volume dropdown: appears when audio is playing */
+.mushaf-toolbar__dropdown--volume {
+    width: 220px;
+}
+
+/* Volume row inside dropdown */
+.mushaf-toolbar__vol-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mushaf-toolbar__vol-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 150ms ease;
+    padding: 0;
+}
+
+.mushaf-toolbar__vol-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mushaf-toolbar__vol-btn:hover {
+    background: var(--accent-soft);
+}
+
+.mushaf-toolbar__slider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--line);
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+}
+
+.mushaf-toolbar__slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    border: 2px solid var(--card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.mushaf-toolbar__slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-strong);
+    border: 2px solid var(--card);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+/* ============================================================
+ * Mushaf surface: kill native text selection + touch callout.
+ *
+ * Long-pressing an ayah on Android was triggering BOTH the OS text
+ * selection (blue handles + Copy popup) AND our custom ayah card.
+ * The previous attempt was gated to @media (hover:none) and applied
+ * only to .mushaf-ayah, which failed on devices reporting hover:hover
+ * (Pixel with stylus drivers) and on drags starting between ayahs.
+ *
+ * Cover the whole reading surface — page host, lines, ayahs, and all
+ * descendant spans — and apply unconditionally. The custom card
+ * (lives on <body>) and the ayah menu (buttons, not text) are NOT
+ * inside .mushaf-root and remain unaffected; copy goes via the
+ * Clipboard API in the menu's copy handler. The selectstart event
+ * is also suppressed in JS (src/mushaf.js wireMenu) because
+ * Android commits to a selection at selectstart, before contextmenu.
+ * Tafsir text, AI answers, and search inputs remain selectable —
+ * they sit OUTSIDE .mushaf-root.
+ * ============================================================ */
+.mushaf-root,
+.mushaf-page,
+.mushaf-line,
+.mushaf-ayah,
+.mushaf-ayah * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================
+ * Mobile adjustments
+ * ============================================================ */
+@media (max-width: 640px) {
+    /* Reduce padding on the mushaf root to maximise content width.
+       The class p-6 (24px) on .mushaf-root is overridden here. */
+    .mushaf-root {
+        padding: 12px 6px !important;
+    }
+
+    .mushaf-page {
+        padding: 4px 0;
+    }
+
+    /* Font-size is now calculated dynamically by autoFitFontSize() in JS,
+       so we only set sensible CSS defaults as initial values.  The JS will
+       override --font-size on each .mushaf-page after measuring lines. */
+    [data-font-size="m"] .mushaf-page {
+        --font-size: 24px;
+    }
+
+    [data-font-size="s"] .mushaf-page {
+        --font-size: 20px;
+    }
+
+    .mushaf-nav {
+        width: 36px;
+        height: 36px;
+    }
+
+    .mushaf-nav--prev {
+        right: 2px;
+    }
+
+    .mushaf-nav--next {
+        left: 2px;
+    }
+
+    .mushaf-surah-header__name {
+        font-size: 26px;
+    }
+
+    .mushaf-surah-header__label {
+        font-size: 12px;
+    }
+
+    .mushaf-toolbar__dropdown--settings {
+        width: 260px;
+    }
+
+    .mushaf-playback-bar {
+        padding: 6px 10px;
+        gap: 8px;
+        margin-top: 14px;
+    }
+
+    .mushaf-playback-bar__indicator {
+        font-size: 12px;
+    }
+
+    .mode-toggle__btn {
+        width: 220px;
+    }
+
+    .mode-toggle__label {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 380px) {
+    .mode-toggle__btn {
+        width: 200px;
+        height: 34px;
+    }
+
+    .mode-toggle__label {
+        font-size: 11px;
+    }
+}
+
+/* ============================================================
+ * Surah selector — toolbar pill + searchable dropdown
+ * ============================================================ */
+
+.mushaf-surah-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 38px;
+    padding: 0 12px 0 10px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    direction: rtl;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: background 180ms ease, border-color 180ms ease,
+                box-shadow 180ms ease, transform 180ms ease;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.mushaf-surah-select:hover {
+    /* Subtle, static hover: a slight bg/shadow change for affordance, but
+       NO vertical lift (transform: translateY) and NO accent-blue border —
+       both previously made the pill feel jumpy and out-of-palette. */
+    background: var(--card);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+body.dark .mushaf-surah-select:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.mushaf-surah-select:active {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.mushaf-surah-select:focus-visible {
+    outline: none;
+    border-color: var(--accent-strong);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-surah-select[aria-expanded="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent-strong);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.mushaf-surah-select__name {
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    /* Let the full surah name show — the previous
+     * overflow:hidden + text-overflow:ellipsis was clipping common names
+     * like "آل عمران", "المؤمنون", "الصافات" on narrow phones. */
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    min-width: max-content;
+}
+
+.mushaf-surah-select__chev {
+    display: inline-grid;
+    place-items: center;
+    color: var(--muted);
+    transition: transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                color 180ms ease;
+}
+
+.mushaf-surah-select__chev svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mushaf-surah-select[aria-expanded="true"] .mushaf-surah-select__chev {
+    transform: rotate(180deg);
+    color: var(--accent-strong);
+}
+
+/* Dropdown panel — clones .mushaf-toolbar__dropdown shape, then specializes.
+   The selector lives on the right end of the toolbar, so anchor the dropdown
+   to the wrap's right edge (expands leftward) — keeps it on-screen on mobile. */
+.mushaf-surah-dropdown {
+    left: auto;
+    right: 0;
+    width: 220px;
+    padding: 8px;
+    direction: rtl;
+    gap: 6px;
+}
+
+.mushaf-surah-dropdown__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.mushaf-surah-dropdown__panel[hidden] {
+    display: none;
+}
+
+.mushaf-surah-search__wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.mushaf-surah-search__icon {
+    position: absolute;
+    right: 7px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.mushaf-surah-search__icon svg {
+    width: 11px;
+    height: 11px;
+}
+
+.mushaf-surah-search {
+    width: 100%;
+    height: 28px;
+    padding: 0 24px 0 8px;
+    border-radius: 7px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    direction: rtl;
+    text-align: center;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.mushaf-surah-search::placeholder {
+    color: var(--muted);
+}
+
+.mushaf-surah-search:focus {
+    border-color: var(--accent-strong);
+    background: var(--card);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Hide the native search-cancel "x" for a cleaner look in RTL. */
+.mushaf-surah-search::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+}
+
+.mushaf-surah-list {
+    list-style: none;
+    margin: 0;
+    padding: 2px 0;
+    max-height: min(44vh, 300px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.mushaf-surah-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+.mushaf-surah-item {
+    display: block;
+    padding: 6px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+    user-select: none;
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+.mushaf-surah-item:hover,
+.mushaf-surah-item--focus {
+    background: var(--accent-soft);
+}
+
+.mushaf-surah-item--hidden { display: none; }
+
+.mushaf-surah-item--current {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.mushaf-surah-empty {
+    padding: 10px 8px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+@media (max-width: 640px) {
+    .mushaf-surah-select {
+        height: 36px;
+        padding: 0 8px 0 6px;
+        gap: 6px;
+    }
+
+    .mushaf-surah-select__name {
+        font-size: 15px;
+    }
+
+    .mushaf-surah-dropdown {
+        width: min(220px, calc(100vw - 24px));
+        max-width: calc(100vw - 24px);
+    }
+
+    .mushaf-surah-list {
+        max-height: min(46vh, 280px);
+    }
+
+    .mushaf-surah-item {
+        font-size: 15px;
+        padding: 5px 8px;
+    }
+}
+
+@media (max-width: 380px) {
+    .mushaf-toolbar__btn-wrap--surah {
+        /* Was 56% — bumped to 70% so common 2-word surah names still fit
+         * on narrow phones without ellipsis. */
+        max-width: 70%;
+    }
+
+    .mushaf-surah-select__name {
+        font-size: 14px;
+    }
+}
+
+/* ============================================================
+ * Surah selector — detail view (ayah picker)
+ * ============================================================ */
+
+.mushaf-surah-detail__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+}
+
+.mushaf-surah-detail__back {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.mushaf-surah-detail__back svg {
+    width: 14px;
+    height: 14px;
+}
+
+.mushaf-surah-detail__back:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.mushaf-surah-detail__back:focus-visible {
+    outline: none;
+    border-color: var(--accent-soft);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-surah-detail__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mushaf-surah-detail__num {
+    display: inline-grid;
+    place-items: center;
+    min-width: 24px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.mushaf-surah-detail__name {
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mushaf-surah-detail__form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+}
+
+.mushaf-surah-detail__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 0 2px;
+    text-align: center;
+}
+
+.mushaf-surah-detail__row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.mushaf-surah-detail__input {
+    flex: 1;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 10px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+    -moz-appearance: textfield;
+    min-width: 0;
+}
+
+.mushaf-surah-detail__input::placeholder {
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.mushaf-surah-detail__input::-webkit-outer-spin-button,
+.mushaf-surah-detail__input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.mushaf-surah-detail__input:focus {
+    border-color: var(--accent-strong);
+    background: var(--card);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-surah-detail__input--error {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+    animation: mushafSurahShake 280ms ease;
+}
+
+body.dark .mushaf-surah-detail__input--error {
+    border-color: #f87171;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.22);
+}
+
+@keyframes mushafSurahShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    50% { transform: translateX(3px); }
+    75% { transform: translateX(-2px); }
+}
+
+.mushaf-surah-detail__go {
+    height: 34px;
+    padding: 0 16px;
+    border-radius: 8px;
+    background: var(--accent-strong);
+    border: 1px solid var(--accent-strong);
+    color: var(--card);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 150ms ease, transform 150ms ease;
+    flex-shrink: 0;
+}
+
+.mushaf-surah-detail__go:hover {
+    opacity: 0.92;
+}
+
+.mushaf-surah-detail__go:active {
+    transform: translateY(1px);
+}
+
+.mushaf-surah-detail__go:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-surah-detail__go--full {
+    width: 100%;
+    padding: 0;
+    margin-top: 4px;
+}
+
+/* ============================================================
+ * Surah selector relocated into the hero search pill
+ *
+ * The wrap (#mushafSurahWrap) is still rendered by buildShell() inside
+ * the toolbar template, then moved into #searchPillActions (the cluster
+ * holding the مسح button) — see the relocation in src/mushaf.js. It is
+ * always visible (both تفسير and تدبّر modes): picking an ayah opens it
+ * in whichever mode is active (see submitSurahDetail).
+ * ============================================================ */
+#searchPillActions .mushaf-toolbar__btn-wrap--surah {
+    /* The toolbar wrap capped itself against the gear/play group; inside
+       the pill cluster it just hugs its content. */
+    max-width: none;
+    min-width: 0;
+}
+
+/* Restyled to MATCH the مسح chip next to it: same background family
+   (bg-slate-900/5, dark values from body.dark .bg-slate-900\/5 & \/10 in
+   index.html), no border/shadow/card chrome. The GEOMETRY (height,
+   padding, radius, centering) is pinned for BOTH chips by the shared
+   #searchPillActions rule in index.html — keep it there only. */
+#searchPillActions .mushaf-surah-select {
+    gap: 6px;
+    border: 0;
+    background: rgba(15, 23, 42, 0.05);
+    box-shadow: none;
+}
+
+#searchPillActions .mushaf-surah-select:hover {
+    background: rgba(15, 23, 42, 0.10);
+    box-shadow: none;
+}
+
+#searchPillActions .mushaf-surah-select:active,
+#searchPillActions .mushaf-surah-select[aria-expanded="true"] {
+    background: rgba(15, 23, 42, 0.10);
+    border: 0;
+    box-shadow: none;
+}
+
+body.dark #searchPillActions .mushaf-surah-select,
+html.dark #searchPillActions .mushaf-surah-select {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+body.dark #searchPillActions .mushaf-surah-select:hover,
+body.dark #searchPillActions .mushaf-surah-select:active,
+body.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"],
+html.dark #searchPillActions .mushaf-surah-select:hover,
+html.dark #searchPillActions .mushaf-surah-select:active,
+html.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"] {
+    background: rgba(148, 163, 184, 0.18);
+}
+
+#searchPillActions .mushaf-surah-select__name {
+    /* مسح uses the site font at text-xs/font-extrabold — drop the Amiri
+       serif + 17px sizing the toolbar variant used. */
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+#searchPillActions .mushaf-surah-select__chev svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* The selector now sits near the pill's LEFT corner, so anchor the
+   dropdown to the wrap's left edge (expands rightward, stays on-screen)
+   and push it below the input's bottom border. */
+#searchPillActions .mushaf-surah-dropdown {
+    left: 0;
+    right: auto;
+    top: calc(100% + 16px);
+}
+
+/* Same cure as the Tafsir toolbar dropdowns (index.html "nuclear stacking
+   + opacity fix"): inside the backdrop-filtered #searchPanel glass, the
+   rgba(var(--card)) + backdrop-filter combo can composite the open panel
+   semi-transparent. Solid background, no backdrop-filter, own group. */
+#searchPillActions .mushaf-surah-dropdown {
+    background-color: #ffffff;
+    background-image: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    isolation: isolate;
+}
+
+body.dark #searchPillActions .mushaf-surah-dropdown,
+html.dark #searchPillActions .mushaf-surah-dropdown {
+    background-color: #1e293b;
+}
+
+/* ============================================================
+ * Ayah wheel picker — transform-driven, no native scroll
+ *
+ * The list's translateY is set by JS; there's no overflow scroll, so the
+ * wheel cannot "drift" from inertia/momentum/snap conflicts. CSS
+ * transition kicks in on release for the snap animation. Items closer
+ * to the center get bolder + larger via per-item data-dist styling.
+ * ============================================================ */
+
+.mushaf-wheel {
+    --aw-h: 32px;
+    position: relative;
+    height: calc(var(--aw-h) * 3);
+    width: 100%;
+    max-width: 180px;
+    margin: 4px auto 0;
+    border-radius: 10px;
+    background: var(--card2);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;   /* JS handles touch — no native scroll */
+    cursor: grab;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+}
+
+.mushaf-wheel:focus-visible {
+    outline: none;
+    border-color: var(--accent-strong);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-wheel--dragging { cursor: grabbing; }
+
+.mushaf-wheel__list {
+    list-style: none;
+    margin: 0;
+    /* Top/bottom pad of one row so first/last can sit centered. */
+    padding: var(--aw-h) 0;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+}
+
+.mushaf-wheel--animating .mushaf-wheel__list {
+    transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.mushaf-wheel__item {
+    height: var(--aw-h);
+    display: grid;
+    place-items: center;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.22;
+    transform: scale(0.7);
+    transition: opacity 140ms ease, transform 140ms ease, font-weight 140ms ease;
+    line-height: 1;
+    pointer-events: none;  /* clicks land on the wheel — taps handled by JS */
+}
+
+.mushaf-wheel__item[data-dist="0"] {
+    font-weight: 700;
+    opacity: 1;
+    transform: scale(1.3);
+}
+
+.mushaf-wheel__item[data-dist="1"] {
+    opacity: 0.55;
+    transform: scale(0.88);
+}
+
+.mushaf-wheel__item[data-dist="2"] {
+    opacity: 0.25;
+    transform: scale(0.74);
+}
+
+/* Center selection band — hairlines + soft accent wash. */
+.mushaf-wheel__band {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 50%;
+    height: var(--aw-h);
+    transform: translateY(-50%);
+    pointer-events: none;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(to bottom,
+        transparent,
+        var(--accent-soft) 50%,
+        transparent);
+    opacity: 0.55;
+    z-index: 1;
+}
+
+/* Manual-entry input — overlays the center band. */
+.mushaf-wheel__input {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%;
+    max-width: 120px;
+    height: calc(var(--aw-h) + 4px);
+    padding: 0;
+    border-radius: 8px;
+    background: var(--card);
+    border: 1px solid var(--accent-strong);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    z-index: 3;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mushaf-wheel__input::-webkit-outer-spin-button,
+.mushaf-wheel__input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.mushaf-wheel--editing .mushaf-wheel__list { opacity: 0.18; }
+.mushaf-wheel--editing .mushaf-wheel__band { opacity: 0; }
+
+@media (max-width: 640px) {
+    .mushaf-wheel {
+        --aw-h: 34px;
+        max-width: 170px;
+    }
+}
+
+/* ============================================================
+ * Fullscreen mode (app only) — in-place on the real Mushaf root.
+ *
+ * No cloning, no separate DOM. We just elevate ROOT_EL to position:fixed
+ * inset:0 so it fills the viewport, hide its chrome (toolbar, surah
+ * header, page footer, side nav), and inject three floating controls:
+ * close (✕), font-size cycle (أ), and a page-number label.
+ *
+ * The page swap animation, ayah long-press menu, tap-to-play and swipe
+ * paging all come for free — they're the same DOM, same handlers as the
+ * normal Mushaf view.
+ * ============================================================ */
+
+.mushaf-root--fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    /* ROOT_EL also has the .glass class which sets a translucent gradient
+     * background (rgba 0.45/0.65 white). Inline-stylesheet specificity ties,
+     * but .glass is declared LATER in the cascade so it wins without
+     * !important here. Use !important to make the fullscreen background
+     * unmistakably opaque, and zero out the glass chrome (border, shadow,
+     * blur) so nothing bleeds visually around the page card. */
+    background: #ffffff !important;
+    background-image: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    /* Default (zoom level 0): page is autoFit to the viewport, so there's
+     * nothing to scroll to. Lock overflow so the user can't drag the
+     * single page up/down — it just sits stable in the centered stage.
+     * Scrolling is re-enabled only when the + button bumps to zoom 1
+     * (rule below), where the enlarged page genuinely overflows. */
+    overflow: hidden;
+    animation: mushafFsFadeIn 220ms ease;
+}
+
+/* Zoom 1: text is scaled up beyond the viewport, so the user needs to
+ * scroll to reach the rest of the page. Restores the auto-overflow
+ * behavior — only at this level. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.dark .mushaf-root--fullscreen {
+    /* Neutral dark grey matching the site's dark theme (no slate-blue). */
+    background: #232933 !important;
+    background-image: none !important;
+}
+
+@keyframes mushafFsFadeIn {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+}
+
+/* Hide the regular Mushaf chrome — fullscreen is verses only. The toolbar
+ * (settings/play/font/surah/fullscreen button itself), the decorative
+ * surah header inside the page, the page-N footer, and the side-arrow
+ * nav buttons all disappear; the floating controls take over. */
+.mushaf-root--fullscreen .mushaf-surah-header,
+.mushaf-root--fullscreen .mushaf-page-footer,
+.mushaf-root--fullscreen .mushaf-nav {
+    display: none !important;
+}
+
+/* In fullscreen we hide the regular toolbar's chrome (settings, surah
+ * selector, font pills, fullscreen button — we have our own overlay
+ * versions). We KEEP the play wrap visible and reposition it as a third
+ * floating button next to the font + settings buttons. */
+.mushaf-root--fullscreen .mushaf-toolbar {
+    position: fixed;
+    top: 12px;
+    /* Tightly clustered with font + settings, no gap between them.
+     * RTL right-to-left order: font (12) → play (48) → settings (84),
+     * each with a 4px gap. Literal `right` so the toolbar's own
+     * direction:ltr can't shift it. */
+    right: 48px;
+    left: auto;
+    z-index: 1001;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.mushaf-root--fullscreen .mushaf-toolbar > *:not(#mushafPlayWrap) {
+    display: none !important;
+}
+
+/* In fullscreen the toolbar sits near the right edge (right: 48px), so the
+ * default `left: 0` anchor on the play-button volume/speed dropdown makes
+ * the 220px panel overflow to the right of the viewport — only the leftmost
+ * "1x" pill stays visible. Anchor to the right edge of the play wrap so it
+ * opens LEFTWARD into the screen instead, sliding under the empty space
+ * between the play button and the floating settings/font controls. */
+.mushaf-root--fullscreen .mushaf-toolbar__dropdown--volume {
+    left: auto !important;
+    right: 0 !important;
+}
+
+/* Re-style the existing play button to match the overlay aesthetic. */
+.mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.86);
+    color: #475569;
+    border: 0;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+    padding: 0;
+}
+
+.mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play svg {
+    width: 14px;
+    height: 14px;
+}
+
+body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play {
+    background: rgba(45, 51, 60, 0.86);
+    color: #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Active-playing tint still shows through (green) — keep the existing
+ * data-playing attribute styling, just at the smaller size. */
+.mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(34, 197, 94, 0.18);
+    color: #22c55e;
+}
+
+body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[data-playing="true"] {
+    background: rgba(110, 231, 183, 0.18);
+    color: #6ee7b7;
+}
+
+/* The stage fills the viewport in fullscreen and centers the page. */
+.mushaf-root--fullscreen .mushaf-stage {
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* Bottom padding leaves room for the nav arrows + page number row at
+     * the very bottom (bottom: 16px + ~38px button = ~54px) plus a small
+     * breathing gap. Top padding clears the floating control row. */
+    padding: 56px 12px 80px;
+    align-items: center;
+}
+
+/* Floating close button (top-right in RTL). Minimal, neutral grey. */
+.mushaf-fs__close {
+    position: fixed;
+    top: 12px;
+    /* Literal left so direction inheritance can't move it; close stays
+     * alone in the LEFT corner while the trio (font/play/settings) sits
+     * on the RIGHT. */
+    left: 12px;
+    right: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+    color: #64748b;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.mushaf-fs__close svg { width: 16px; height: 16px; }
+.mushaf-fs__close:hover { background: #ffffff; color: #334155; }
+
+body.dark .mushaf-fs__close {
+    background: rgba(45, 51, 60, 0.86);
+    color: #cbd5e1;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+body.dark .mushaf-fs__close:hover {
+    background: rgba(55, 62, 72, 0.98);
+    color: #e5e7eb;
+}
+
+/* Settings button — same pill aesthetic as before. */
+.mushaf-fs__settings-btn {
+    position: fixed;
+    top: 12px;
+    /* font(12)+32+4 = 48 (play) → play+32+4 = 84 (settings) */
+    right: 84px;
+    left: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+    color: #475569;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.mushaf-fs__settings-btn svg { width: 16px; height: 16px; }
+
+.mushaf-fs__settings-btn:hover {
+    background: #ffffff;
+    color: #1f2937;
+}
+
+body.dark .mushaf-fs__settings-btn {
+    background: rgba(45, 51, 60, 0.86);
+    color: #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+body.dark .mushaf-fs__settings-btn:hover {
+    background: rgba(55, 62, 72, 0.98);
+    color: #f1f5f9;
+}
+
+/* ============================================================
+ * Font-size cycle button (top-right). Single + icon; tapping cycles
+ * through 3 levels: 0 = normal Madinah Mushaf (autoFit), 1 = bigger,
+ * 2 = much bigger. The actual sizing override lives in CSS rules
+ * keyed off [data-fs-zoom] further down — the button only toggles
+ * the attribute on the fullscreen root.
+ * ============================================================ */
+.mushaf-fs__font-btn {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    left: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+    color: #475569;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.mushaf-fs__font-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.mushaf-fs__font-btn:hover {
+    background: #ffffff;
+    color: #1f2937;
+}
+
+.mushaf-fs__font-btn--pop {
+    animation: mushafFsBtnPop 260ms ease;
+}
+
+@keyframes mushafFsBtnPop {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.18); }
+    100% { transform: scale(1); }
+}
+
+body.dark .mushaf-fs__font-btn {
+    background: rgba(45, 51, 60, 0.86);
+    color: #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+body.dark .mushaf-fs__font-btn:hover {
+    background: rgba(55, 62, 72, 0.98);
+    color: #f1f5f9;
+}
+
+/* Single enlargement level. After comparing several close sizes
+ * (28 / 30 / 32 / 34 / 36 px) against the goals — longest-looking ayahs,
+ * the cleanest visual rhythm, and centred lines without forced justify —
+ * 32 px is the sweet spot: visibly bigger than autoFit's typical phone
+ * value (~30 px), enough chars per line to make ayahs look "long", and
+ * tight-enough word spacing (no justify gaps) that lines read cleanly.
+ *
+ * The Mushaf line structure is still dissolved so the text flows as one
+ * continuous paragraph, but each visual line is now CENTRED (not
+ * justified) — symmetric margins on both sides, no awkward word-space
+ * stretching, content sitting in the middle of the page width.
+ */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-page {
+    --font-size: 32px !important;
+    --line-gap: 0 !important;
+    text-align: center !important;
+    text-align-last: center !important;
+    line-height: 2 !important;
+}
+
+/* Settings popover anchored under the floating settings button.
+ * Re-uses .mushaf-settings__* classes inside, so the chip visuals match
+ * the regular Mushaf settings dropdown 1:1. */
+.mushaf-fs__settings-panel {
+    position: fixed;
+    z-index: 1002;
+    top: 52px;
+    /* Right edge of panel aligned with right edge of the settings button
+     * (84px from viewport's right). Panel extends LEFTWARD from there.
+     * max-width keeps it inside the viewport on narrow phones. Literal
+     * `right` so direction inheritance can't shift it. */
+    right: 84px;
+    left: auto;
+    min-width: 220px;
+    max-width: calc(100vw - 96px);     /* 84 (anchor) + 12 (gutter on far side) */
+    background: var(--card, #ffffff);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.06);
+    padding: 14px;
+    display: none;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.mushaf-fs__settings-panel--open {
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+body.dark .mushaf-fs__settings-panel {
+    background: #2a313b;
+    border-color: rgba(148, 163, 184, 0.18);
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Floating page-number — just the digit, small + muted. */
+.mushaf-fs__page-num {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1001;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94a3b8;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0.85;
+}
+
+body.dark .mushaf-fs__page-num {
+    color: #94a3b8;
+}
+
+/* Bottom-center nav: arrows flank the page number in one row near the
+ * bottom edge. Same neutral pill aesthetic as the top overlay controls. */
+.mushaf-fs__nav {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    pointer-events: none;
+    /* Force LTR so the chevrons keep their natural visual order
+     * (‹ on the left = prev, › on the right = next). */
+    direction: ltr;
+}
+
+.mushaf-fs__nav-page {
+    min-width: 22px;
+    text-align: center;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94a3b8;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    pointer-events: none;
+}
+
+body.dark .mushaf-fs__nav-page {
+    color: #94a3b8;
+}
+
+.mushaf-fs__nav-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10),
+                0 1px 3px rgba(15, 23, 42, 0.05);
+    color: #475569;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    pointer-events: auto;
+    transition: background 160ms ease, color 160ms ease,
+                transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.mushaf-fs__nav-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.mushaf-fs__nav-btn:hover {
+    background: #ffffff;
+    color: #1f2937;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14),
+                0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.mushaf-fs__nav-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10);
+}
+
+.mushaf-fs__nav-btn:disabled {
+    opacity: 0.32;
+    cursor: default;
+    pointer-events: none;
+    transform: none;
+}
+
+body.dark .mushaf-fs__nav-btn {
+    background: rgba(45, 51, 60, 0.92);
+    color: #e5e7eb;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.40),
+                0 1px 3px rgba(0, 0, 0, 0.20);
+}
+
+body.dark .mushaf-fs__nav-btn:hover {
+    background: rgba(55, 62, 72, 1);
+    color: #f1f5f9;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.50),
+                0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+body.mushaf-fs-open {
+    overflow: hidden;
+}
+
+/* ============================================================
+ * Fullscreen font-size — controlled by the floating slider.
+ *
+ * Level 0 (no [data-fs-zoom]) is the EXACT normal Madinah Mushaf look —
+ * autoFit + nowrap, every printed line on its own visual line. Levels 1
+ * and 2 enlarge the font and unlock wrap, so the now-wider lines can
+ * break onto a new visual line instead of clipping off the right edge.
+ * Vertical reflows only; the root has `overflow: auto` for scroll.
+ * ============================================================ */
+/* Dissolve the per-Mushaf-line block structure so words from successive
+ * lines flow continuously across visual rows. The browser fills each
+ * visual row to the right edge before wrapping — exactly the "no empty
+ * space after each verse" the user asked for. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-line {
+    display: inline !important;
+    white-space: normal !important;
+    margin: 0 !important;
+    line-height: inherit !important;
+}
+
+/* Bismillah + surah-header overrides for level 1.
+ *
+ * `text-align-last: justify` set on .mushaf-page IS INHERITED, and on a
+ * single-word/single-line block under RTL it sticks the text to the right
+ * edge (because there's nothing to spread). Setting text-align-last back
+ * to `center` on these blocks restores proper centring. The container
+ * targets keep `display: block` and don't blanket-style children, so
+ * bismillah words stay on one inline row. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-line--bismillah {
+    display: block !important;
+    text-align: center !important;
+    text-align-last: center !important;
+    margin: 10px auto 14px !important;
+    width: 100% !important;
+}
+
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header {
+    display: block !important;
+    text-align: center !important;
+    text-align-last: center !important;
+    margin: 14px auto 12px !important;
+    width: 100% !important;
+}
+
+/* And the label/name spans inside the surah header — they're `display:
+ * block` by default, so each forms its own single-line block that also
+ * inherits text-align-last. Force center on them too. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header__label,
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header__name {
+    text-align: center !important;
+    text-align-last: center !important;
+}
+
+/* ============================================================
+ * Capacitor app — safe-area insets (status bar / notch / cutout /
+ * gesture nav). All rules gated to html.is-app (set by the inline
+ * script in index.html) so the website's layout is byte-identical.
+ *
+ * On Android 15+ (target SDK 35+) the WebView is forced edge-to-edge
+ * and overlaysWebView:true makes that consistent on older Android too.
+ * The system no longer reserves status-bar / nav-bar space, so the
+ * fullscreen Mushaf floating controls and bottom-fixed UI must add
+ * the appropriate env(safe-area-inset-*) padding themselves.
+ * env(...,0px) is a safe no-op on devices with no insets.
+ * ============================================================ */
+html.is-app .mushaf-root--fullscreen .mushaf-toolbar {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(48px + env(safe-area-inset-right, 0px));
+}
+
+html.is-app .mushaf-fs__close {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+html.is-app .mushaf-fs__settings-btn {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(84px + env(safe-area-inset-right, 0px));
+}
+
+html.is-app .mushaf-fs__font-btn {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+}
+
+html.is-app .mushaf-fs__settings-panel {
+    top: calc(52px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(84px + env(safe-area-inset-right, 0px));
+}
+
+/* Stage padding clears the floating control row + the bottom nav.
+ * Bump both ends by the inset so verses don't slide behind chrome
+ * once the controls move down with the status bar inset. */
+html.is-app .mushaf-root--fullscreen .mushaf-stage {
+    padding-top: calc(56px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+}
+
+html.is-app .mushaf-fs__page-num {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+html.is-app .mushaf-fs__nav {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+html.is-app .copy-toast {
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Fullscreen-only (app): hide the surah name when the surah was already in
+ * progress from the previous page (continuation). The printed Mushaf only
+ * prints a surah name at its actual START — so a "سورة الغاشية" appearing
+ * out of nowhere at the top of a page where Al-Ghashiyah is just continuing
+ * from the previous page reads as wrong/intrusive. Headers for surahs that
+ * actually START on this page (ayah 1 present) are left untagged and
+ * continue to render normally. The non-fullscreen view keeps the
+ * continuation header because the side-arrow paging context isn't there. */
+html.is-app .mushaf-root--fullscreen .mushaf-surah-header--continuation {
+    display: none !important;
+}
+
+/* ═══════ TEST — Mushaf ayah faux-bold (Option 2) — DELETE THIS BLOCK TO REVERT ═══════
+ * Thin synthetic bold on ayah TEXT ONLY, app-only. -webkit-text-stroke is
+ * paint-only (no glyph-metric change), so it cannot break the nowrap exact-page
+ * layout — only the visual diacritic thickness is being evaluated. paint-order:
+ * stroke draws the stroke UNDER the fill so glyph counters stay open. Scope
+ * excludes ayah numbers (.mushaf-end), bismillah (outside .mushaf-ayah), surah
+ * headers, and all UI. Mirrored in index.html inline <style> + public/styles.css.
+ * Isolated from commit b4004e5 — revert = delete this block in all three files
+ * (then optionally apply Option 3, darker ayah text). */
+html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
+    -webkit-text-stroke: 0.25px currentColor;
+    paint-order: stroke;
+}
+/* ═══════ END TEST block ═══════ */
