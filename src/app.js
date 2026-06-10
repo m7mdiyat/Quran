@@ -754,9 +754,7 @@ let CURRENT_RECITER = 'alijaber';
 // given surah. Each entry maps a reciter key to the Set of surah numbers for
 // which that reciter is disabled (UI greys the chip and the engine falls
 // back to another reciter if needed).
-const RECITER_RESTRICTED_SURAHS = {
-  qasim: new Set([4]),
-};
+const RECITER_RESTRICTED_SURAHS = {};
 
 function isReciterAllowedForSurah(reciterKey, surahNum) {
   if (!reciterKey || !surahNum) return true;
@@ -1433,7 +1431,7 @@ mobileSeekForward?.addEventListener("click", () => skipAudio(5));
 function switchReciter(newReciter) {
   if (!RECITERS[newReciter]) return;
   if (newReciter === CURRENT_RECITER) return;
-  // Honor per-surah restrictions (e.g. qasim is not available on surah 4).
+  // Honor per-surah restrictions (reciters with no recording for a surah).
   if (!isReciterAllowedForSurah(newReciter, getActiveSurahForRestriction())) return;
 
   // Snapshot what's currently playing BEFORE any state changes. The
@@ -4291,7 +4289,7 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   // after the first time).
   deactivateSearchBeam();
   // Re-evaluate reciter restrictions for the new surah (auto-fallback off
-  // qasim on surah 4, refresh chip disabled states either way).
+  // a restricted reciter, refresh chip disabled states either way).
   enforceReciterForSurah(surahNo);
   setUrlForAyah(surahNo, ayahNo, { replace: replaceUrl });
   // Resume hook (app only — no-op on the website): every Tafsir-mode ayah

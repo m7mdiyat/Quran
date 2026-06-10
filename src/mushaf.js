@@ -3283,8 +3283,8 @@ function toggleAudioForAyah(verseKey) {
     }
 
     /* Per-surah availability gate: if the active reciter has no recording
-     * (e.g. qasim has no surah 4) for the tapped
-     * surah, fall back to an allowed reciter BEFORE resolving any URLs.
+     * for the tapped surah, fall back to an allowed reciter BEFORE
+     * resolving any URLs.
      * Without this, tapping an ayah on a page outside the reciter's
      * coverage cold-loads a 404 and surfaces the offline-error card.
      * Surah-selector navigation already enforces this (see goToSurah);

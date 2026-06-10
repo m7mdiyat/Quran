@@ -43,6 +43,22 @@ def convert(src: Path) -> dict:
         None,
     )
 
+    # Phantom-basmala guard: when the recording has no basmala but the
+    # aligner text included one, the basmala unit gets squeezed onto the
+    # opening words of ayah 1 (qasim surah 4 is recorded without basmala).
+    # The remaining boundaries still come out right — the aligner re-anchors
+    # within the first ayah — but flag it for a by-ear check of ayah 1.
+    if basmala is not None:
+        spw = data.get("median_sec_per_word")
+        bas_dur = basmala["end_sec"] - basmala["start_sec"]
+        if spw and bas_dur < 0.5 * 4 * spw:
+            print(
+                f"  WARNING {src.name}: basmala unit is {bas_dur:.2f}s but ~{4 * spw:.1f}s "
+                f"expected at this reciter's pace — recording may have no basmala; "
+                f"verify ayah 1 by ear",
+                file=sys.stderr,
+            )
+
     ayahs = []
     for i, u in enumerate(units):
         start = u["play_start_sec"]
