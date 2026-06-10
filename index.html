@@ -487,6 +487,38 @@
 
     .selected-chip {
       display: none;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+
+    .selected-chip:hover {
+      border-color: rgba(37, 99, 235, .30);
+    }
+
+    .selected-chip:active {
+      transform: scale(.985);
+    }
+
+    .selected-chip:focus-visible {
+      outline: 3px solid rgba(59, 130, 246, .45);
+      outline-offset: 2px;
+    }
+
+    /* Tap-to-change affordance: chevron-down beside the chip title, echoing
+     * the [surah ⌄] selector pattern. Sibling of #chipTitle, NOT a child —
+     * app.js overwrites chipTitle.textContent and would wipe a nested svg. */
+    .chip-chev {
+      width: 16px;
+      height: 16px;
+      margin-inline-start: 6px;
+      opacity: .55;
+      flex-shrink: 0;
+    }
+
+    /* The snippet truncates; never let flex squash the مسح pill instead. */
+    #selectedChip #clearBtn {
+      flex-shrink: 0;
     }
 
     .results.is-empty {
@@ -529,13 +561,20 @@
     }
 
     /* The input's left padding must clear the #searchPillActions cluster
-     * (مسح + the Mushaf-mode surah selector). The cluster's width varies —
-     * the selector is injected/hidden per mode and grows with the surah
-     * name — so app.js mirrors its footprint (offsetLeft + offsetWidth)
-     * into --search-actions-w via a ResizeObserver. Fallback covers the
-     * مسح-only cluster before JS runs. */
+     * (the surah selector). The cluster's width varies — the selector is
+     * injected by mushaf.js and grows with the surah name — so app.js
+     * mirrors its footprint (offsetLeft + offsetWidth) into
+     * --search-actions-w via a ResizeObserver. Fallback covers the brief
+     * empty-cluster state before the selector lands. */
     #textSearch {
       padding-left: calc(var(--search-actions-w, 60px) + 12px);
+    }
+
+    /* If the placeholder ever outgrows the input (long surah names widen
+     * the selector), truncate with … at the inline-end (the left in RTL) —
+     * never a hard clip at the start of the sentence. */
+    #textSearch::placeholder {
+      text-overflow: ellipsis;
     }
 
     /* The cluster (and the surah dropdown inside it) must paint above the
@@ -544,12 +583,9 @@
       z-index: 4;
     }
 
-    /* مسح and the surah selector are visual twins — pin BOTH to the same
-     * explicit box (height, padding, radius, flex centering) so Arabic
-     * line-box differences across OS font stacks can't desync them. This
-     * is the single source of geometry for the pair; mushaf.css only
-     * colors/fonts the selector. */
-    #searchPillActions #clearBtn,
+    /* Pin the surah selector to an explicit box (height, padding, radius,
+     * flex centering) so Arabic line-box differences across OS font stacks
+     * can't change its geometry; mushaf.css only colors/fonts it. */
     #searchPillActions .mushaf-surah-select {
       box-sizing: border-box;
       height: 28px;
@@ -1749,11 +1785,6 @@
 
     body.dark #toggleVersesBtn {
       background: linear-gradient(135deg, #1d8fff, #0b6bdc);
-    }
-
-    #chipAction {
-      background: var(--accent-soft);
-      color: var(--accent-strong);
     }
 
     body.dark .input-glass {
@@ -3681,14 +3712,12 @@
           <div class="relative border-beam" data-active>
             <input id="textSearch"
               class="input-glass w-full bg-white/70 border border-slate-900/10 rounded-2xl px-10 py-4 outline-none focus:ring-4 focus:ring-blue-500/10 transition"
-              placeholder="اكتب حرفين فأكثر... ستظهر الآيات ذات الصلة تلقائيا" />
-            <!-- Left-corner action cluster: مسح + (Mushaf mode only) the surah
-                 selector, which mushaf.js relocates here from its toolbar at
-                 shell-build time. RTL flex ⇒ مسح (last child) is the leftmost. -->
+              placeholder="اكتب حرفين فأكثر من آية..." />
+            <!-- Left-corner action cluster: holds the surah selector, which
+                 mushaf.js relocates here from its toolbar at shell-build time
+                 (visible in both modes). RTL ⇒ the cluster sits at the pill's
+                 left end. مسح lives on the selected-ayah chip below. -->
             <div id="searchPillActions" class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <button type="button" id="clearBtn"
-                class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition"
-                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
             </div>
             <div data-beam-bloom aria-hidden="true"></div>
           </div>
@@ -3710,17 +3739,29 @@
 
           <!-- Results area (IDs preserved) -->
           <div class="results-shell mt-3 collapsed is-empty" id="resultsShell">
-            <button type="button" class="selected-chip w-full text-right glass rounded-2xl p-4 flex items-center gap-3"
-              id="selectedChip" aria-live="polite">
+            <!-- The chip card IS the "change ayah" control (tap → re-open the
+                 results list, or focus the search input when no list exists).
+                 div[role=button], not <button>: it nests the real مسح button,
+                 and button-in-button is invalid HTML. -->
+            <div role="button" tabindex="0"
+              class="selected-chip w-full text-right glass rounded-2xl p-4 flex items-center gap-3"
+              id="selectedChip" aria-live="polite" aria-label="تغيير الآية المختارة" title="اضغط لتغيير الآية">
               <div class="w-10 h-10 rounded-2xl bg-slate-900/5 grid place-items-center font-black text-slate-700"
                 id="chipIcon">✓</div>
               <div class="flex-1 min-w-0">
-                <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
+                <div class="flex items-center">
+                  <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
+                  <svg class="chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
                 <div class="text-xs font-semibold text-slate-500 truncate" id="chipSnippet">—</div>
               </div>
-              <div class="text-xs font-extrabold px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-700" id="chipAction">
-                تغيير</div>
-            </button>
+              <button type="button" id="clearBtn"
+                class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition"
+                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
+            </div>
 
             <div
               class="results results-list mt-3 rounded-2xl overflow-hidden border border-slate-900/10 bg-white/50 is-empty collapsed"

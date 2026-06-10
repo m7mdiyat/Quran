@@ -63,7 +63,6 @@ const chipDefaults = {
   snippet: chipSnippet?.textContent || "",
   icon: chipIcon?.textContent || "",
 };
-const chipAction = el("chipAction");
 
 const aiQuestion = el("aiQuestion");
 const aiAskBtn = el("aiAskBtn");
@@ -4279,6 +4278,16 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     stopAudio();
   }
   CURRENT = { s: surahNo, a: ayahNo };
+  // Mirror the selection into the chip card on EVERY path that sets an
+  // ayah (search pick, deep link, next/prev, popstate) — the card carries
+  // the مسح button, so it must exist whenever an ayah is active, and its
+  // snippet must not go stale while navigating.
+  const chipSurah = QURAN?.surahs?.find((x) => x.number === surahNo);
+  const chipAyah = chipSurah?.ayahs?.find((x) => x.numberInSurah === ayahNo);
+  if (chipAyah) {
+    updateSelectedChip({ textRaw: chipAyah.text });
+    resultsShell?.classList.remove("is-empty");
+  }
   // Keep the search-pill surah selector's label (visible in both modes)
   // tracking the surah being read, and LAST_VIEWED_AYAH fresh for a later
   // toggle into Mushaf.
@@ -5034,7 +5043,7 @@ async function init() {
   // Lock search until core files load
   if (textSearch) {
     textSearch.disabled = true;
-    textSearch.placeholder = "اكتب حرفين فأكثر من آية قرآنية...";
+    textSearch.placeholder = "اكتب حرفين فأكثر من آية...";
   }
 
   // early SEO if URL has ayah
@@ -5201,7 +5210,7 @@ async function init() {
   // Build search index without freezing the UI
   if (textSearch) {
     textSearch.disabled = true;
-    textSearch.placeholder = "اكتب حرفين فأكثر من آية قرآنية...";
+    textSearch.placeholder = "اكتب حرفين فأكثر من آية...";
   }
   setIndexStatus("");
   await buildIndexAsync();
@@ -5209,7 +5218,7 @@ async function init() {
 
   if (textSearch) {
     textSearch.disabled = false;
-    textSearch.placeholder = "اكتب حرفين فأكثر من آية قرآنية...";
+    textSearch.placeholder = "اكتب حرفين فأكثر من آية...";
   }
 
   // search input
@@ -5262,9 +5271,9 @@ async function init() {
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
   });
 
-  // The search input's left padding must clear the مسح + surah-selector
-  // cluster, whose width changes at runtime (the selector is injected by
-  // mushaf.js, hidden in Tafsir mode, and grows with the surah name).
+  // The search input's left padding must clear the surah-selector cluster,
+  // whose width changes at runtime (the selector is injected by mushaf.js
+  // and grows with the surah name).
   // Mirror the cluster's footprint into the CSS var the #textSearch
   // padding-left calc() reads (see index.html styles).
   const pillActionsEl = el("searchPillActions");
@@ -5301,21 +5310,36 @@ async function init() {
     });
   }
 
-  // chip expands
+  // The chip card is the تغيير control: tapping it re-opens the results
+  // list. When there is no list to reopen (the ayah came from a deep link,
+  // not a search), send the user to the search input instead — expanding
+  // an empty container would just make the card vanish.
+  const activateChip = () => {
+    if (results?.querySelector(".result-card")) {
+      toggleResultsList();
+    } else {
+      textSearch?.focus();
+    }
+  };
   resultsShell?.addEventListener("click", (e) => {
     let target = e.target;
     if (target && !(target instanceof Element)) {
       target = target.parentElement;
     }
     if (!target || !(target instanceof Element)) return;
-    if (!target.closest("#chipAction") && !target.closest("#selectedChip")) return;
+    // مسح rides on the chip: its full-reset must not also toggle the card.
+    if (target.closest("#clearBtn")) return;
+    if (!target.closest("#selectedChip")) return;
     e.preventDefault();
-    toggleResultsList();
+    activateChip();
   });
-  chipAction?.addEventListener("click", (e) => {
+  // The chip is a div[role=button] (it nests the real مسح <button>), so
+  // Enter/Space don't come for free. Keys bubbling up from مسح stay مسح's.
+  selectedChip?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (e.target instanceof Element && e.target.closest("#clearBtn")) return;
     e.preventDefault();
-    e.stopPropagation();
-    toggleResultsList();
+    activateChip();
   });
 
   // AI quick prompts (chips)

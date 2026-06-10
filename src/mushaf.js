@@ -1174,11 +1174,11 @@ function buildShell() {
   `;
     wrapper.appendChild(root);
 
-    // The surah selector lives in the hero search pill next to the مسح
-    // button, not in the Mushaf toolbar. It is still rendered by the
-    // template above (keeps all selector markup in one place), then
-    // relocated; listeners are wired by id afterwards so the move is
-    // transparent. RTL flex: prepend ⇒ it lands to the RIGHT of مسح.
+    // The surah selector lives in the hero search pill (the pill's only
+    // action — مسح sits on the selected-ayah chip), not in the Mushaf
+    // toolbar. It is still rendered by the template above (keeps all
+    // selector markup in one place), then relocated; listeners are wired
+    // by id afterwards so the move is transparent.
     // Visible in BOTH modes — submitSurahDetail routes the pick to the
     // active mode (Tafsir panel vs Mushaf navigation).
     const pillActions = document.getElementById("searchPillActions");
