@@ -218,10 +218,15 @@ body.dark .mode-toggle__knob {
     margin-top: 18px;
     padding-top: 12px;
     border-top: 1px solid var(--line);
-    font-size: 12px;
+    /* Arabic UI font (same family the app's other Arabic UI uses) — the
+       inherited body stack rendered "صفحة" in the system fallback with the
+       digit in Outfit, a visible mismatch. No letter-spacing: tracking
+       gaps cursive Arabic joins and read as broken type. */
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 13px;
     font-weight: 600;
     color: var(--muted);
-    letter-spacing: 0.06em;
+    letter-spacing: normal;
 }
 
 /* ============================================================

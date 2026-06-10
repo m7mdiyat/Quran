@@ -1,4 +1,4 @@
-import{g as h,A as y}from"./index-Clc7Zg4e.js";const d=5e3,v=[{value:"suggestion",label:"اقتراح"},{value:"bug",label:"خطأ / مشكلة"},{value:"other",label:"أخرى"}];let l=null,r=null,u=!1,b=!1;function g(){if(document.getElementById("offlinePanelFont"))return;const e=document.createElement("link");e.id="offlinePanelFont",e.rel="stylesheet",e.href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap",document.head.appendChild(e)}function S(){return`
+import{g as h,A as y}from"./index-wPe4sj3h.js";const d=5e3,v=[{value:"suggestion",label:"اقتراح"},{value:"bug",label:"خطأ / مشكلة"},{value:"other",label:"أخرى"}];let l=null,r=null,u=!1,b=!1;function g(){if(document.getElementById("offlinePanelFont"))return;const e=document.createElement("link");e.id="offlinePanelFont",e.rel="stylesheet",e.href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap",document.head.appendChild(e)}function S(){return`
       <form class="feedback-form" novalidate>
         <label class="feedback-field">
           <span class="feedback-label">نوع الملاحظة</span>

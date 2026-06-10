@@ -1503,10 +1503,11 @@ function renderPage(data, direction = "none") {
         newPage.appendChild(buildLineElement(line, lineSurahId));
     }
 
-    // Page-number footer
+    // Page-number footer — Arabic-Indic digits to match the page's own
+    // ayah numerals (٦٠٤ max, so no grouping separators ever appear).
     const footer = document.createElement("div");
     footer.className = "mushaf-page-footer";
-    footer.textContent = `صفحة ${data.page}`;
+    footer.textContent = `صفحة ${Number(data.page).toLocaleString("ar-EG")}`;
     newPage.appendChild(footer);
 
     // --- Page swap with @keyframes fade animation ---
