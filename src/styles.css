@@ -266,14 +266,18 @@
   }
   #netBadge {
     position: fixed;
-    top: 10px;
-    left: 10px;
+    /* Nudged down+right from the original 10/10 corner hug for visibility. */
+    top: 18px;
+    left: 18px;
     padding: 6px 10px;
     border-radius: 10px;
     font-size: 12px;
     background: rgba(0, 0, 0, .75);
     color: #fff;
     z-index: 9999;
+  }
+  html.is-app #netBadge {
+    top: calc(max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) + 10px);
   }
   .inline-block {
     display: inline-block;

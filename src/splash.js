@@ -26,6 +26,10 @@ import animationData from "./splash-v3.json";
 // dark gradient (#232933 → #1f252e → #1b2129).
 const LIGHT_BG = "#eff5ff";
 const DARK_BG = "#1f252e";
+// Optical-centering nudge: the Lottie's visual mass sits slightly right of
+// its bounding box, so geometric centering reads off-center. Shift the host
+// this many px horizontally (negative = left). Tweak freely.
+const NUDGE_X_PX = -5;
 const FADE_MS = 300;
 const SAFETY_MS = 5000; // overlay force-removed after this, no matter what
 const NATIVE_HIDE_FALLBACK_MS = 1500; // hide native splash even if the Lottie never renders
@@ -62,10 +66,11 @@ export function initSplash({ appReady, isDark } = {}) {
   });
 
   const host = document.createElement("div");
-  // ~70% of the shorter screen dimension, centered.
+  // ~70% of the shorter screen dimension, centered (plus the optical nudge).
   const size = Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.7);
   host.style.width = size + "px";
   host.style.height = size + "px";
+  host.style.transform = `translateX(${NUDGE_X_PX}px)`;
   overlay.appendChild(host);
 
   document.body.appendChild(overlay);

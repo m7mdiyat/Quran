@@ -1594,6 +1594,10 @@ body.dark .mushaf-surah-select:hover {
     padding: 8px;
     direction: rtl;
     gap: 6px;
+    /* Whole-panel scroll-chain stop (the list repeats it; this covers the
+       padding/search/detail areas too). JS adds a hard touch guard while
+       open — see the containment block in wireSurahSelect (src/mushaf.js). */
+    overscroll-behavior: contain;
 }
 
 .mushaf-surah-dropdown__panel {
@@ -2210,6 +2214,29 @@ html.dark #searchPillActions .mushaf-surah-dropdown {
     animation: mushafFsFadeIn 220ms ease;
 }
 
+/* No double-tap zoom inside fullscreen. The app already puts
+ * touch-action: manipulation on html/body (index.html lockdown), but
+ * WebKit's double-tap heuristic mis-evaluates the chain inside this
+ * position:fixed subtree — the explicit per-element value closes that
+ * gap. `manipulation` keeps pan (zoom-1 scrolling, page swipes) and all
+ * taps working; page-fullscreen.js adds a JS guard for background taps. */
+.mushaf-root--fullscreen,
+.mushaf-root--fullscreen * {
+    touch-action: manipulation;
+}
+
+/* Re-assert the intentional touch-action values the blanket rule above
+ * would otherwise override (it ties on specificity but sits later in the
+ * file): the مختصر card's header is a touch-drag handle, and its close
+ * button opts back into default behaviour. */
+.mushaf-root--fullscreen .mushaf-mukhtasar__header {
+    touch-action: none;
+}
+
+.mushaf-root--fullscreen .mushaf-mukhtasar__close {
+    touch-action: auto;
+}
+
 /* Zoom 1: text is scaled up beyond the viewport, so the user needs to
  * scroll to reach the rest of the page. Restores the auto-overflow
  * behavior — only at this level. */
@@ -2319,7 +2346,14 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
     color: #6ee7b7;
 }
 
-/* The stage fills the viewport in fullscreen and centers the page. */
+/* The stage fills the viewport in fullscreen and centers the page.
+ * The stage must actually BE a flex container for centering to happen
+ * (a bare align-items on the default block stage was a no-op — the page
+ * silently top-aligned under the padding and sat too high whenever the
+ * rendered page was shorter than the viewport). Centering itself is done
+ * with auto margins on .mushaf-pages, NOT justify-content: center —
+ * auto margins collapse to 0 when the content overflows (font zoom 1),
+ * keeping the top of the page reachable while the root scrolls. */
 .mushaf-root--fullscreen .mushaf-stage {
     min-height: 100vh;
     min-height: 100dvh;
@@ -2327,7 +2361,13 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
      * the very bottom (bottom: 16px + ~38px button = ~54px) plus a small
      * breathing gap. Top padding clears the floating control row. */
     padding: 56px 12px 80px;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+}
+
+.mushaf-root--fullscreen .mushaf-pages {
+    margin-top: auto;
+    margin-bottom: auto;
 }
 
 /* Floating close button (top-right in RTL). Minimal, neutral grey. */
@@ -2500,7 +2540,10 @@ body.dark .mushaf-fs__font-btn:hover {
     left: auto;
     min-width: 220px;
     max-width: calc(100vw - 96px);     /* 84 (anchor) + 12 (gutter on far side) */
-    background: var(--card, #ffffff);
+    /* SOLID white, not var(--card): the light --card is rgba(255,255,255,.82)
+     * and the Quran text bled through, making the panel hard to read.
+     * (Dark theme already overrides with solid #2a313b below.) */
+    background: #ffffff;
     border: 1px solid rgba(15, 23, 42, 0.08);
     border-radius: 14px;
     box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.06);
@@ -2636,8 +2679,60 @@ body.dark .mushaf-fs__nav-btn:hover {
                 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
+/* Page scroll lock while fullscreen is open. position:fixed is the lock
+ * that iOS actually honours — overflow:hidden alone is ignored for touch
+ * scrolling there, which let the page underneath drift during fullscreen
+ * and left WebKit's touch-scroll routing stale after exit (the surah
+ * selector's list then scrolled the PAGE instead of itself). The scroll
+ * position is saved/restored by page-fullscreen.js (body.style.top). */
 body.mushaf-fs-open {
     overflow: hidden;
+    position: fixed;
+    left: 0;
+    right: 0;
+    width: 100%;
+}
+
+/* ============================================================
+ * Distraction-free mode — a single tap on the fullscreen background
+ * fades ALL chrome out (300ms calm ease); a second tap fades it back.
+ * pointer-events:none while hidden means the return tap always lands
+ * on the background, never on an invisible control.
+ *
+ * The injected overlay controls live in one .mushaf-fs__chrome wrapper
+ * (page-fullscreen.js) so they fade as a unit — opacity on the wrapper
+ * creates only a stacking context, NOT a containing block, so its
+ * position:fixed children stay viewport-anchored. The play button
+ * (#mushafPlayWrap inside .mushaf-toolbar) is in the Mushaf's own DOM,
+ * so the toolbar gets the same fade separately.
+ * ============================================================ */
+.mushaf-fs__chrome {
+    transition: opacity 300ms ease;
+}
+
+/* The `*` leg matters: descendants like .mushaf-fs__nav-btn carry their own
+ * pointer-events: auto (to punch through the nav row's none), which would
+ * silently re-enable the invisible buttons without it. */
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-fs__chrome,
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-fs__chrome * {
+    pointer-events: none;
+}
+
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-fs__chrome {
+    opacity: 0;
+}
+
+.mushaf-root--fullscreen .mushaf-toolbar {
+    transition: opacity 300ms ease;
+}
+
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-toolbar,
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-toolbar * {
+    pointer-events: none;
+}
+
+.mushaf-root--fullscreen.mushaf-fs--chrome-hidden .mushaf-toolbar {
+    opacity: 0;
 }
 
 /* ============================================================

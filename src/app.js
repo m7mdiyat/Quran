@@ -5240,7 +5240,7 @@ async function init() {
   // lives (Tafsir panel or Mushaf panel), stop playback, and put the URL,
   // SEO tags, mode toggle and search beam back to how a fresh load of "/"
   // looks. pushState (not replace) so Back still returns to the ayah.
-  clearBtn?.addEventListener("click", () => {
+  const resetToHome = () => {
     textSearch.value = "";
     results.innerHTML = "";
     results.classList.add("is-empty");
@@ -5268,7 +5268,48 @@ async function init() {
     }
     resetSeoMetaToHome({ removeAyahParam: true });
     reactivateSearchBeam();
-    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
+  };
+
+  // The teardown is STAGED so مسح feels composed instead of abrupt:
+  //   1. the open content (chip card, results, Tafsir panel / Mushaf panel)
+  //      fades out over 280ms (.m7-clear-fade, index.html);
+  //   2. behind that blank moment the actual reset + jump-to-top run —
+  //      nothing visible collapses or scrolls on screen;
+  //   3. the search panel settles in with a soft entrance (.m7-home-enter)
+  //      while the beam re-arms — the homepage "arrives" instead of snapping.
+  // Reduced-motion users (and the nothing-was-open case) get the instant path.
+  let clearing = false;
+  clearBtn?.addEventListener("click", () => {
+    if (clearing) return;
+    const fadeTargets = [
+      resultsShell,
+      tafsirSection,
+      document.getElementById("mushafRoot"),
+    ].filter((n) => n && !n.classList.contains("hidden") && n.offsetParent !== null);
+    let reduceMotion = false;
+    try { reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { }
+    if (reduceMotion || fadeTargets.length === 0) {
+      resetToHome();
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
+      return;
+    }
+    clearing = true;
+    fadeTargets.forEach((n) => n.classList.add("m7-clear-fade"));
+    setTimeout(() => {
+      resetToHome();
+      fadeTargets.forEach((n) => n.classList.remove("m7-clear-fade"));
+      try { window.scrollTo(0, 0); } catch { }
+      const searchPanelEl2 = el("searchPanel");
+      if (searchPanelEl2) {
+        searchPanelEl2.classList.remove("m7-home-enter");
+        void searchPanelEl2.offsetWidth;
+        searchPanelEl2.classList.add("m7-home-enter");
+        // Drop the class once the entrance ends so the transform/stacking
+        // side effects don't outlive the animation.
+        setTimeout(() => searchPanelEl2.classList.remove("m7-home-enter"), 420);
+      }
+      clearing = false;
+    }, 300);
   });
 
   // The search input's left padding must clear the surah-selector cluster,

@@ -19,6 +19,11 @@
  *                                  surah-selector parts)
  *   - page number       bottom-center
  *
+ * All of the above live in one .mushaf-fs__chrome wrapper: a single tap on
+ * the Mushaf background (not an ayah, not a control) fades the entire
+ * chrome out for distraction-free reading; a second tap fades it back.
+ * The same tap bookkeeping doubles as the double-tap-zoom guard.
+ *
  * The settings panel uses the same `data-settings-group` attributes as
  * the in-toolbar dropdown, so mushaf.js's `syncSettingsUI()` (now
  * document-wide) and `handleSettingsChip()` drive both panels from a
@@ -37,6 +42,7 @@ const FS_ZOOM_KEY = "m7_mushaf_fs_zoom";
 let _open = false;
 let _deps = null;
 let _rootEl = null;
+let _chromeWrap = null;
 let _closeBtn = null;
 let _fontBtn = null;
 let _settingsBtn = null;
@@ -44,6 +50,18 @@ let _settingsPanel = null;
 let _settingsOpen = false;
 let _navWrap = null;
 let _fontLevel = 0;
+let _savedScrollY = 0;
+
+// Distraction-free mode (single background tap hides/shows all chrome) +
+// the double-tap-zoom guard share tap bookkeeping — see onRootTouchEnd.
+let _chromeHidden = false;
+let _chromeToggleT = null;
+let _suppressNextRootClick = false;
+let _lastTapT = 0;
+let _lastTapX = 0;
+let _lastTapY = 0;
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_SLOP_PX = 28;
 
 /* ============================================================ Public ==== */
 
@@ -57,7 +75,14 @@ export function openFullscreen(deps) {
     _open = true;
     _fontLevel = readSavedLevel();
     _rootEl.classList.add("mushaf-root--fullscreen");
+    // Page scroll lock: body goes position:fixed (the lock iOS actually
+    // honours — see body.mushaf-fs-open in mushaf.css), pinned at the
+    // current scroll offset so nothing visually jumps; restored on close.
+    // The html class drives the theme-matched overscroll background.
+    _savedScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.top = `-${_savedScrollY}px`;
     document.body.classList.add("mushaf-fs-open");
+    document.documentElement.classList.add("mushaf-fs-open");
     injectControls();
     applyFontLevel();
     updatePageNum();
@@ -70,6 +95,9 @@ export function openFullscreen(deps) {
     // close our floating settings panel so the two never overlap.
     document.addEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
     window.addEventListener("resize", updatePageNum);
+    // Distraction-free toggle + double-tap-zoom guard (background taps only).
+    _rootEl.addEventListener("click", onRootClick);
+    _rootEl.addEventListener("touchend", onRootTouchEnd, { passive: false });
 }
 
 export function closeFullscreen() {
@@ -80,12 +108,21 @@ export function closeFullscreen() {
     document.removeEventListener("click", onDocumentClick, true);
     document.removeEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
     window.removeEventListener("resize", updatePageNum);
+    _rootEl?.removeEventListener("click", onRootClick);
+    _rootEl?.removeEventListener("touchend", onRootTouchEnd);
 
     closeSettingsPanel();
     resetFontOnActivePage();
+    resetChromeState();
 
     _rootEl?.classList.remove("mushaf-root--fullscreen");
     document.body.classList.remove("mushaf-fs-open");
+    document.documentElement.classList.remove("mushaf-fs-open");
+    // Undo the position:fixed scroll lock and put the page back exactly
+    // where it was — leaves no stale scroll state behind (the old
+    // overflow-only lock did, breaking the surah selector's list scroll).
+    document.body.style.top = "";
+    window.scrollTo(0, _savedScrollY);
     removeControls();
 }
 
@@ -110,10 +147,84 @@ function onDocumentClick(e) {
     if (e.target.closest(".mushaf-fs__settings-panel")) return;
     if (e.target.closest(".mushaf-fs__settings-btn")) return;
     closeSettingsPanel();
+    // A background tap's job here was "close the panel" — it must not ALSO
+    // toggle the chrome. This capture handler runs before onRootClick
+    // (bubble), so flag the click for it to skip. Background targets always
+    // bubble to the root (nothing stops their propagation), so the same
+    // click is guaranteed to consume the flag.
+    if (isBackgroundTarget(e.target)) _suppressNextRootClick = true;
 }
 
 function onVolDropdownOpen() {
     if (_settingsOpen) closeSettingsPanel();
+}
+
+/* ============================================== Distraction-free mode ==== */
+
+/* "Background" = the Mushaf surface itself: not an ayah (tap-to-play), not
+ * a dimmed surah header (tap-to-switch), not any overlay control/panel. */
+function isBackgroundTarget(t) {
+    if (!(t instanceof Element)) return false;
+    return !t.closest(
+        ".mushaf-ayah, .mushaf-surah-header, .mushaf-nav," +
+        " .mushaf-fs__close, .mushaf-fs__font-btn, .mushaf-fs__settings-btn," +
+        " .mushaf-fs__settings-panel, .mushaf-fs__nav, .mushaf-toolbar," +
+        " .mushaf-ayah-menu, .mushaf-mukhtasar"
+    );
+}
+
+function onRootClick(e) {
+    if (!_open) return;
+    if (_suppressNextRootClick) { _suppressNextRootClick = false; return; }
+    if (!isBackgroundTarget(e.target)) return;
+    // A background tap while the ayah menu or the مختصر card is open is a
+    // "dismiss" tap (mushaf.js's own document handlers close them) — it
+    // must not also toggle the chrome.
+    if (document.querySelector(".mushaf-ayah-menu--open, .mushaf-mukhtasar--open")) return;
+    // Defer past the double-tap window so a double-tap (suppressed by
+    // onRootTouchEnd) never flickers the chrome out and back.
+    clearTimeout(_chromeToggleT);
+    _chromeToggleT = setTimeout(toggleChrome, DOUBLE_TAP_MS);
+}
+
+/* Double-tap-zoom guard (#3): a second background tap close in time and
+ * space gets preventDefault()ed — that kills both WebKit's double-tap
+ * zoom heuristic AND the synthetic click, and cancels the pending chrome
+ * toggle. Ayah taps are exempt so rapid play/pause taps keep working
+ * (zoom there is already blocked by the viewport lock + touch-action). */
+function onRootTouchEnd(e) {
+    if (!_open) return;
+    if (e.touches.length) return; // fingers still down — not a tap
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dt = e.timeStamp - _lastTapT;
+    const dist = Math.hypot(t.clientX - _lastTapX, t.clientY - _lastTapY);
+    const isDoubleTap = _lastTapT > 0 && dt < DOUBLE_TAP_MS && dist < DOUBLE_TAP_SLOP_PX;
+    if (isDoubleTap && isBackgroundTarget(e.target) && e.cancelable) {
+        e.preventDefault();
+        clearTimeout(_chromeToggleT);
+        _lastTapT = 0; // a third tap starts a fresh sequence
+        return;
+    }
+    _lastTapT = e.timeStamp;
+    _lastTapX = t.clientX;
+    _lastTapY = t.clientY;
+}
+
+function toggleChrome() {
+    if (!_open || !_rootEl) return;
+    _chromeHidden = !_chromeHidden;
+    if (_chromeHidden) closeSettingsPanel();
+    _rootEl.classList.toggle("mushaf-fs--chrome-hidden", _chromeHidden);
+}
+
+function resetChromeState() {
+    clearTimeout(_chromeToggleT);
+    _chromeToggleT = null;
+    _chromeHidden = false;
+    _suppressNextRootClick = false;
+    _lastTapT = 0;
+    _rootEl?.classList.remove("mushaf-fs--chrome-hidden");
 }
 
 /* ============================================================ Controls = */
@@ -176,10 +287,18 @@ function injectControls() {
         }
     });
 
-    _rootEl.appendChild(_closeBtn);
-    _rootEl.appendChild(_fontBtn);
-    _rootEl.appendChild(_settingsBtn);
-    _rootEl.appendChild(_navWrap);
+    // All overlay controls live in one wrapper so the distraction-free
+    // mode can fade them as a unit (see .mushaf-fs__chrome in mushaf.css).
+    // The wrapper is a plain static box — its position:fixed children stay
+    // viewport-anchored (opacity makes a stacking context, not a
+    // containing block).
+    _chromeWrap = document.createElement("div");
+    _chromeWrap.className = "mushaf-fs__chrome";
+    _chromeWrap.appendChild(_closeBtn);
+    _chromeWrap.appendChild(_fontBtn);
+    _chromeWrap.appendChild(_settingsBtn);
+    _chromeWrap.appendChild(_navWrap);
+    _rootEl.appendChild(_chromeWrap);
     updateNavButtons();
 }
 
@@ -189,6 +308,7 @@ function removeControls() {
     _settingsBtn?.remove(); _settingsBtn = null;
     _navWrap?.remove(); _navWrap = null;
     _settingsPanel?.remove(); _settingsPanel = null;
+    _chromeWrap?.remove(); _chromeWrap = null;
 }
 
 function updateNavButtons() {
@@ -342,6 +462,7 @@ function buildSettingsPanel() {
         try { _deps?.handleSettingsChip?.(chip); } catch { }
     });
 
-    _rootEl.appendChild(panel);
+    // Into the chrome wrapper so distraction-free mode fades it too.
+    (_chromeWrap || _rootEl).appendChild(panel);
     _settingsPanel = panel;
 }

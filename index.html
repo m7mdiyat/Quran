@@ -288,10 +288,51 @@
       border-color: rgba(148, 163, 184, .22) !important;
     }
 
+    /* body must NOT get height:100%: a fixed-height body caps the sticky
+     * header's containing block at one viewport, so the header slid up
+     * off-screen ("swallowed") as soon as the page scrolled past 100vh.
+     * The body rule below keeps min-height:100vh, so the box still covers
+     * the viewport but now grows with the content — the sticky header
+     * stays pinned for the entire scroll. */
+    html {
+      height: 100%;
+    }
+
     html,
     body {
-      height: 100%;
       margin: 0;
+    }
+
+    /* The root element must be painted: on iOS the rubber-band/overscroll
+     * area shows the html background (the body gradient does NOT propagate
+     * past it) — unpainted, the WebView's own white leaks through on hard
+     * scrolls. Bottom overscroll is by far the common case, so the canvas
+     * matches the page gradient's BOTTOM stop exactly (#edf6fb light /
+     * #1b2129 dark — see body::before) — the seam disappears. The
+     * fullscreen Mushaf variant matches its own surface (class set by
+     * page-fullscreen.js). */
+    html {
+      background-color: #edf6fb;
+    }
+
+    html.dark {
+      background-color: #1b2129;
+    }
+
+    html.mushaf-fs-open {
+      background-color: #ffffff;
+    }
+
+    html.dark.mushaf-fs-open {
+      background-color: #232933;
+    }
+
+    /* App only: no rubber-band bounce on the page scroller — the bounce
+     * dragged the sticky header (the whole top area) off-screen during
+     * hard scrolls, and exposed the overscroll area behind the page. */
+    html.is-app,
+    html.is-app body {
+      overscroll-behavior-y: none;
     }
 
     body {
@@ -505,20 +546,37 @@
       outline-offset: 2px;
     }
 
-    /* Tap-to-change affordance: chevron-down beside the chip title, echoing
-     * the [surah ⌄] selector pattern. Sibling of #chipTitle, NOT a child —
-     * app.js overwrites chipTitle.textContent and would wipe a nested svg. */
-    .chip-chev {
-      width: 16px;
-      height: 16px;
-      margin-inline-start: 6px;
-      opacity: .55;
-      flex-shrink: 0;
-    }
-
     /* The snippet truncates; never let flex squash the مسح pill instead. */
     #selectedChip #clearBtn {
       flex-shrink: 0;
+    }
+
+    /* ── مسح staged teardown ──────────────────────────────────────────
+     * Phase 1: the open content (chip card, results, Tafsir/Mushaf panel)
+     * fades out calmly. Phase 2 (JS, after the fade): state reset + jump
+     * to top happen behind the blank moment, then the search panel settles
+     * back in with a soft entrance. !important so the fade beats any
+     * element-level transition/animation already on the targets. */
+    .m7-clear-fade {
+      transition: opacity 280ms ease !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    @keyframes m7HomeEnter {
+      from {
+        opacity: .55;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .m7-home-enter {
+      animation: m7HomeEnter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
     .results.is-empty {
@@ -567,7 +625,9 @@
      * --search-actions-w via a ResizeObserver. Fallback covers the brief
      * empty-cluster state before the selector lands. */
     #textSearch {
-      padding-left: calc(var(--search-actions-w, 60px) + 12px);
+      /* 6px breathing gap after the cluster (was 12px — trimmed to fund the
+       * wider selector; see the width budget on the cluster rule below). */
+      padding-left: calc(var(--search-actions-w, 60px) + 6px);
     }
 
     /* If the placeholder ever outgrows the input (long surah names widen
@@ -578,9 +638,16 @@
     }
 
     /* The cluster (and the surah dropdown inside it) must paint above the
-     * border-beam layers (z-index 1–3 pseudo-elements/bloom on the pill). */
+     * border-beam layers (z-index 1–3 pseudo-elements/bloom on the pill).
+     *
+     * left:16px overrides the markup's left-3 (12px) — the selector sits a
+     * touch further IN from the pill's left corner. Width budget at 360px
+     * (placeholder "اكتب حرفين فأكثر من آية..." measures ~167px @16px):
+     * pill 296 − borders 2 − right pad 12 − (left 16 + selector ~90 + gap 6)
+     * = 170px ≥ 167 → no clipping; ::placeholder ellipsis stays the failsafe. */
     #searchPillActions {
       z-index: 4;
+      left: 16px;
     }
 
     /* Pin the surah selector to an explicit box (height, padding, radius,
@@ -591,7 +658,7 @@
       height: 28px;
       display: inline-flex;
       align-items: center;
-      padding: 0 12px;
+      padding: 0 16px;
       line-height: 1;
       border-radius: 12px;
     }
@@ -609,11 +676,12 @@
      * etc.) saw an oversized gap between the placeholder text and the input's
      * right edge from the default px-10 (40px) padding. The left side is
      * handled by the --search-actions-w calc above; tighten the right side
-     * to 16px so the text starts close to the edge. Modern phones (Pixel 8
-     * ≈ 412 CSS px, iPhone 14 ≈ 390) and up keep the original px-10. */
+     * to 12px so the text starts close to the edge (funds the wider surah
+     * selector — see the width budget on #searchPillActions). Modern phones
+     * (Pixel 8 ≈ 412 CSS px, iPhone 14 ≈ 390) and up keep the original px-10. */
     @media (max-width: 400px) {
       #textSearch {
-        padding-right: 1rem;
+        padding-right: 12px;
       }
     }
 
@@ -3749,13 +3817,7 @@
               <div class="w-10 h-10 rounded-2xl bg-slate-900/5 grid place-items-center font-black text-slate-700"
                 id="chipIcon">✓</div>
               <div class="flex-1 min-w-0">
-                <div class="flex items-center">
-                  <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
-                  <svg class="chip-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                    aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
-                  </svg>
-                </div>
+                <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
                 <div class="text-xs font-semibold text-slate-500 truncate" id="chipSnippet">—</div>
               </div>
               <button type="button" id="clearBtn"

@@ -2014,6 +2014,15 @@ function normalizeArabicForSearch(s) {
 let _SURAH_LIST_BUILT = false;
 let _SURAH_SELECT_WIRED = false;
 
+/* Auto-focusing the dropdown's search field is a desktop convenience —
+ * on touch devices it pops the soft keyboard the moment the selector
+ * opens (and iOS then scrolls the page to "reveal" the focused field,
+ * fighting the user's gesture). Focus only when the primary input is a
+ * fine pointer that can hover; phone users tap the field themselves. */
+function canAutofocusSurahSearch() {
+    try { return window.matchMedia("(hover: hover) and (pointer: fine)").matches; } catch { return false; }
+}
+
 function buildSurahSelectList() {
     const list = document.getElementById("mushafSurahList");
     if (!list) return;
@@ -2081,11 +2090,22 @@ function openSurahDropdown() {
     showSurahListPanel();
     dd.classList.add("mushaf-toolbar__dropdown--open");
     btn.setAttribute("aria-expanded", "true");
+    installDdScrollGuards();
     if (search) {
         search.value = "";
         filterSurahList("");
     }
-    // Scroll current row into view, then focus the search.
+    // iOS WebKit: after the Mushaf fullscreen exits (a body overflow +
+    // fixed-ancestor toggle), the list's composited scroll region can go
+    // stale — touch scrolls then fall through to the page. Forcing a
+    // reflow with overflow toggled rebuilds the region on every open.
+    const listEl = document.getElementById("mushafSurahList");
+    if (listEl) {
+        listEl.style.overflowY = "hidden";
+        void listEl.offsetHeight;
+        listEl.style.overflowY = "";
+    }
+    // Scroll current row into view, then (desktop only) focus the search.
     requestAnimationFrame(() => {
         const list = document.getElementById("mushafSurahList");
         const cur = list?.querySelector(".mushaf-surah-item--current");
@@ -2095,7 +2115,7 @@ function openSurahDropdown() {
             const offset = cTop - lTop - (list.clientHeight / 2) + (cur.offsetHeight / 2);
             list.scrollTop += offset;
         }
-        search?.focus({ preventScroll: true });
+        if (canAutofocusSurahSearch()) search?.focus({ preventScroll: true });
     });
 }
 
@@ -2103,6 +2123,7 @@ function closeSurahDropdown() {
     const dd = document.getElementById("mushafSurahDropdown");
     const btn = document.getElementById("mushafSurahSelectBtn");
     if (!dd || !btn) return;
+    removeDdScrollGuards();
     dd.classList.remove("mushaf-toolbar__dropdown--open");
     btn.setAttribute("aria-expanded", "false");
     // Reset to list view so the next open starts fresh.
@@ -2537,11 +2558,14 @@ function wireSurahSelect() {
         showSurahDetailPanel(num);
     });
 
-    // Back button returns to the list view + restores focus to search.
+    // Back button returns to the list view; focus restore is desktop-only
+    // (on touch it would pop the soft keyboard — see canAutofocusSurahSearch).
     detailBack.addEventListener("click", (e) => {
         e.preventDefault();
         showSurahListPanel();
-        requestAnimationFrame(() => search.focus({ preventScroll: true }));
+        if (canAutofocusSurahSearch()) {
+            requestAnimationFrame(() => search.focus({ preventScroll: true }));
+        }
     });
 
     // Submit ayah picker — Enter on wheel (via its own handler), or click the اذهب button.
@@ -2587,6 +2611,60 @@ function wireSurahSelect() {
     document.addEventListener("click", (e) => {
         if (!wrap.contains(e.target)) closeSurahDropdown();
     });
+
+}
+
+/* ── Scroll containment while the surah dropdown is open ─────────────────
+ * Guarantees touch/wheel scrolling NEVER leaks to the page behind:
+ *   • gestures outside the surah list are cancelled outright;
+ *   • gestures ON the list are clamped at its scroll boundaries, so iOS
+ *     can't chain the leftover delta to the page (CSS overscroll-behavior
+ *     alone isn't honoured when WebKit's stale hit-testing routes the
+ *     gesture to the root scroller — the post-fullscreen-exit scroll trap).
+ * The ayah wheel is transform-driven via pointer events (touch-action:
+ * none), so cancelling its touchmove is a no-op for it.
+ *
+ * The non-passive listeners exist ONLY while the dropdown is open
+ * (installed/removed by open/closeSurahDropdown) — a permanent non-passive
+ * document touchmove/wheel listener would force every scroll in the app
+ * onto the slow path. */
+let _ddTouchY = 0;
+
+function ddGuardTouchStart(e) {
+    _ddTouchY = e.touches[0]?.clientY ?? 0;
+}
+
+function ddGuardTouchMove(e) {
+    if (!e.cancelable) return; // a native scroll already committed
+    const t = e.target instanceof Element ? e.target : null;
+    const list = document.getElementById("mushafSurahList");
+    if (!t || !list || !t.closest("#mushafSurahList")) {
+        e.preventDefault();
+        return;
+    }
+    const dy = (e.touches[0]?.clientY ?? 0) - _ddTouchY;
+    const atTop = list.scrollTop <= 0;
+    const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+    if ((atTop && dy > 0) || (atBottom && dy < 0)) e.preventDefault();
+}
+
+function ddGuardWheel(e) {
+    const t = e.target instanceof Element ? e.target : null;
+    // List wheel-scroll is contained by overscroll-behavior; anything else
+    // must not move the page while the selector is open.
+    if (!t || !t.closest("#mushafSurahList")) e.preventDefault();
+}
+
+function installDdScrollGuards() {
+    document.addEventListener("touchstart", ddGuardTouchStart, { passive: true });
+    document.addEventListener("touchmove", ddGuardTouchMove, { passive: false });
+    document.addEventListener("wheel", ddGuardWheel, { passive: false });
+}
+
+function removeDdScrollGuards() {
+    document.removeEventListener("touchstart", ddGuardTouchStart);
+    document.removeEventListener("touchmove", ddGuardTouchMove);
+    document.removeEventListener("wheel", ddGuardWheel);
 }
 
 /* ============================================================

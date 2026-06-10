@@ -366,14 +366,22 @@
 
   #netBadge {
     position: fixed;
-    top: 10px;
-    left: 10px;
+    /* Nudged down+right from the original 10/10 corner hug for visibility. */
+    top: 18px;
+    left: 18px;
     padding: 6px 10px;
     border-radius: 10px;
     font-size: 12px;
     background: rgba(0, 0, 0, .75);
     color: #fff;
     z-index: 9999;
+  }
+
+  /* App: the WebView is edge-to-edge, so an unpadded top:18px sat UNDER the
+   * status bar / notch — the badge was barely visible. Drop it below the
+   * status-bar inset (same inset formula as the site header). */
+  html.is-app #netBadge {
+    top: calc(max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) + 10px);
   }
 
   .inline-block {
@@ -1176,6 +1184,13 @@ body.dark .ayah-grid-btn:hover span {
 html.is-app,
 html.is-app body {
   touch-action: manipulation;
+}
+/* No rubber-band bounce on the page scroller — the bounce dragged the
+   sticky header off-screen and exposed the overscroll area behind the
+   page (authoritative copy + the html theme backgrounds: index.html). */
+html.is-app,
+html.is-app body {
+  overscroll-behavior-y: none;
 }
 html.is-app,
 html.is-app * {
