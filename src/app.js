@@ -152,11 +152,15 @@ function mirrorLineEl() {
   return searchClearMirror ? searchClearMirror.querySelector(".t-clear-line") : null;
 }
 
-function lockSearchInput() {
+function lockSearchInput({ preview = false } = {}) {
   if (!searchClearWrap || !textSearch || !textSearch.value) return;
   syncClearMetrics();
   syncClearMirror();
-  searchClearWrap.classList.add("has-value");
+  // preview: the open selector wheel BROWSING state — mirror + hidden
+  // glyphs only. The LOCKED treatment (tint + veil) is reserved for an
+  // ayah that was actually chosen (has-value); browsing never locks.
+  searchClearWrap.classList.toggle("has-value", !preview);
+  searchClearWrap.classList.toggle("is-previewing", preview);
 }
 
 /* Round 5 (5.3 entrance): selecting a search result LOCKS the FULL ayah
@@ -190,18 +194,48 @@ function lockSearchToAyah(fullText) {
  * SearchBeam — the exact same "an ayah is chosen / homepage restored"
  * semantics, already fired by every selection path in both modes. */
 function showPillClear() {
-  if (!clearBtn || clearBtn.classList.contains("is-shown")) return;
+  if (!clearBtn) return;
+  if (clearBtn.classList.contains("is-shown")
+    && !clearBtn.classList.contains("is-leaving")) return;
+  clearBtn.classList.remove("is-leaving", "is-entering");
   clearBtn.classList.add("is-shown");      // display flips on…
+  if (prefersReducedMotion()) {
+    clearBtn.classList.add("is-visible");
+    return;
+  }
+  // …then, with layout committed (double rAF), arm the rewind stroke to
+  // draw from its REAL path lengths and fire the success-check entrance —
+  // horizontal cut: in from the LEFT, springing right into place.
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (clearBtn.classList.contains("is-shown")) {
-      clearBtn.classList.add("is-visible"); // …then the slow fade runs
-    }
+    if (!clearBtn.classList.contains("is-shown")) return;
+    clearBtn.querySelectorAll("svg path").forEach((p) => {
+      try {
+        const len = p.getTotalLength();
+        if (len > 0) {
+          p.style.strokeDasharray = String(len);
+          p.style.strokeDashoffset = String(len);
+        }
+      } catch { }
+    });
+    clearBtn.classList.add("is-visible", "is-entering");
   }));
 }
 
 function hidePillClear() {
   if (!clearBtn) return;
-  clearBtn.classList.remove("is-shown", "is-visible");
+  if (!clearBtn.classList.contains("is-shown")) return;
+  if (prefersReducedMotion()) {
+    clearBtn.classList.remove("is-shown", "is-visible", "is-entering", "is-leaving");
+    return;
+  }
+  // Exit continues the entrance's journey: off to the RIGHT, fading; the
+  // display flip waits for the slide to finish (a re-show cancels it).
+  clearBtn.classList.remove("is-entering");
+  clearBtn.classList.add("is-leaving");
+  setTimeout(() => {
+    if (!clearBtn.classList.contains("is-leaving")) return; // re-shown mid-exit
+    clearBtn.classList.remove("is-shown", "is-visible", "is-leaving");
+  }, 360);
 }
 
 /* Drop the lock state. Safe to call at any time (resetToHome runs it on
@@ -209,7 +243,7 @@ function hidePillClear() {
  * only the animation's own cleanup removes. */
 function clearInputLock() {
   if (!searchClearWrap) return;
-  searchClearWrap.classList.remove("has-value");
+  searchClearWrap.classList.remove("has-value", "is-previewing");
   if (!searchClearWrap.classList.contains("is-clearing") && searchClearMirror) {
     searchClearMirror.textContent = "";
   }
@@ -247,8 +281,9 @@ function selectorReflect(s, a) {
   st.lastText = text;
   textSearch.value = text; // keep the real input truthful for unlock/مسح
   if (!st.lineEl || !st.lineEl.isConnected) {
-    // First reflection: lock the pill (syncClearMirror builds the line).
-    lockSearchInput();
+    // First reflection: PREVIEW the pill (mirror text, no locked
+    // treatment — nothing is chosen while the wheel is still open).
+    lockSearchInput({ preview: true });
     st.lineEl = mirrorLineEl();
   } else {
     swapBlock(st.lineEl, () => {
@@ -286,7 +321,13 @@ function reflectAyahInBar(surahNo, ayahNo) {
   if (SELECTOR_REFLECT) return;
   if (searchClearWrap.classList.contains("is-clearing")) return;
   const text = getAyahTextFromQuran(surahNo, ayahNo);
-  if (!text || textSearch.value === text) return;
+  if (!text) return;
+  if (textSearch.value === text) {
+    // Same text but only PREVIEWED (the selector wheel just committed):
+    // upgrade the browsing preview to the real locked treatment.
+    if (searchClearWrap.classList.contains("is-previewing")) lockSearchInput();
+    return;
+  }
   // Mid-reveal: restart with the newer text — lockSearchToAyah cancels the
   // in-flight reveal (instant cleanup) and starts a fresh one, so a fast
   // pick → next/prev simply reveals the newer ayah instead of going stale.
@@ -295,7 +336,13 @@ function reflectAyahInBar(surahNo, ayahNo) {
     return;
   }
   const locked = searchClearWrap.classList.contains("has-value");
-  if (!locked && document.activeElement === textSearch) return; // user is typing
+  // Protect only a real in-progress DRAFT: input focused AND holding text.
+  // A merely-focused EMPTY bar must not block the lock — on iOS/Safari
+  // buttons never steal focus from the input (and the unlock dissolve
+  // even re-focuses it), so the old focus-only guard made next/prev /
+  // selector / AI choices silently fail to lock ("sometimes no lock").
+  if (!locked && document.activeElement === textSearch
+    && textSearch.value.trim() !== "") return;
   textSearch.value = text;
   if (!locked) {
     lockSearchInput();
@@ -521,7 +568,17 @@ function applyStatusBarHeight(_attempt = 0) {
 }
 function toggleDarkMode() {
   const on = !document.body.classList.contains("dark");
+  // ISSUE 3: suppress the search pill's color transitions for the swap —
+  // the locked-tint 700ms background/border transition (and the beam's
+  // transition:all) would lerp between palettes and read as a glow on the
+  // search box. Two rAFs guarantee the recolored frame paints with
+  // transitions off; the timeout covers slow first paints.
+  const root = document.documentElement;
+  root.classList.add("m7-theme-switching");
   setDarkMode(on);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    setTimeout(() => root.classList.remove("m7-theme-switching"), 60);
+  }));
 }
 
 /* ---------------- Utils ---------------- */
@@ -3632,6 +3689,58 @@ function updateBasmalaUI(surahNo, ayahNo) {
   }
 }
 
+/* ── ISSUE 2: ONE quiet treatment for every tafsir-box content change ────
+ * The box's content lands in two moments (loading row right away, the
+ * fetched tafsir ~100-300ms later) — previously the second moment SNAPPED
+ * the panel height mid page-crossfade (+95px measured) and, on slow
+ * fetches, replayed the 450ms .tafsir-swap as a second competing motion.
+ * Now every change goes through this helper: the box's height EASES from
+ * its current value to the new content's height while the content fades
+ * in — identical every time, no snap, no double animation. One small
+ * element, one-shot CSS transition (the round-3 jank was per-frame JS
+ * height work on the whole panel — this is neither). */
+let TAFSIR_BOX_ANIM_TIMER = null;
+
+function setTafsirBoxContent(html) {
+  if (!tafsirBox) return;
+  if (TAFSIR_BOX_ANIM_TIMER) { clearTimeout(TAFSIR_BOX_ANIM_TIMER); TAFSIR_BOX_ANIM_TIMER = null; }
+  if (prefersReducedMotion()) {
+    tafsirBox.style.transition = "";
+    tafsirBox.style.height = "";
+    tafsirBox.style.opacity = "";
+    tafsirBox.style.overflow = "auto"; // in case a cancelled run left it shut
+    tafsirBox.innerHTML = html;
+    return;
+  }
+  const oldH = tafsirBox.offsetHeight; // mid-animation value if retargeting
+  tafsirBox.style.transition = "none";
+  tafsirBox.style.height = "";         // natural height for the measure
+  tafsirBox.innerHTML = html;
+  tafsirBox.style.opacity = "0";
+  const newH = tafsirBox.offsetHeight; // capped by the box's max-height
+  const animateH = Math.abs(newH - oldH) > 2;
+  if (animateH) {
+    tafsirBox.style.height = `${oldH}px`;
+    // While the height eases, the content transiently overflows the
+    // animating box — overflow:auto would flash a scrollbar (with a
+    // visibly changing thumb) on every page switch. Hold it shut for the
+    // 220ms and restore the markup's auto after.
+    tafsirBox.style.overflow = "hidden";
+  }
+  void tafsirBox.offsetWidth;          // commit the start state
+  tafsirBox.style.transition =
+    "height 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease";
+  if (animateH) tafsirBox.style.height = `${newH}px`;
+  tafsirBox.style.opacity = "1";
+  TAFSIR_BOX_ANIM_TIMER = setTimeout(() => {
+    TAFSIR_BOX_ANIM_TIMER = null;
+    tafsirBox.style.transition = "";
+    tafsirBox.style.height = "";       // back to auto (content may rewrap)
+    tafsirBox.style.opacity = "";
+    tafsirBox.style.overflow = "auto"; // the markup's inline value
+  }, 260);
+}
+
 async function updateTafsirUI(surahNo, ayahNo) {
   const reqId = ++TAFSIR_REQUEST_ID; // increment request ID
 
@@ -3687,7 +3796,7 @@ async function updateTafsirUI(surahNo, ayahNo) {
   const isCached = !!getTafsirCache(cacheKey);
 
   if (!isCached) {
-    if (tafsirBox) tafsirBox.innerHTML = '<div class="tafsir-loading" style="padding:2rem;text-align:center;color:#888;">جاري التحميل...</div>';
+    setTafsirBoxContent('<div class="tafsir-loading" style="padding:2rem;text-align:center;color:#888;">جاري التحميل...</div>');
   }
 
   // Await selected tafsir (fast, blocking)
@@ -3704,24 +3813,18 @@ async function updateTafsirUI(surahNo, ayahNo) {
     const emptyMsg = TAFSIR_FETCH_NETWORK_ERROR
       ? OFFLINE_MESSAGE
       : "لا يوجد تفسير لهذا المفسّر لهذه الآية.";
-    tafsirBox.innerHTML = `<div class="tafsir-empty">${emptyMsg}</div>`;
+    setTafsirBoxContent(`<div class="tafsir-empty">${emptyMsg}</div>`);
   } else {
-    tafsirBox.innerHTML = formatTafsirText(selectedText, surahNo, ayahNo);
+    setTafsirBoxContent(formatTafsirText(selectedText, surahNo, ayahNo));
   }
 
   if (tafsirMetaAyah) tafsirMetaAyah.textContent = `${surahNo}:${ayahNo}`;
 
-  // Only the tafsirBox is re-animated here — its content just updated. The
-  // tafsirAyahTag was already animated above at the moment its innerHTML
-  // changed (so the swap stays in sync with the actual text change instead
-  // of running late after the async fetch). Suppressed during the page
-  // slide (the slide IS the transition).
+  // ISSUE 2: the box's own .tafsir-swap replay is retired — the height-
+  // eased fade inside setTafsirBoxContent IS the box's animation now,
+  // identical on every path (loading, cached, fetched, empty, offline).
+  // Only the residue class is cleared so old runs can't re-trigger.
   tafsirBox?.classList.remove("tafsir-swap");
-  if (!TAFSIR_SLIDE_ACTIVE) {
-    requestAnimationFrame(() => {
-      tafsirBox?.classList.add("tafsir-swap");
-    });
-  }
 
   // =====================================================
   // PHASE B: Load secondary tafsirs in background
@@ -5371,6 +5474,37 @@ async function init() {
     }
     window.addEventListener("resize", () => requestAnimationFrame(syncHeaderHeight));
     syncHeaderHeight();
+
+    // ISSUE 5 (app only): when the iOS keyboard opens, WKWebView scrolls
+    // the LAYOUT viewport to reveal the focused input — position:fixed
+    // elements ride along, so the top bar slid up into the status-bar/
+    // notch area. Pin the bar to the VISUAL viewport instead: translate
+    // it down by the visual viewport's offset inside the layout viewport
+    // (0 when the keyboard is closed and on the website, so resting
+    // behavior is byte-identical; the header's own safe-area padding then
+    // keeps its buttons below the notch). rAF-throttled; scroll+resize
+    // cover open/close/scroll-while-typing, focus events cover WKWebView's
+    // occasional missing geometry events, and the focusout retry catches
+    // the late restore after the keyboard fully dismisses.
+    if (isApp() && window.visualViewport) {
+      const vv = window.visualViewport;
+      let vvRaf = 0;
+      const pinHeaderToVisualViewport = () => {
+        if (vvRaf) return;
+        vvRaf = requestAnimationFrame(() => {
+          vvRaf = 0;
+          const y = Math.max(0, vv.offsetTop);
+          headerEl.style.transform = y > 0.5 ? `translateY(${y}px)` : "";
+        });
+      };
+      vv.addEventListener("resize", pinHeaderToVisualViewport);
+      vv.addEventListener("scroll", pinHeaderToVisualViewport);
+      window.addEventListener("focusin", pinHeaderToVisualViewport);
+      window.addEventListener("focusout", () => {
+        pinHeaderToVisualViewport();
+        setTimeout(pinHeaderToVisualViewport, 300); // post-dismiss settle
+      });
+    }
   }
 
   // Capacitor app only: measure the real Android status-bar height and
@@ -5664,18 +5798,18 @@ async function init() {
 
   // The teardown is STAGED so مسح feels composed instead of abrupt:
   //   0. (Task 1) when an ayah text is LOCKED in the search pill, it first
-  //      dissolves out — per-word fly-up + blur with glow streaks measured
-  //      from the real RTL word rects (Transitions.dev "input clear with
-  //      dissolve", driven per-frame from src/transitions.js). The rest of
-  //      the teardown starts the moment the text has fully dissolved, so
-  //      the glow tail and the page fade read as one motion; the fake
-  //      placeholder flies in during the reset.
-  //   1. the open content (chip card, results, Tafsir panel / Mushaf panel)
-  //      fades out over 280ms (.m7-clear-fade, index.html);
-  //   2. behind that blank moment the actual reset + jump-to-top run —
-  //      nothing visible collapses or scrolls on screen;
-  //   3. the search panel settles in with a soft entrance (.m7-home-enter)
-  //      while the beam re-arms — the homepage "arrives" instead of snapping.
+  //      dissolves out — the rest of the teardown starts the moment the
+  //      text has fully dissolved, so the glow tail and the page fade read
+  //      as one motion; the fake placeholder flies in during the reset.
+  //   1. the open content (results, Tafsir panel / Mushaf panel) fades out
+  //      over 280ms (.m7-clear-fade, index.html);
+  //   2. behind that blank moment the actual reset runs, and the page
+  //      scrolls home SMOOTHLY if it was scrolled at all.
+  // The old stage 3 — replaying an .m7-home-enter entrance on the whole
+  // search panel — is REMOVED: it dimmed the visible, already-settled card
+  // to 55% and slid it 6px (plus an instant scroll jump), which read as a
+  // page refresh right after the smooth fade. The panel never leaves the
+  // screen during مسح, so it must simply stay put.
   // Reduced-motion users (and the nothing-was-open case) get the instant path.
   let clearing = false;
   clearBtn?.addEventListener("click", () => {
@@ -5694,23 +5828,65 @@ async function init() {
       return;
     }
     clearing = true;
+    // The rewind pill leaves WITH the text: its slide-off-right starts the
+    // same moment the dissolve (or the panel fade) begins — not at the end
+    // of the staged reset (reactivateSearchBeam's later call no-ops).
+    hidePillClear();
     const runStagedReset = () => {
       fadeTargets.forEach((n) => n.classList.add("m7-clear-fade"));
-      setTimeout(() => {
-        resetToHome();
-        fadeTargets.forEach((n) => n.classList.remove("m7-clear-fade"));
-        try { window.scrollTo(0, 0); } catch { }
-        const searchPanelEl2 = el("searchPanel");
-        if (searchPanelEl2) {
-          searchPanelEl2.classList.remove("m7-home-enter");
-          void searchPanelEl2.offsetWidth;
-          searchPanelEl2.classList.add("m7-home-enter");
-          // Drop the class once the entrance ends so the transform/stacking
-          // side effects don't outlive the animation.
-          setTimeout(() => searchPanelEl2.classList.remove("m7-home-enter"), 420);
+      // Scroll home NOW, in parallel with the fade — the fading panels
+      // keep their layout space (opacity only), so the glide happens over
+      // an unchanged page height. Collapsing first did it backwards: the
+      // height collapse clamped the scroll position in a single frame
+      // (the residual "placement jump") before the smooth scroll even ran.
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
+      const t0 = performance.now();
+      const finishReset = () => {
+        // Wait until we've arrived at the top (hard 900ms cap so an
+        // interrupted glide can never wedge the reset) — at the top, the
+        // collapse has nothing to clamp.
+        if (window.scrollY > 4 && performance.now() - t0 < 900) {
+          setTimeout(finishReset, 60);
+          return;
         }
-        clearing = false;
-      }, 300);
+        // The faded panels still hold their layout space — display:none
+        // would snap everything below them upward in one frame. Ease the
+        // (already invisible) boxes to zero first; .m7-clear-fade's
+        // !important transition carries height/padding/margin, so the
+        // content below GLIDES up. Then reset for real, off-screen-quiet.
+        const collapsing = fadeTargets.filter(
+          (n) => n.offsetParent !== null && n.offsetHeight > 0);
+        collapsing.forEach((n) => {
+          n.style.height = `${n.offsetHeight}px`;
+          n.style.overflow = "hidden";
+        });
+        void document.body.offsetWidth; // commit the start heights
+        collapsing.forEach((n) => {
+          n.style.height = "0px";
+          n.style.paddingTop = "0px";
+          n.style.paddingBottom = "0px";
+          n.style.marginTop = "0px";
+          n.style.marginBottom = "0px";
+          n.style.borderTopWidth = "0px";
+          n.style.borderBottomWidth = "0px";
+        });
+        setTimeout(() => {
+          resetToHome();
+          collapsing.forEach((n) => {
+            n.style.height = "";
+            n.style.overflow = "";
+            n.style.paddingTop = "";
+            n.style.paddingBottom = "";
+            n.style.marginTop = "";
+            n.style.marginBottom = "";
+            n.style.borderTopWidth = "";
+            n.style.borderBottomWidth = "";
+          });
+          fadeTargets.forEach((n) => n.classList.remove("m7-clear-fade"));
+          clearing = false;
+        }, collapsing.length ? 260 : 0);
+      };
+      setTimeout(finishReset, 300);
     };
     if (lockedText) {
       if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL(); // never two routines on the mirror
@@ -5737,8 +5913,9 @@ async function init() {
     clearInputLock();
   });
 
-  // Round 5: clicking the LOCKED pill slowly unlocks it — the tint eases
-  // back over the same slow transition while the text dissolves away —
+  // Clicking the LOCKED pill slowly unlocks it — the veil lifts the
+  // moment the click lands (the .is-clearing CSS rule) and the tint eases
+  // back over the same slow transition while the text DISSOLVES away —
   // leaving a focused, empty bar to write a brand-new search from zero.
   let unlockingPill = false;
   textSearch?.addEventListener("click", () => {

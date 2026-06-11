@@ -1,31 +1,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
-  <title id="title">مُحمديات — مصحف</title>
-  <desc id="desc">أيقونة كتاب مع صفحات مربعة وخطوط متناظرة</desc>
+  <title id="title">محمديات</title>
+  <desc id="desc">مصحف مفتوح تحت نجمة مضيئة على خلفية زرقاء متدرّجة</desc>
 
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1f8a5a"/>
-      <stop offset="100%" stop-color="#083225"/>
+    <!-- The site's primary-action blue (#2644cd) family, lit top-right
+         toward deep navy bottom-left -->
+    <linearGradient id="bg" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4d6bf0"/>
+      <stop offset="55%" stop-color="#2644cd"/>
+      <stop offset="100%" stop-color="#1a2b9b"/>
     </linearGradient>
-
-    <linearGradient id="paper" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#f8f5e8" stop-opacity="0.96"/>
-      <stop offset="100%" stop-color="#e6dfc6" stop-opacity="0.92"/>
+    <linearGradient id="pageL" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="100%" y1="0%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.80"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.94"/>
     </linearGradient>
   </defs>
 
-  <!-- Cover -->
-  <rect x="26" y="18" width="76" height="92" rx="16" fill="url(#bg)"/>
+  <!-- Tile -->
+  <rect x="6" y="6" width="116" height="116" rx="30" fill="url(#bg)"/>
 
-  <!-- Spine -->
-  <rect x="22" y="24" width="14" height="80" rx="7" fill="rgba(255,232,163,0.9)"/>
+  <!-- Sparkle above the spine (the same four-point star motif the app's
+       مختصر التفاسير button carries) -->
+  <path d="M64 18l3.2 8.6 8.6 3.2-8.6 3.2-3.2 8.6-3.2-8.6-8.6-3.2 8.6-3.2z"
+        fill="#ffffff" opacity="0.97"/>
+  <circle cx="86" cy="24" r="2.6" fill="#ffffff" opacity="0.75"/>
+  <circle cx="42" cy="24" r="2.6" fill="#ffffff" opacity="0.75"/>
 
-  <!-- Page (SQUARED) -->
-  <rect x="46" y="34" width="44" height="60" fill="url(#paper)"/>
+  <!-- Open mushaf: two symmetric pages meeting at the spine -->
+  <path d="M64 56C57 49.5 47 47.5 33 49.5v36c14-2 24 0 31 6.5z" fill="url(#pageL)"/>
+  <path d="M64 56c7-6.5 17-8.5 31-6.5v36c-14-2-24 0-31 6.5z" fill="url(#pageR)"/>
+  <!-- Spine seam -->
+  <path d="M64 56v36" stroke="#2644cd" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>
 
-  <!-- Symmetrical page lines -->
-  <path d="M54 52h28M54 64h28M54 76h28"
-        stroke="rgba(17,72,52,0.55)"
-        stroke-width="4"
-        stroke-linecap="round"/>
+  <!-- Ayah lines (fade out gracefully at favicon sizes) -->
+  <path d="M41 61.5h14M41 70h14M41 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
+        stroke-width="3.6" stroke-linecap="round"/>
+  <path d="M73 61.5h14M73 70h14M77 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
+        stroke-width="3.6" stroke-linecap="round"/>
 </svg>

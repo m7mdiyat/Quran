@@ -528,14 +528,25 @@
 
     /* Results collapse chip behavior (keeps compatibility with app.js) */
     .results {
-      transition: max-height .35s ease, opacity .25s ease, transform .25s ease;
+      transition: max-height .35s ease, opacity .25s ease, transform .25s ease,
+        padding .3s ease, margin-top .3s ease, border-width .3s ease;
     }
 
+    /* ISSUE 1: collapsing only max-height left a 26px residue strip (the
+       list's 12px paddings + 1px borders) plus the shell/list margins —
+       after picking an ayah the card sat 38px taller than the landing
+       state (which is flat only because is-empty adds display:none).
+       Collapse EVERYTHING so the post-pick card is pixel-identical to the
+       initial compact card; the transitions above ease it shut/open. */
     .results.collapsed {
       max-height: 0 !important;
       opacity: 0;
       pointer-events: none;
       transform: translateY(-2px) scale(.99);
+      padding-top: 0;
+      padding-bottom: 0;
+      border-width: 0;
+      margin-top: 0;
     }
 
     .results-shell.is-empty {
@@ -555,18 +566,31 @@
       display: none;
       box-sizing: border-box;
       height: 28px;
+      /* Icon-only (rewind-to-start): a compact pill that mirrors the
+         selector's geometry — fixed width instead of text padding. */
+      width: 34px;
       align-items: center;
-      padding: 0 12px;
+      justify-content: center;
+      padding: 0;
       border: 0;
       border-radius: 12px;
-      background: rgba(15, 23, 42, .06);
-      color: #334155;
-      font-size: 12px;
-      font-weight: 800;
+      /* Same skin as the surah selector beside it (the in-pill
+         .mushaf-surah-select variant) — one control group, one material. */
+      background: rgba(15, 23, 42, .05);
+      color: var(--text);
       line-height: 1;
       cursor: pointer;
       opacity: 0;
-      transition: opacity 600ms ease, background 150ms ease;
+      transition: background 150ms ease;
+      will-change: transform, opacity, filter;
+    }
+
+    .pill-clear-btn svg {
+      width: 15px;
+      height: 15px;
+      display: block;
+      /* keeps the stroke from clipping while it draws */
+      overflow: visible;
     }
 
     .pill-clear-btn.is-shown {
@@ -577,19 +601,73 @@
       opacity: 1;
     }
 
+    /* Success-check entrance, HORIZONTAL cut: fade + rotate + blur (the
+       shared Task-6 keyframes/vars) + an X-bob that slides the pill in
+       from the LEFT — the bob ease's slight overshoot lands it with a
+       spring — while the rewind stroke draws itself (JS arms the
+       dasharray from the real path lengths). */
+    .pill-clear-btn.is-entering {
+      animation:
+        t-check-fade var(--check-opacity-dur) var(--check-ease-opacity) forwards,
+        t-check-rotate var(--check-rotate-dur) var(--check-ease-rotate) forwards,
+        t-check-blur var(--check-blur-dur) var(--check-ease-out) forwards,
+        pill-clear-bob-x var(--check-bob-dur) var(--check-ease-bob) forwards;
+    }
+
+    .pill-clear-btn.is-entering svg path {
+      animation: t-check-draw var(--check-path-dur) var(--check-ease-path) var(--check-path-delay, 0ms) forwards;
+    }
+
+    @keyframes pill-clear-bob-x {
+      from {
+        translate: -40px 0;
+      }
+
+      to {
+        translate: 0 0;
+      }
+    }
+
+    /* Exit continues the same journey: off to the RIGHT, fading. */
+    .pill-clear-btn.is-leaving {
+      animation: pill-clear-exit-x 320ms var(--check-ease-out) forwards;
+    }
+
+    @keyframes pill-clear-exit-x {
+      from {
+        translate: 0 0;
+        opacity: 1;
+      }
+
+      to {
+        translate: 44px 0;
+        opacity: 0;
+      }
+    }
+
     .pill-clear-btn:hover {
-      background: rgba(15, 23, 42, .12);
+      background: rgba(15, 23, 42, .10);
     }
 
     body.dark .pill-clear-btn,
     html.dark .pill-clear-btn {
+      background: rgba(148, 163, 184, .12);
+    }
+
+    body.dark .pill-clear-btn:hover,
+    html.dark .pill-clear-btn:hover {
       background: rgba(148, 163, 184, .18);
-      color: #e2e8f0;
     }
 
     @media (prefers-reduced-motion: reduce) {
       .pill-clear-btn {
         transition: none !important;
+        animation: none !important;
+      }
+
+      .pill-clear-btn.is-entering svg path {
+        animation: none !important;
+        stroke-dashoffset: 0 !important;
       }
     }
 
@@ -600,26 +678,23 @@
      * back in with a soft entrance. !important so the fade beats any
      * element-level transition/animation already on the targets. */
     .m7-clear-fade {
-      transition: opacity 280ms ease !important;
+      /* The height/padding/margin legs carry the مسح SMOOTH COLLAPSE: once
+         the panel has faded to transparent, finishReset (app.js) eases its
+         box to zero so the content below GLIDES up instead of jumping when
+         the panel is finally display:none'd. !important must list them
+         here — it outranks the inline transition JS would set. */
+      transition: opacity 280ms ease,
+        height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+        padding 240ms cubic-bezier(0.22, 1, 0.36, 1),
+        margin 240ms cubic-bezier(0.22, 1, 0.36, 1),
+        border-width 240ms cubic-bezier(0.22, 1, 0.36, 1) !important;
       opacity: 0 !important;
       pointer-events: none !important;
     }
 
-    @keyframes m7HomeEnter {
-      from {
-        opacity: .55;
-        transform: translateY(6px);
-      }
-
-      to {
-        opacity: 1;
-        transform: none;
-      }
-    }
-
-    .m7-home-enter {
-      animation: m7HomeEnter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    }
+    /* (.m7-home-enter is retired: replaying an entrance on the search
+       panel after مسح read as a page-refresh flash — the panel never
+       leaves the screen during the staged reset, so it stays put.) */
 
     .results.is-empty {
       border-color: transparent !important;
@@ -2043,7 +2118,14 @@
     }
 
     .results-shell {
-      transition: transform .35s ease, opacity .35s ease;
+      transition: transform .35s ease, opacity .35s ease, margin-top .3s ease;
+    }
+
+    /* ISSUE 1 (with the .results.collapsed rule above): the shell's own
+       mt-3 must go too, or the collapsed card keeps a 12px gap the
+       landing state doesn't have. */
+    .results-shell.collapsed {
+      margin-top: 0;
     }
 
     .result-ayah {
@@ -2115,6 +2197,10 @@
 
     #tafsirBox {
       overflow-anchor: none;
+      /* Long tafsirs scroll, short ones don't — without a reserved gutter
+         the scrollbar's appearance re-wraps the text width between pages
+         (the "slider area changes" wobble). Keep the gutter constant. */
+      scrollbar-gutter: stable;
     }
 
     .tafsir-swap {
@@ -3797,6 +3883,15 @@
          transitions.js) carry the subtlety. */
       --clear-glow-rgb: 0, 0, 0;
 
+      /* — Texts reveal (#18) — drives the pick auto-complete: each word
+           of the chosen ayah rises into the bar with staggered blur
+           (deliberately distinct from the clear's drop-away dissolve) — */
+      --stagger-dur: 500ms;
+      --stagger-distance: 12px;
+      --stagger-stagger: 40ms;
+      --stagger-blur: 3px;
+      --stagger-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
       /* — Panel reveal (Tasks 3 + 7) — */
       --panel-open-dur: 400ms;
       --panel-close-dur: 350ms;
@@ -3810,8 +3905,8 @@
            between pages (buttons, selects, labels) overlaps pixel-exactly,
            so to the eye only the TEXT that actually changes dissolves;
            nothing slides, nothing flies) — */
-      --page-swap-out-dur: 320ms;
-      --page-swap-in-dur: 320ms;
+      --page-swap-out-dur: 200ms;
+      --page-swap-in-dur: 220ms;
       /* Entering page: fast-start ease (reaches visibility quickly);
          snapshot fade: gentle symmetric curve. Their crossing keeps
          combined visibility near 1 the whole way — no blank middle, no
@@ -3911,11 +4006,13 @@
     }
 
     .t-clear.has-value .t-clear-mirror,
+    .t-clear.is-previewing .t-clear-mirror,
     .t-clear.is-clearing .t-clear-mirror {
       opacity: 1;
     }
 
     .t-clear.has-value > input,
+    .t-clear.is-previewing > input,
     .t-clear.is-clearing > input,
     .t-clear.is-materializing > input {
       -webkit-text-fill-color: transparent;
@@ -3935,10 +4032,33 @@
       border-color: rgba(56, 189, 248, 0.40);
     }
 
+    /* Dark locked state: grey "locked" treatment drawn FROM the theme's
+       own palette — the surface is the resting input's exact hue family
+       (rgba(34,40,48) = --card2 / .input-glass dark) stepped one shade
+       deeper, and the edge is the dark theme's standard border grey
+       rgba(148,163,184) (used at .18–.22 everywhere) nudged to .30 so the
+       state reads. Nothing foreign, nothing blue, nothing light.
+       !important: the dark theme repaints Tailwind's bg-white/* utilities
+       with `background: … !important` (the big body.dark override block),
+       which would otherwise swallow the tint. Light theme unchanged. */
     body.dark .t-clear.has-value > input,
     html.dark .t-clear.has-value > input {
-      background-color: rgba(148, 163, 184, 0.14);
-      border-color: rgba(148, 163, 184, 0.45);
+      background-color: rgba(26, 31, 38, 0.92) !important;
+      border-color: rgba(148, 163, 184, 0.30) !important;
+    }
+
+    /* ISSUE 3: switching theme must not animate the pill's colors — the
+       locked-tint transition above (700ms background/border) plus the
+       beam layers' transition:all lerped between the two palettes and
+       read as a glow on every toggle. toggleDarkMode() (src/app.js)
+       holds this class on <html> for the swap frames; the slow tint
+       keeps animating for actual lock/unlock interactions. */
+    html.m7-theme-switching #textSearch,
+    html.m7-theme-switching .border-beam,
+    html.m7-theme-switching .border-beam *,
+    html.m7-theme-switching .border-beam::before,
+    html.m7-theme-switching .border-beam::after {
+      transition: none !important;
     }
 
     .t-clear.is-clearing > input::placeholder {
@@ -3951,12 +4071,88 @@
       color: color-mix(in oklab, var(--text) 50%, transparent);
     }
 
-    .t-clear.has-value .t-clear-placeholder {
+    .t-clear.has-value .t-clear-placeholder,
+    .t-clear.is-previewing .t-clear-placeholder {
       opacity: 0;
+    }
+
+    /* ── Lock veil: the lock sits ABOVE the text ────────────────────────
+       A grey in-palette sheet over the locked ayah (under the cluster's
+       z-4 controls) so the bar genuinely reads as locked. It rides the
+       same slow 700ms motion as the tint: in on lock, out on the unlock
+       click — the text "comes back into appearance" as the veil lifts.
+       Only .has-value (an actually chosen ayah) raises it — never the
+       selector's browsing preview (.is-previewing). */
+    .t-clear-veil {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      border-radius: 18px;
+      opacity: 0;
+      background: rgba(241, 245, 249, 0.55);
+      transition: opacity 700ms ease;
+    }
+
+    .t-clear.has-value .t-clear-veil {
+      opacity: 1;
+    }
+
+    /* The moment a dissolve starts (unlock click or مسح), the veil lifts
+       so the text's disappearance plays at full contrast — not dimmed
+       under the lock sheet. Wins over the has-value rule above. */
+    .t-clear.is-clearing .t-clear-veil {
+      opacity: 0;
+    }
+
+    body.dark .t-clear-veil,
+    html.dark .t-clear-veil {
+      background: rgba(26, 31, 38, 0.60);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-clear-veil {
+        transition: none !important;
+      }
     }
 
     .t-clear-mirror .t-clear-word {
       display: inline-block;
+    }
+
+    /* ── Texts reveal (#18): the pick auto-complete ─────────────────────
+       materializeSearchText() stages .is-revealing (+ .is-staging for the
+       no-transition commit), writes each word's stagger as an inline
+       transition-delay, then flips .is-shown — every word rises into
+       view, unblurring, in reading order. Removal stays the dissolve;
+       this entrance is its deliberate opposite. */
+    .t-clear-mirror.is-revealing .t-clear-word {
+      opacity: 0;
+      transform: translateY(var(--stagger-distance));
+      filter: blur(var(--stagger-blur));
+      transition:
+        opacity var(--stagger-dur) var(--stagger-ease),
+        transform var(--stagger-dur) var(--stagger-ease),
+        filter var(--stagger-dur) var(--stagger-ease);
+    }
+
+    .t-clear-mirror.is-revealing.is-staging .t-clear-word {
+      transition: none !important;
+    }
+
+    .t-clear-mirror.is-revealing.is-shown .t-clear-word {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-clear-mirror.is-revealing .t-clear-word {
+        transition: none !important;
+        opacity: 1;
+        transform: none;
+        filter: none;
+      }
     }
 
     /* Whitespace between words must be its own flex item — flex containers
@@ -4312,6 +4508,11 @@
 
     html {
       scroll-padding-top: calc(var(--m7-header-h, 64px) + 8px);
+      /* مسح zero-shift: when the tafsir panel collapses the page can get
+         shorter than the viewport — a vanishing scrollbar would shift the
+         whole centered layout sideways. Reserve the gutter permanently
+         (no-op on overlay-scrollbar platforms incl. the app's WebView). */
+      scrollbar-gutter: stable;
     }
 
     /* ── Round 2, Fix 4d: surah selector must never sink ───────────────
@@ -4364,7 +4565,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-BZjNmFoN.js"></script>
+  <script type="module" crossorigin src="/assets/index-CSOjwA2Y.js"></script>
 </head>
 
 <body>
@@ -4449,6 +4650,9 @@
             <div class="t-clear-mirror" id="searchClearMirror" aria-hidden="true"></div>
             <div class="t-clear-placeholder" id="searchClearPlaceholder" aria-hidden="true"></div>
             <div class="t-clear-glow" id="searchClearGlow" aria-hidden="true"></div>
+            <!-- Lock veil: a grey sheet ABOVE the locked ayah text so the
+                 state reads as locked; fades with the 700ms lock motion. -->
+            <div class="t-clear-veil" id="searchClearVeil" aria-hidden="true"></div>
             <!-- Left-corner action cluster: مسح + the surah selector (which
                  mushaf.js relocates here from its toolbar at shell-build
                  time; both visible in both modes). RTL ⇒ the cluster sits
@@ -4457,8 +4661,17 @@
                  and fades into existence once an ayah is selected — the
                  old selected-ayah chip card it used to ride on is gone. -->
             <div id="searchPillActions" class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <!-- Rewind-to-start icon (was the text "مسح"): one glance =
+                   "take everything back to the beginning". Same id/classes —
+                   all behavior unchanged. -->
               <button type="button" id="clearBtn" class="pill-clear-btn"
-                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
+                title="العودة إلى البداية" aria-label="مسح والعودة إلى الصفحة الرئيسية">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                </svg>
+              </button>
             </div>
             <div data-beam-bloom aria-hidden="true"></div>
           </div>
