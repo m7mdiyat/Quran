@@ -1169,7 +1169,7 @@ function buildShell() {
     <!-- Ayah menu: مختصر التفاسير quick-view -->
     <div class="mushaf-ayah-menu" id="mushafAyahMenu" data-view="main" role="menu" aria-hidden="true">
       <div class="mushaf-ayah-menu__main">
-        <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--mukhtasar" data-act="mukhtasar" aria-label="مختصر التفاسير">${ICONS.sparkles}</button>
+        <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--mukhtasar" data-act="mukhtasar" aria-label="مختصر التفاسير"><span class="beam-bloom" aria-hidden="true"></span>${ICONS.sparkles}</button>
         <button type="button" class="mushaf-ayah-menu__btn mushaf-ayah-menu__btn--copy" data-act="copy" aria-label="نسخ الآية">
           <span class="mushaf-ayah-menu__btn-icon">${ICONS.copy}</span>
           <span class="mushaf-ayah-menu__btn-label">نسخ</span>
@@ -3232,8 +3232,8 @@ async function openMukhtasarCard(verseKey, { anchorEl = null, point = null } = {
     MUKHTASAR_EL.setAttribute("aria-hidden", "false");
     MUKHTASAR_EL.classList.add("mushaf-mukhtasar--open");
     positionMukhtasarCard();
-    // Task 4: scale+fade open, growing out of the anchor point
-    // (positionMukhtasarCard just set the transform-origin).
+    // Scale+fade open from center — the Transitions.dev modal snippet
+    // verbatim (.t-modal CSS in index.html).
     modalOpen(MUKHTASAR_EL);
 
     const result = await fetchMukhtasarText(s, a);
@@ -3307,16 +3307,9 @@ function positionMukhtasarCard() {
     }
     MUKHTASAR_EL.style.left = `${left}px`;
     MUKHTASAR_EL.style.top = `${top}px`;
-
-    // Task 4 + Bug 3: the open/close scale grows out of the press point
-    // (clamped into the card box). Desktop hover uses the fragment edge
-    // facing the card.
-    const anchorY = MUKHTASAR_POINT
-        ? MUKHTASAR_POINT.y
-        : (MUKHTASAR_SIDE === "below" ? rect.bottom : rect.top);
-    const ox = Math.min(Math.max(anchorX - left, 0), cardW);
-    const oy = Math.min(Math.max(anchorY - top, 0), cardH);
-    MUKHTASAR_EL.style.transformOrigin = `${ox.toFixed(1)}px ${oy.toFixed(1)}px`;
+    // The open/close scale runs from the .t-modal default transform-origin
+    // (center) — the exact Transitions.dev modal snippet. The old
+    // grow-out-of-the-press-point origin read as a lopsided pop.
 }
 
 function closeMukhtasarCard() {
@@ -3345,8 +3338,12 @@ function wireMukhtasarDrag() {
 
     let dragging = false;
     let activePointer = null;
-    let startX = 0, startY = 0;
-    let startLeft = 0, startTop = 0;
+    let startX = 0, startY = 0;       // pointer at grab
+    let lastMoveX = 0, lastMoveY = 0; // freshest pointer position
+    let baseLeft = 0, baseTop = 0;    // the card's left/top VALUES at grab
+    let curLeft = 0, curTop = 0;      // last clamped position (committed on release)
+    let moved = false;
+    let raf = 0;
 
     header.addEventListener("pointerdown", (e) => {
         if (e.target.closest(".mushaf-mukhtasar__close")) return;
@@ -3358,31 +3355,43 @@ function wireMukhtasarDrag() {
         MUKHTASAR_DRAGGED = true;
         activePointer = e.pointerId;
 
-        // position:fixed + <body> parent means getBoundingClientRect IS the
-        // viewport position. No offset-parent math needed.
-        const cardRect = MUKHTASAR_EL.getBoundingClientRect();
         startX = e.clientX;
         startY = e.clientY;
-        startLeft = cardRect.left;
-        startTop = cardRect.top;
+        lastMoveX = startX;
+        lastMoveY = startY;
+        // Read left/top from computed style — the SAME coordinate space the
+        // positioner writes into. getBoundingClientRect is viewport space,
+        // which silently diverges from left/top space the moment ANY
+        // ancestor gains a transform/filter containing block (the app's
+        // fullscreen scroll-lock and WebView quirks) — seeding the drag
+        // from the rect made the card teleport by exactly that divergence
+        // on the first grab.
+        const cs = getComputedStyle(MUKHTASAR_EL);
+        baseLeft = parseFloat(cs.left) || 0;
+        baseTop = parseFloat(cs.top) || 0;
+        curLeft = baseLeft;
+        curTop = baseTop;
+        moved = false;
 
         MUKHTASAR_EL.classList.add("mushaf-mukhtasar--dragging");
         try { header.setPointerCapture(e.pointerId); } catch { }
         e.preventDefault();
     });
 
-    header.addEventListener("pointermove", (e) => {
-        if (!dragging || e.pointerId !== activePointer) return;
+    // Moves ride a compositor translate (left/top stay frozen at their grab
+    // values) and are batched to one write per frame — layout-free, so the
+    // card tracks the finger smoothly even on the WebView.
+    const applyDrag = () => {
+        raf = 0;
+        if (!dragging) return;
 
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
         const cardW = MUKHTASAR_EL.offsetWidth;
         const cardH = MUKHTASAR_EL.offsetHeight;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
 
-        let left = startLeft + dx;
-        let top = startTop + dy;
+        let left = baseLeft + (lastMoveX - startX);
+        let top = baseTop + (lastMoveY - startY);
 
         // Soft viewport constraint: keep at least a strip of the header
         // visible on every edge so the user can always grab it back. The
@@ -3393,8 +3402,18 @@ function wireMukhtasarDrag() {
         if (top < 0) top = 0;
         if (top > vh - edge) top = vh - edge;
 
-        MUKHTASAR_EL.style.left = `${left}px`;
-        MUKHTASAR_EL.style.top = `${top}px`;
+        curLeft = left;
+        curTop = top;
+        moved = true;
+        MUKHTASAR_EL.style.transform =
+            `translate3d(${left - baseLeft}px, ${top - baseTop}px, 0)`;
+    };
+
+    header.addEventListener("pointermove", (e) => {
+        if (!dragging || e.pointerId !== activePointer) return;
+        lastMoveX = e.clientX;
+        lastMoveY = e.clientY;
+        if (!raf) raf = requestAnimationFrame(applyDrag);
     });
 
     const endDrag = (e) => {
@@ -3402,6 +3421,18 @@ function wireMukhtasarDrag() {
         if (e && e.pointerId !== undefined && e.pointerId !== activePointer) return;
         dragging = false;
         activePointer = null;
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        // Commit the travelled delta into left/top and hand the transform
+        // back to the .t-modal scale — all while --dragging still holds
+        // transitions off, with a forced style flush before the class drops.
+        // Without that flush, re-enabled transitions would see the inline
+        // translate3d → scale(1) change and glide the card backwards.
+        if (moved) {
+            MUKHTASAR_EL.style.left = `${curLeft}px`;
+            MUKHTASAR_EL.style.top = `${curTop}px`;
+        }
+        MUKHTASAR_EL.style.transform = "";
+        void MUKHTASAR_EL.offsetWidth;
         MUKHTASAR_EL.classList.remove("mushaf-mukhtasar--dragging");
         try { if (e?.pointerId !== undefined) header.releasePointerCapture(e.pointerId); } catch { }
     };

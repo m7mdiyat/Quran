@@ -641,8 +641,139 @@ body.dark .mushaf-ayah-menu {
     height: 20px;
 }
 
+/* ── Border-beam "pulse-outside / colorful / strength 0.7" on the مختصر
+ * button (github.com/Jakubantalik/border-beam, scaled to the 40px button).
+ * Three layers, exactly the repo's structure:
+ *   ::after      1px colorful stroke ring at the outer edge (z 2)
+ *   ::before     core glow just past the edge (inset -6px, z -1)
+ *   .beam-bloom  wide soft halo (inset -18px, z -1) — static, frozen at
+ *                the breathing midpoint like the repo's bloom
+ * The colorful palette's nine blobs sit at the repo's % anchor points
+ * (sizes ÷~2.8 for this box). The repo's rAF oscillators + 14s hue cycle
+ * become calm CSS keyframes at the house 2× pace: 6.5s breathe, 28s hue.
+ * --beam-strength multiplies every layer like the React prop. */
 .mushaf-ayah-menu__btn--mukhtasar {
     color: var(--accent-strong);
+    position: relative;
+    /* Keeps the z:-1 beam layers inside the button's own stacking context —
+       behind the icon and hover tint, above the menu card's surface. */
+    isolation: isolate;
+    --beam-strength: 0.7;
+    --beam-colors:
+        radial-gradient(26px 15px at 33% -7%, rgba(255, 50, 100, 0.9), rgba(255, 50, 100, 0) 70%),
+        radial-gradient(22px 13px at 12% -5%, rgba(40, 140, 255, 0.9), rgba(40, 140, 255, 0) 70%),
+        radial-gradient(15px 26px at 2% 68%, rgba(50, 200, 80, 0.85), rgba(50, 200, 80, 0) 70%),
+        radial-gradient(8px 13px at 2% 68%, rgba(30, 185, 170, 0.9), rgba(30, 185, 170, 0) 70%),
+        radial-gradient(40px 12px at 74% 100%, rgba(100, 70, 255, 0.9), rgba(100, 70, 255, 0) 70%),
+        radial-gradient(30px 10px at 55% 100%, rgba(40, 140, 255, 0.8), rgba(40, 140, 255, 0) 70%),
+        radial-gradient(26px 12px at 94% 0%, rgba(255, 120, 40, 0.85), rgba(255, 120, 40, 0) 70%),
+        radial-gradient(10px 15px at 100% 27%, rgba(240, 50, 180, 0.9), rgba(240, 50, 180, 0) 70%),
+        radial-gradient(19px 18px at 100% 27%, rgba(180, 40, 240, 0.7), rgba(180, 40, 240, 0) 70%);
+}
+
+/* 1px stroke ring (gradient padding-box masked down to the 1px rim). */
+.mushaf-ayah-menu__btn--mukhtasar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    padding: 1px;
+    background: var(--beam-colors);
+    /* -webkit first, standard LAST: the shorthands alias each other and
+       reset mask-composite, so whichever pair comes last must be the
+       standard one or Firefox loses `exclude` and paints a full wash. */
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+    --beam-blur: 0px;
+    --beam-lo: 0.62;
+    --beam-hi: 0.95;
+    opacity: calc(var(--beam-hi) * var(--beam-strength));
+    animation: beam-hue 28s linear infinite,
+        beam-breathe 6.5s ease-in-out infinite;
+}
+
+/* Core glow radiating outward (repo: inset -10px, blur 6 light / 3 dark,
+   transform scale(0.95, 0.9)). */
+.mushaf-ayah-menu__btn--mukhtasar::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 14px;
+    background: var(--beam-colors);
+    transform: scale(0.95, 0.9);
+    pointer-events: none;
+    z-index: -1;
+    --beam-blur: 6px;
+    --beam-lo: 0.34;
+    --beam-hi: 0.6;
+    filter: blur(var(--beam-blur)) hue-rotate(0deg);
+    opacity: calc(var(--beam-hi) * var(--beam-strength));
+    animation: beam-hue 28s linear infinite,
+        beam-breathe 6.5s ease-in-out infinite;
+}
+
+/* Wide halo (repo: inset -30px, blur 15 light / 22.5 dark, opacity frozen
+   at the breathing midpoint — no breathe, hue cycle only). */
+.mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
+    position: absolute;
+    inset: -18px;
+    border-radius: 26px;
+    background: var(--beam-colors);
+    transform: scale(0.95, 0.9);
+    pointer-events: none;
+    z-index: -1;
+    --beam-blur: 15px;
+    filter: blur(var(--beam-blur)) hue-rotate(0deg);
+    opacity: calc(0.5 * var(--beam-strength));
+    animation: beam-hue 28s linear infinite;
+}
+
+/* Dark theme: the repo's dark pulseParams — tighter core blur (3px),
+   wider bloom blur (22.5px), deeper breathing amplitude. */
+body.dark .mushaf-ayah-menu__btn--mukhtasar::before {
+    --beam-blur: 3px;
+    --beam-lo: 0.3;
+    --beam-hi: 0.66;
+}
+
+body.dark .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
+    --beam-blur: 22.5px;
+    opacity: calc(0.56 * var(--beam-strength));
+}
+
+@keyframes beam-hue {
+    from {
+        filter: blur(var(--beam-blur, 0px)) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(var(--beam-blur, 0px)) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-breathe {
+
+    0%,
+    100% {
+        opacity: calc(var(--beam-lo) * var(--beam-strength));
+    }
+
+    50% {
+        opacity: calc(var(--beam-hi) * var(--beam-strength));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .mushaf-ayah-menu__btn--mukhtasar::before,
+    .mushaf-ayah-menu__btn--mukhtasar::after,
+    .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
+        animation: none !important;
+    }
 }
 
 /* Copy button: icon + small label, pill shape so the label reads cleanly
