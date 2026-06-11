@@ -649,16 +649,15 @@ body.dark .mushaf-ayah-menu {
  *   .beam-bloom  wide soft halo (inset -18px, z -1) — static, frozen at
  *                the breathing midpoint like the repo's bloom
  * The colorful palette's nine blobs sit at the repo's % anchor points
- * (sizes ÷~2.8 for this box). The repo's rAF oscillators + 14s hue cycle
- * become calm CSS keyframes at the house 2× pace: 6.5s breathe, 28s hue.
- * --beam-strength multiplies every layer like the React prop. */
+ * (sizes ÷~2.8 for this box). The repo's rAF oscillators become CSS
+ * keyframes at the repo's native pace, and strength 0.7 is pre-multiplied
+ * into every opacity value. */
 .mushaf-ayah-menu__btn--mukhtasar {
     color: var(--accent-strong);
     position: relative;
     /* Keeps the z:-1 beam layers inside the button's own stacking context —
        behind the icon and hover tint, above the menu card's surface. */
     isolation: isolate;
-    --beam-strength: 0.7;
     --beam-colors:
         radial-gradient(26px 15px at 33% -7%, rgba(255, 50, 100, 0.9), rgba(255, 50, 100, 0) 70%),
         radial-gradient(22px 13px at 12% -5%, rgba(40, 140, 255, 0.9), rgba(40, 140, 255, 0) 70%),
@@ -670,6 +669,13 @@ body.dark .mushaf-ayah-menu {
         radial-gradient(10px 15px at 100% 27%, rgba(240, 50, 180, 0.9), rgba(240, 50, 180, 0) 70%),
         radial-gradient(19px 18px at 100% 27%, rgba(180, 40, 240, 0.7), rgba(180, 40, 240, 0) 70%);
 }
+
+/* Animation notes: every keyframe below is fully hardcoded — var() inside
+ * @keyframes on pseudo-elements has a history of silently freezing in
+ * some engines, and strength 0.7 is pre-multiplied into every opacity.
+ * Periods are the repo's native pace (huePeriod 14s; breathing ~3.5–6s),
+ * each layer desynced so the pulse reads organic, with scale riding the
+ * breathe — the outward "bloom" motion that defines pulse-outside. */
 
 /* 1px stroke ring (gradient padding-box masked down to the 1px rim). */
 .mushaf-ayah-menu__btn--mukhtasar::after {
@@ -688,16 +694,14 @@ body.dark .mushaf-ayah-menu {
     mask-composite: exclude;
     pointer-events: none;
     z-index: 2;
-    --beam-blur: 0px;
-    --beam-lo: 0.62;
-    --beam-hi: 0.95;
-    opacity: calc(var(--beam-hi) * var(--beam-strength));
-    animation: beam-hue 28s linear infinite,
-        beam-breathe 6.5s ease-in-out infinite;
+    filter: hue-rotate(0deg);
+    opacity: 0.67;
+    animation: beam-hue-ring 14s linear infinite,
+        beam-breathe-ring 4.6s ease-in-out infinite;
 }
 
 /* Core glow radiating outward (repo: inset -10px, blur 6 light / 3 dark,
-   transform scale(0.95, 0.9)). */
+   transform scale(0.95, 0.9) at the breathing midpoint). */
 .mushaf-ayah-menu__btn--mukhtasar::before {
     content: "";
     position: absolute;
@@ -707,17 +711,14 @@ body.dark .mushaf-ayah-menu {
     transform: scale(0.95, 0.9);
     pointer-events: none;
     z-index: -1;
-    --beam-blur: 6px;
-    --beam-lo: 0.34;
-    --beam-hi: 0.6;
-    filter: blur(var(--beam-blur)) hue-rotate(0deg);
-    opacity: calc(var(--beam-hi) * var(--beam-strength));
-    animation: beam-hue 28s linear infinite,
-        beam-breathe 6.5s ease-in-out infinite;
+    filter: blur(6px) hue-rotate(0deg);
+    opacity: 0.42;
+    animation: beam-hue-core 14s linear infinite,
+        beam-breathe-core 3.6s ease-in-out infinite;
 }
 
-/* Wide halo (repo: inset -30px, blur 15 light / 22.5 dark, opacity frozen
-   at the breathing midpoint — no breathe, hue cycle only). */
+/* Wide halo (repo: inset -30px, blur 15 light / 22.5 dark; opacity frozen
+   at the breathing midpoint — its life comes from the scale breathe). */
 .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
     position: absolute;
     inset: -18px;
@@ -726,44 +727,115 @@ body.dark .mushaf-ayah-menu {
     transform: scale(0.95, 0.9);
     pointer-events: none;
     z-index: -1;
-    --beam-blur: 15px;
-    filter: blur(var(--beam-blur)) hue-rotate(0deg);
-    opacity: calc(0.5 * var(--beam-strength));
-    animation: beam-hue 28s linear infinite;
+    filter: blur(15px) hue-rotate(0deg);
+    opacity: 0.36;
+    animation: beam-hue-bloom 14s linear infinite,
+        beam-breathe-bloom 5.8s ease-in-out infinite;
 }
 
 /* Dark theme: the repo's dark pulseParams — tighter core blur (3px),
-   wider bloom blur (22.5px), deeper breathing amplitude. */
+   wider bloom blur (22.5px). Blur lives inside the animated filter, so
+   the dark variants swap the whole animation. */
 body.dark .mushaf-ayah-menu__btn--mukhtasar::before {
-    --beam-blur: 3px;
-    --beam-lo: 0.3;
-    --beam-hi: 0.66;
+    filter: blur(3px) hue-rotate(0deg);
+    animation: beam-hue-core-dark 14s linear infinite,
+        beam-breathe-core 3.6s ease-in-out infinite;
 }
 
 body.dark .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
-    --beam-blur: 22.5px;
-    opacity: calc(0.56 * var(--beam-strength));
+    filter: blur(22.5px) hue-rotate(0deg);
+    opacity: 0.4;
+    animation: beam-hue-bloom-dark 14s linear infinite,
+        beam-breathe-bloom 5.8s ease-in-out infinite;
 }
 
-@keyframes beam-hue {
+@keyframes beam-hue-ring {
     from {
-        filter: blur(var(--beam-blur, 0px)) hue-rotate(0deg);
+        filter: hue-rotate(0deg);
     }
 
     to {
-        filter: blur(var(--beam-blur, 0px)) hue-rotate(360deg);
+        filter: hue-rotate(360deg);
     }
 }
 
-@keyframes beam-breathe {
+@keyframes beam-hue-core {
+    from {
+        filter: blur(6px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(6px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-hue-core-dark {
+    from {
+        filter: blur(3px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(3px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-hue-bloom {
+    from {
+        filter: blur(15px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(15px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-hue-bloom-dark {
+    from {
+        filter: blur(22.5px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(22.5px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-breathe-ring {
 
     0%,
     100% {
-        opacity: calc(var(--beam-lo) * var(--beam-strength));
+        opacity: 0.43;
     }
 
     50% {
-        opacity: calc(var(--beam-hi) * var(--beam-strength));
+        opacity: 0.67;
+    }
+}
+
+@keyframes beam-breathe-core {
+
+    0%,
+    100% {
+        opacity: 0.24;
+        transform: scale(0.9, 0.84);
+    }
+
+    50% {
+        opacity: 0.45;
+        transform: scale(1, 0.96);
+    }
+}
+
+@keyframes beam-breathe-bloom {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(0.9, 0.84);
+    }
+
+    50% {
+        opacity: 0.44;
+        transform: scale(1.04, 0.98);
     }
 }
 
