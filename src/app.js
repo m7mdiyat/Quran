@@ -5661,6 +5661,16 @@ async function init() {
     onSelectorReflect: (s, a) => selectorReflect(s, a),
     onSelectorCommit: () => selectorReflectCommit(),
     onSelectorAbandon: () => selectorReflectAbandon(),
+    // Mushaf → search-bar sync: tap-to-play, continuous-play auto-advance,
+    // selector اذهب and /read deep links keep the locked bar's ayah text
+    // tracking the reading position — the same reflectAyahInBar +
+    // deactivateSearchBeam pairing setPrimaryAyah gives every Tafsir-mode
+    // path (silent lock when unlocked, soft line swap when locked, rewind
+    // pill shown; all the existing reflect guards apply).
+    reflectAyahInBar: (s, a) => {
+      reflectAyahInBar(s, a);
+      deactivateSearchBeam();
+    },
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;

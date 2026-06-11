@@ -567,6 +567,17 @@ export function noteTafsirViewedAyah(s, a) {
     syncSurahSelectLabel();
 }
 
+/* Mushaf → search-bar sync: every path that makes an ayah CURRENT on the
+ * Mushaf side (tap-to-play, engine auto-advance, selector اذهب, /read
+ * deep links) reports it here, so the always-visible search bar tracks
+ * the reading position exactly like Tafsir mode's setPrimaryAyah does.
+ * app.js owns the no-go guards (selector wheel open, مسح mid-dissolve,
+ * a user draft in the input). */
+function reflectBarAyah(s, a) {
+    const sn = Number(s), an = Number(a);
+    if (sn >= 1 && an >= 1) DEPS?.reflectAyahInBar?.(sn, an);
+}
+
 export async function openMushafAtAyah(s, a, opts = {}) {
     await ensureMushafAssets();
     const key = `${s}:${a}`;
@@ -575,6 +586,7 @@ export async function openMushafAtAyah(s, a, opts = {}) {
     CURRENT_TARGET_VERSE = key;
     TARGET_SURAH = Number(s);
     LAST_VIEWED_AYAH = { s: Number(s), a: Number(a) };
+    reflectBarAyah(s, a);
     openPanel();
     await goToPage(page, { direction: "none", noScroll: !!opts.noScroll });
     if (opts.updateUrl !== false) {
@@ -611,6 +623,7 @@ export async function openMushafAtSurah(s, opts = {}) {
     CURRENT_TARGET_VERSE = `${s}:1`;
     TARGET_SURAH = Number(s);
     LAST_VIEWED_AYAH = { s: Number(s), a: 1 };
+    reflectBarAyah(s, 1);
     openPanel();
     await goToPage(page, { direction: "none", noScroll: !!opts.noScroll });
     if (opts.updateUrl !== false) {
@@ -3480,6 +3493,8 @@ function updateMushafAyahHighlight(verseKey) {
     AUDIO_VERSE = verseKey;
     document.documentElement.setAttribute("data-audio-active", "1");
     highlightAyah(verseKey, "playing");
+    const [hs, ha] = verseKey.split(":");
+    reflectBarAyah(hs, ha);
 }
 
 /**
@@ -3496,6 +3511,7 @@ function mushafEngineCallbacks() {
             if (AUDIO_VERSE && AUDIO_VERSE !== newKey) clearHighlight(AUDIO_VERSE);
             AUDIO_VERSE = newKey;
             LAST_VIEWED_AYAH = { s: newSurah, a: newAyah };
+            reflectBarAyah(newSurah, newAyah);
             // Mushaf URL shape — same reason as the click-handler write above.
             // Refreshing mid-playback must land back in Mushaf, not Tafsir.
             history.replaceState({ mushaf: true, page: CURRENT_PAGE, target: newKey }, "", `/read/ayah/${newSurah}/${newAyah}`);
@@ -3634,6 +3650,7 @@ function playMushafAyah(verseKey) {
     AUDIO_VERSE = verseKey;
     document.documentElement.setAttribute("data-audio-active", "1");
     highlightAyah(verseKey, "playing");
+    reflectBarAyah(s, a);
     if (prevPlayer && prevPlayer !== nextAudio) {
         try { prevPlayer.pause(); } catch { }
     }
