@@ -3,3 +3,6 @@ dist
 .deploy
 audio
 ayoub
+
+# Timing-pipeline scratch audio (large MP3s; masters live in GCS)
+_timing_analysis/
