@@ -641,20 +641,24 @@ body.dark .mushaf-ayah-menu {
     height: 20px;
 }
 
-/* ── Border-beam "pulse-inner / colorful" on the مختصر button
- * (github.com/Jakubantalik/border-beam, scaled to the 40px button).
- * Three layers, exactly the repo's pulse-inner structure — everything
- * clipped INSIDE the element, no transforms, default strength 1:
+/* ── Border-beam "pulse-outside / colorful / strength 0.7" on the مختصر
+ * button (github.com/Jakubantalik/border-beam, scaled to the 40px
+ * button), plus an orbit: the glow layers spin around the button so the
+ * colored blobs visibly travel the perimeter. Three layers:
  *   ::after      1px colorful stroke ring at the edge (z 2)
- *   ::before     inner glow hugging the rim, fading toward the clear
- *                center where the icon sits (z 1)
- *   .beam-bloom  blurred rim bloom bleeding softly over the edge line
- *                (z 3) — opacity frozen at the time-average, hue only
+ *   ::before     core glow just past the edge (inset -6px, z -1)
+ *   .beam-bloom  wide soft halo (inset -18px, z -1)
+ * Motion channels never collide: `rotate` carries the orbit, `transform`
+ * carries the scale breathe, `filter` carries the hue cycle.
  * The colorful palette's nine blobs sit at the repo's % anchor points
- * (sizes ÷~2.8 for this box). */
+ * (sizes ÷~2.8 for this box); strength 0.7 is pre-multiplied into every
+ * opacity value. */
 .mushaf-ayah-menu__btn--mukhtasar {
     color: var(--accent-strong);
     position: relative;
+    /* Keeps the z:-1 beam layers inside the button's own stacking context —
+       behind the icon and hover tint, above the menu card's surface. */
+    isolation: isolate;
     --beam-colors:
         radial-gradient(26px 15px at 33% -7%, rgba(255, 50, 100, 0.9), rgba(255, 50, 100, 0) 70%),
         radial-gradient(22px 13px at 12% -5%, rgba(40, 140, 255, 0.9), rgba(40, 140, 255, 0) 70%),
@@ -669,11 +673,14 @@ body.dark .mushaf-ayah-menu {
 
 /* Animation notes: every keyframe below is fully hardcoded — var() inside
  * @keyframes on pseudo-elements has a history of silently freezing in
- * some engines. Periods are the repo's native pulse-inner pace
- * (huePeriod 16s; breathing ~2.6–4.6s), each layer desynced so the
- * pulse reads organic. Pulse-inner breathes opacity only — no scale. */
+ * some engines. The orbit (individual `rotate` property, so it composes
+ * with the transform scale-breathe) is the dominant motion: the glow
+ * makes a full lap of the button every 4s, the wide halo every 6.5s,
+ * with breathing and the 10s hue cycle desynced on top. */
 
-/* 1px stroke ring (gradient padding-box masked down to the 1px rim). */
+/* 1px stroke ring (gradient padding-box masked down to the 1px rim).
+   The ring's shape can't rotate (its rounded-rect mask would visibly
+   spin), so it contributes breathe + hue only. */
 .mushaf-ayah-menu__btn--mukhtasar::after {
     content: "";
     position: absolute;
@@ -691,57 +698,79 @@ body.dark .mushaf-ayah-menu {
     pointer-events: none;
     z-index: 2;
     filter: hue-rotate(0deg);
-    opacity: 0.95;
-    animation: beam-hue 16s linear infinite,
-        beam-breathe-ring 4.6s ease-in-out infinite;
+    opacity: 0.67;
+    animation: beam-hue-ring 10s linear infinite,
+        beam-breathe-ring 3.6s ease-in-out infinite;
 }
 
-/* Inner glow hugging the rim from the INSIDE (repo: perimeter gradients
-   masked with edge fades composited together, so the middle stays clear
-   under the icon). Default mask-composite (add) IS the repo's composite
-   for these two fades — no declaration needed. */
+/* Core glow radiating outward (repo: inset -10px, blur 6 light / 3 dark,
+   transform scale(0.95, 0.9) at the breathing midpoint). The layer box
+   is a centered square, so rotating it orbits the blobs around the
+   button. */
 .mushaf-ayah-menu__btn--mukhtasar::before {
     content: "";
     position: absolute;
-    inset: 0;
-    border-radius: 10px;
+    inset: -6px;
+    border-radius: 14px;
     background: var(--beam-colors);
-    -webkit-mask:
-        linear-gradient(#000, transparent 10px, transparent calc(100% - 10px), #000),
-        linear-gradient(to right, #000, transparent 10px, transparent calc(100% - 10px), #000);
-    mask:
-        linear-gradient(#000, transparent 10px, transparent calc(100% - 10px), #000),
-        linear-gradient(to right, #000, transparent 10px, transparent calc(100% - 10px), #000);
+    transform: scale(0.95, 0.9);
+    rotate: 0deg;
     pointer-events: none;
-    z-index: 1;
-    filter: hue-rotate(0deg);
-    opacity: 0.72;
-    animation: beam-hue 16s linear infinite,
-        beam-breathe-inner 2.6s ease-in-out infinite;
+    z-index: -1;
+    filter: blur(6px) hue-rotate(0deg);
+    opacity: 0.42;
+    animation: beam-orbit 4s linear infinite,
+        beam-hue-core 10s linear infinite,
+        beam-breathe-core 2.8s ease-in-out infinite;
 }
 
-/* Blurred rim bloom (repo: the ring's XOR mask, thicker, unfocused —
-   soft light bleeding over the edge line, opacity frozen at the
-   time-average, hue cycle only). Sits at z 3, but the masked-out center
-   keeps it off the icon. */
+/* Wide halo (repo: inset -30px, blur 15 light / 22.5 dark) — orbits
+   slower than the core for depth. */
 .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
     position: absolute;
-    inset: 0;
-    border-radius: 10px;
-    padding: 5px;
+    inset: -18px;
+    border-radius: 26px;
     background: var(--beam-colors);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
+    transform: scale(0.95, 0.9);
+    rotate: 0deg;
     pointer-events: none;
-    z-index: 3;
-    filter: blur(6px) hue-rotate(0deg);
-    opacity: 0.5;
-    animation: beam-hue-bloom 16s linear infinite;
+    z-index: -1;
+    filter: blur(15px) hue-rotate(0deg);
+    opacity: 0.36;
+    animation: beam-orbit 6.5s linear infinite,
+        beam-hue-bloom 10s linear infinite,
+        beam-breathe-bloom 4.5s ease-in-out infinite;
 }
 
-@keyframes beam-hue {
+/* Dark theme: the repo's dark pulseParams — tighter core blur (3px),
+   wider bloom blur (22.5px). Blur lives inside the animated filter, so
+   the dark variants swap the whole animation. */
+body.dark .mushaf-ayah-menu__btn--mukhtasar::before {
+    filter: blur(3px) hue-rotate(0deg);
+    animation: beam-orbit 4s linear infinite,
+        beam-hue-core-dark 10s linear infinite,
+        beam-breathe-core 2.8s ease-in-out infinite;
+}
+
+body.dark .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
+    filter: blur(22.5px) hue-rotate(0deg);
+    opacity: 0.4;
+    animation: beam-orbit 6.5s linear infinite,
+        beam-hue-bloom-dark 10s linear infinite,
+        beam-breathe-bloom 4.5s ease-in-out infinite;
+}
+
+@keyframes beam-orbit {
+    from {
+        rotate: 0deg;
+    }
+
+    to {
+        rotate: 360deg;
+    }
+}
+
+@keyframes beam-hue-ring {
     from {
         filter: hue-rotate(0deg);
     }
@@ -751,7 +780,7 @@ body.dark .mushaf-ayah-menu {
     }
 }
 
-@keyframes beam-hue-bloom {
+@keyframes beam-hue-core {
     from {
         filter: blur(6px) hue-rotate(0deg);
     }
@@ -761,27 +790,73 @@ body.dark .mushaf-ayah-menu {
     }
 }
 
+@keyframes beam-hue-core-dark {
+    from {
+        filter: blur(3px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(3px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-hue-bloom {
+    from {
+        filter: blur(15px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(15px) hue-rotate(360deg);
+    }
+}
+
+@keyframes beam-hue-bloom-dark {
+    from {
+        filter: blur(22.5px) hue-rotate(0deg);
+    }
+
+    to {
+        filter: blur(22.5px) hue-rotate(360deg);
+    }
+}
+
 @keyframes beam-breathe-ring {
 
     0%,
     100% {
-        opacity: 0.55;
+        opacity: 0.43;
     }
 
     50% {
-        opacity: 0.95;
+        opacity: 0.67;
     }
 }
 
-@keyframes beam-breathe-inner {
+@keyframes beam-breathe-core {
 
     0%,
     100% {
-        opacity: 0.35;
+        opacity: 0.24;
+        transform: scale(0.9, 0.84);
     }
 
     50% {
-        opacity: 0.72;
+        opacity: 0.45;
+        transform: scale(1, 0.96);
+    }
+}
+
+@keyframes beam-breathe-bloom {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(0.9, 0.84);
+    }
+
+    50% {
+        opacity: 0.44;
+        transform: scale(1.04, 0.98);
     }
 }
 
