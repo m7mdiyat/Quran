@@ -9,6 +9,12 @@
 "use strict";
 
 window.addEventListener("error", (e) => {
+  // Not an exception: Chrome fires this benign notice when ResizeObserver
+  // notifications span a frame boundary (the spec allows deferring them to
+  // the next frame). With several observers live (search pill, Mushaf
+  // autoFit, pulse-beam) a mode toggle can legitimately produce it —
+  // logging it as a JS error is pure noise.
+  if (/ResizeObserver loop/.test(e.message || "")) return;
   console.error("JS error:", e.message, e.error);
 });
 window.addEventListener("unhandledrejection", (e) => {
@@ -36,6 +42,14 @@ import { surahAudio } from "./surahAudio.js";
 /* Pulse-outside glow driver for the مختصر التفاسير button */
 import { initMukhtasarPulse } from "./pulse-beam.js";
 
+/* Transitions.dev animation pack: panel reveal for the ayah panel, the
+ * ayah→ayah page slide, the مسح input dissolve, the selector number swap,
+ * and reduced-motion plumbing (CSS in index.html). */
+import {
+  panelPrepare, panelOpen, panelOpenInstant,
+  dissolveSearchClear, materializeSearchText, swapBlock, cssMs, prefersReducedMotion,
+} from "./transitions.js";
+
 /* Repeat / loop preference + active-loop counter (shared website + app) */
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, getRepeatPref, setRepeatPref, subscribeRepeat } from "./repeat.js";
 
@@ -54,15 +68,243 @@ const netBadge = el("netBadge");
 
 const resultsShell = el("resultsShell");
 const results = el("results");
-const selectedChip = el("selectedChip");
-const chipTitle = el("chipTitle");
-const chipSnippet = el("chipSnippet");
-const chipIcon = el("chipIcon");
-const chipDefaults = {
-  title: chipTitle?.textContent || "",
-  snippet: chipSnippet?.textContent || "",
-  icon: chipIcon?.textContent || "",
-};
+/* The selected-ayah chip card is GONE (round 5): selection shows as the
+ * locked ayah text materializing in the pill, and مسح lives in the pill's
+ * action cluster (#clearBtn there), fading in once an ayah is selected. */
+
+/* ── Task 1: searched-ayah lock + مسح dissolve (Transitions.dev) ──────
+ * Picking a result LOCKS the typed text in the search pill instead of
+ * wiping it: the wrapper gains .has-value, the input's own glyphs go
+ * transparent and the .t-clear-mirror renders the value split into
+ * per-word spans — which is exactly what the مسح dissolve animates
+ * (fly-up + blur + per-word glow streaks, all measured from the real
+ * RTL word rects). Editing the input unlocks it again seamlessly. */
+const searchClearWrap = textSearch?.closest(".t-clear") || null;
+const searchClearMirror = el("searchClearMirror");
+const searchClearPlaceholder = el("searchClearPlaceholder");
+const searchClearGlow = el("searchClearGlow");
+
+/* Mirror metrics must match the input's text box exactly (the input has a
+ * 1px border the inset:0 layers don't, plus the runtime padding-left calc
+ * that tracks the surah-selector cluster). Copied as computed px values. */
+function syncClearMetrics() {
+  if (!textSearch || !searchClearMirror) return;
+  const cs = getComputedStyle(textSearch);
+  for (const layer of [searchClearMirror, searchClearPlaceholder]) {
+    if (!layer) continue;
+    layer.style.paddingRight = `${parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth)}px`;
+    layer.style.paddingLeft = `${parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)}px`;
+    layer.style.fontFamily = cs.fontFamily;
+    layer.style.fontSize = cs.fontSize;
+    layer.style.fontWeight = cs.fontWeight;
+    layer.style.letterSpacing = cs.letterSpacing;
+  }
+}
+
+/* Fill `container` with word spans + the exact whitespace between them.
+ * Whitespace ALSO needs real spans (.t-clear-space, white-space:pre): the
+ * mirror is a flex container, and flex drops whitespace-only text nodes
+ * outright — bare text-node spaces rendered the words jammed together.
+ *
+ * Capped at 240 chars: the cluster-anchored mask hides everything past
+ * the selector anyway, so rendering ALL of a 400-char ayah would only
+ * pile invisible spans into the mirror — and into every step-swap and the
+ * مسح dissolve. Arabic with tashkeel measures ≈2.9px/char at this font
+ * size (diacritics are zero-advance combining marks), so 240 chars ≈
+ * 700px of glyphs — comfortably past the fully-transparent mask point of
+ * the widest possible pill (max-w-2xl mirror ≈ 638px − minimum cluster
+ * footprint ≈ 66px = 572px), so a truncated render can never end as a
+ * visible hard edge inside the fade ramp. The input's value always keeps
+ * the FULL text (unlock/search/مسح truth); only the visual mirror
+ * truncates. */
+const MIRROR_MAX_CHARS = 240;
+
+function buildMirrorWords(container, text) {
+  container.textContent = "";
+  let used = 0;
+  for (const token of String(text || "").split(/(\s+)/)) {
+    if (!token) continue;
+    if (used >= MIRROR_MAX_CHARS) break;
+    used += token.length;
+    const span = document.createElement("span");
+    span.className = /^\s+$/.test(token) ? "t-clear-space" : "t-clear-word";
+    span.textContent = token;
+    container.appendChild(span);
+  }
+}
+
+/* Rebuild the mirror straight from the input's value. The words always sit
+ * inside ONE .t-clear-line wrapper — the unit the quiet ayah-tracking and
+ * the selector reflection swap via swapBlock, while the dissolve/
+ * materialize routines find the word spans through it for their glow. */
+function syncClearMirror() {
+  if (!searchClearMirror) return;
+  searchClearMirror.textContent = "";
+  const value = textSearch?.value || "";
+  if (!value) return;
+  const line = document.createElement("span");
+  line.className = "t-clear-line";
+  buildMirrorWords(line, value);
+  searchClearMirror.appendChild(line);
+}
+
+function mirrorLineEl() {
+  return searchClearMirror ? searchClearMirror.querySelector(".t-clear-line") : null;
+}
+
+function lockSearchInput() {
+  if (!searchClearWrap || !textSearch || !textSearch.value) return;
+  syncClearMetrics();
+  syncClearMirror();
+  searchClearWrap.classList.add("has-value");
+}
+
+/* Round 5 (5.3 entrance): selecting a search result LOCKS the FULL ayah
+ * text into the pill with the texts-reveal (gallery #18) — the typed
+ * fragment "completes itself": each word of the ayah rises into view with
+ * staggered blur, in reading order, while the surface slowly tints to the
+ * locked color and the pill مسح fades into existence. Deliberately a
+ * DIFFERENT animation from مسح's removal dissolve (whole line dropping
+ * away under the baseline shimmer) — appearing ≠ disappearing.
+ * MATERIALIZE_CANCEL lets a مسح / unlock-click that lands mid-reveal
+ * finish it instantly first, so two routines never fight over the
+ * mirror. */
+let MATERIALIZE_CANCEL = null;
+
+function lockSearchToAyah(fullText) {
+  if (!searchClearWrap || !textSearch || !fullText) return;
+  if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL();
+  textSearch.value = fullText;       // the input's value is always the truth
+  lockSearchInput();
+  MATERIALIZE_CANCEL = materializeSearchText({
+    wrapper: searchClearWrap,
+    mirror: searchClearMirror,
+    glow: searchClearGlow,
+    onFinished: () => { MATERIALIZE_CANCEL = null; },
+  }) || null;
+}
+
+/* ── Pill مسح visibility (round 5) ───────────────────────────────────────
+ * Appears only after an ayah is selected, slowly fading into existence;
+ * hidden again by the مسح reset. Wired into deactivate/reactivate-
+ * SearchBeam — the exact same "an ayah is chosen / homepage restored"
+ * semantics, already fired by every selection path in both modes. */
+function showPillClear() {
+  if (!clearBtn || clearBtn.classList.contains("is-shown")) return;
+  clearBtn.classList.add("is-shown");      // display flips on…
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (clearBtn.classList.contains("is-shown")) {
+      clearBtn.classList.add("is-visible"); // …then the slow fade runs
+    }
+  }));
+}
+
+function hidePillClear() {
+  if (!clearBtn) return;
+  clearBtn.classList.remove("is-shown", "is-visible");
+}
+
+/* Drop the lock state. Safe to call at any time (resetToHome runs it on
+ * every path); the dissolve keeps painting through .is-clearing, which
+ * only the animation's own cleanup removes. */
+function clearInputLock() {
+  if (!searchClearWrap) return;
+  searchClearWrap.classList.remove("has-value");
+  if (!searchClearWrap.classList.contains("is-clearing") && searchClearMirror) {
+    searchClearMirror.textContent = "";
+  }
+}
+
+/* ── Round 2, Fix 4 (round 3 revision): selector → search-bar reflection ──
+ * While the selector's ayah picker is open, the bar mirrors the AYAH TEXT
+ * ITSELF for the pending pick — through the same lock mechanism the search
+ * results use, so it inherits the horizontal fade mask (long ayahs melt
+ * away toward the selector cluster) and the مسح dissolve for free. Every
+ * wheel step swaps the whole text line through the shared three-phase
+ * swap (swapBlock on the inner .t-clear-line; the mask stays on the
+ * parent mirror, so the swap's translateY/blur never fights it). Closing
+ * the dropdown without اذهب restores whatever the bar held before (unless
+ * something else — مسح, a new search — already took the input over). */
+let SELECTOR_REFLECT = null; // { snapValue, snapLocked, lineEl, lastText }
+
+function selectorReflect(s, a) {
+  if (!textSearch || !searchClearWrap || !searchClearMirror) return;
+  if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL(); // reflection takes the mirror over
+  // The real ayah text; plain reference as a fallback for the (boot-time)
+  // window where quran.json isn't parsed yet.
+  const name = SURAH_META.find((x) => x.number === s)?.name_ar || `سورة ${s}`;
+  const text = getAyahTextFromQuran(s, a) || `${name} — الآية ${a}`;
+  if (!SELECTOR_REFLECT) {
+    SELECTOR_REFLECT = {
+      snapValue: textSearch.value,
+      snapLocked: searchClearWrap.classList.contains("has-value"),
+      lineEl: null,
+      lastText: "",
+    };
+  }
+  const st = SELECTOR_REFLECT;
+  if (text === st.lastText) return; // aria re-syncs fire without value changes
+  st.lastText = text;
+  textSearch.value = text; // keep the real input truthful for unlock/مسح
+  if (!st.lineEl || !st.lineEl.isConnected) {
+    // First reflection: lock the pill (syncClearMirror builds the line).
+    lockSearchInput();
+    st.lineEl = mirrorLineEl();
+  } else {
+    swapBlock(st.lineEl, () => {
+      if (st.lineEl) buildMirrorWords(st.lineEl, st.lastText);
+    });
+  }
+}
+
+function selectorReflectCommit() {
+  // اذهب pressed — the reflected text becomes the bar's real state.
+  SELECTOR_REFLECT = null;
+}
+
+function selectorReflectAbandon() {
+  const st = SELECTOR_REFLECT;
+  SELECTOR_REFLECT = null;
+  if (!st || !textSearch) return;
+  // Restore only while the reflection is still what's on screen — a مسح
+  // or a fresh search in between owns the input now.
+  if (textSearch.value !== st.lastText) return;
+  textSearch.value = st.snapValue || "";
+  if (st.snapLocked && textSearch.value) lockSearchInput();
+  else clearInputLock();
+}
+
+/* Round 5: the locked bar IS the selected-ayah display now (the chip card
+ * is gone), so it must never go stale while navigating — prev/next,
+ * context clicks, deep links and popstate all quietly retarget it. The
+ * already-locked bar swaps its line softly (same motion as the selector
+ * reflection); an unlocked bar locks silently — EXCEPT while the user is
+ * actively typing in it, while the selector reflection owns it, or while
+ * a مسح dissolve is mid-flight (it is emptying the bar). */
+function reflectAyahInBar(surahNo, ayahNo) {
+  if (!textSearch || !searchClearWrap || !searchClearMirror) return;
+  if (SELECTOR_REFLECT) return;
+  if (searchClearWrap.classList.contains("is-clearing")) return;
+  const text = getAyahTextFromQuran(surahNo, ayahNo);
+  if (!text || textSearch.value === text) return;
+  // Mid-reveal: restart with the newer text — lockSearchToAyah cancels the
+  // in-flight reveal (instant cleanup) and starts a fresh one, so a fast
+  // pick → next/prev simply reveals the newer ayah instead of going stale.
+  if (searchClearWrap.classList.contains("is-materializing")) {
+    lockSearchToAyah(text);
+    return;
+  }
+  const locked = searchClearWrap.classList.contains("has-value");
+  if (!locked && document.activeElement === textSearch) return; // user is typing
+  textSearch.value = text;
+  if (!locked) {
+    lockSearchInput();
+    return;
+  }
+  const line = mirrorLineEl();
+  if (line) swapBlock(line, () => buildMirrorWords(line, text));
+  else syncClearMirror();
+}
 
 const aiQuestion = el("aiQuestion");
 const aiAskBtn = el("aiAskBtn");
@@ -1151,15 +1393,12 @@ function tafsirEngineCallbacks() {
     onPause: () => setAudioActiveUI(false),
     onAyahChange: (ayah, surah) => {
       if (!CURRENT || CURRENT.s !== surah || CURRENT.a !== ayah) {
-        // Use the SAME defaults as a manual prev/next click (`stepAyah` calls
-        // setPrimaryAyah with just `scroll: false`, so animate defaults to
-        // true). The continuous-mode auto-advance was previously passing
-        // `animate: false`, which skipped the tafsirGlow entrance fade and
-        // made the transition feel sudden compared to a hand-clicked step.
-        // Re-using animate:true brings auto-advance to parity with manual
-        // navigation. The mode-toggle handoff path still passes its own
-        // `animate: false` (see comment in setPrimaryAyah) to avoid a double
-        // fade against the concurrent mode-fade-in, so that path is unchanged.
+        // skipAudioStop:true keeps the engine alive AND routes this through
+        // setPrimaryAyah's light path: continuous-playback auto-advance
+        // updates the tafsir content with the inner tafsir-swap only —
+        // cycling the whole panel (close→reopen) every few seconds while
+        // the user follows along with the recitation would be hostile.
+        // Manual prev/next clicks get the full Task-3 panel cycle.
         setPrimaryAyah(surah, ayah, { scroll: false, skipAudioStop: true });
       }
     },
@@ -1244,7 +1483,9 @@ function resumeTafsirFromEngine() {
   // Make sure the per-ayah Audio (if any was around) is killed.
   if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } AUDIO_PLAYER = null; }
   surahAudio.setCallbacks(tafsirEngineCallbacks());
-  setPrimaryAyah(s, a, { scroll: false, animate: false, skipAudioStop: true });
+  // panelReveal:"defer" — this only runs inside setAppMode's Mushaf→Tafsir
+  // choreography, which stages the panel closed and plays the reveal itself.
+  setPrimaryAyah(s, a, { scroll: false, animate: false, skipAudioStop: true, panelReveal: "defer" });
   setAudioActiveUI(surahAudio.isPlaying());
   hideTafsirAudioOffline();
 }
@@ -2866,18 +3107,14 @@ function searchText(q) {
 }
 
 /* ---------------- Results UI ---------------- */
-function updateSelectedChip(it) {
-  if (!selectedChip) return;
-  chipTitle.textContent = "تم اختيار الآية";
-  chipSnippet.textContent = (it.textRaw || "").slice(0, 60) + ((it.textRaw || "").length > 60 ? "…" : "");
-  chipIcon.textContent = "✓";
-}
-
 // Border beam on the search pill: once an ayah is chosen the beam has done
 // its job — swap [data-active] → [data-fading] (the ported component's 0.5s
 // beam-fade-out), then drop the attribute on animationend so every beam
 // layer stops existing/painting. Idempotent: no-op after the first run.
+// Round 5: "an ayah is chosen" is ALSO the pill مسح's cue to fade in —
+// before the idempotence early-return, so repeat selections re-show it.
 function deactivateSearchBeam() {
+  showPillClear();
   const el = document.querySelector(".border-beam[data-active]");
   if (!el) return;
   el.removeAttribute("data-active");
@@ -2899,6 +3136,7 @@ function deactivateSearchBeam() {
 // it back. Re-adding [data-active] replays beam-fade-in + the spin loop.
 // Safe mid-fade: a pending deactivate timeout only removes [data-fading].
 function reactivateSearchBeam() {
+  hidePillClear(); // homepage default = no selection = no مسح
   const el = document.querySelector(".border-beam");
   if (!el || el.hasAttribute("data-active")) return;
   el.removeAttribute("data-fading");
@@ -2907,18 +3145,14 @@ function reactivateSearchBeam() {
 
 function collapseResultsToChip(it) {
   if (!resultsShell || !results) return;
-  updateSelectedChip(it);
   deactivateSearchBeam();
   results.classList.add("collapsed");
   resultsShell.classList.add("collapsed");
   results.style.maxHeight = "";
-  // User picked an ayah → the chip now represents the selection, so the
-  // raw query text is no longer needed. Clearing also drops Chrome's
-  // :-webkit-autofill state, removing the leftover overlay from the
-  // input. Don't clear if the input has no value (no-op anyway).
-  if (textSearch && textSearch.value) {
-    textSearch.value = "";
-  }
+  // Round 5: the typed fragment auto-completes into the FULL ayah text,
+  // materializing in the pill (reverse of the مسح dissolve). Clicking the
+  // locked pill later dissolves it for a fresh search.
+  lockSearchToAyah(it?.textRaw || textSearch?.value || "");
 }
 
 function expandResultsList() {
@@ -3077,7 +3311,9 @@ function renderResults(items, query) {
 
     card.onclick = () => {
       if (isMushafMode()) {
-        openMushafAtAyah(it.s, it.a);
+        // Task 2: picking an ayah while in Mushaf mode must not move the
+        // viewport — suppress the target scrollIntoView.
+        openMushafAtAyah(it.s, it.a, { noScroll: true });
         collapseResultsToChip(it);
         return;
       }
@@ -3433,8 +3669,12 @@ async function updateTafsirUI(surahNo, ayahNo) {
     // snap to the new ayah and then fade in late, feeling jerky during
     // continuous-mode auto-advance. The tafsirBox swap stays after the
     // async load because its content updates then.
+    // Suppressed while the page-slide carries the change — two competing
+    // motions (sideways page + inner fade-up) read as jank.
     tafsirAyahTag.classList.remove("tafsir-swap");
-    requestAnimationFrame(() => tafsirAyahTag.classList.add("tafsir-swap"));
+    if (!TAFSIR_SLIDE_ACTIVE) {
+      requestAnimationFrame(() => tafsirAyahTag.classList.add("tafsir-swap"));
+    }
   }
 
   updateBasmalaUI(surahNo, ayahNo);
@@ -3474,11 +3714,14 @@ async function updateTafsirUI(surahNo, ayahNo) {
   // Only the tafsirBox is re-animated here — its content just updated. The
   // tafsirAyahTag was already animated above at the moment its innerHTML
   // changed (so the swap stays in sync with the actual text change instead
-  // of running late after the async fetch).
+  // of running late after the async fetch). Suppressed during the page
+  // slide (the slide IS the transition).
   tafsirBox?.classList.remove("tafsir-swap");
-  requestAnimationFrame(() => {
-    tafsirBox?.classList.add("tafsir-swap");
-  });
+  if (!TAFSIR_SLIDE_ACTIVE) {
+    requestAnimationFrame(() => {
+      tafsirBox?.classList.add("tafsir-swap");
+    });
+  }
 
   // =====================================================
   // PHASE B: Load secondary tafsirs in background
@@ -4259,7 +4502,108 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}) {
 }
 
 /* ---------------- Primary select ---------------- */
-function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scroll = true, animate = true, skipAudioStop = false } = {}) {
+/* Everything inside the ayah panel that must repaint for a new ayah. Split
+ * out of setPrimaryAyah so the page-slide can snapshot the outgoing state
+ * BEFORE the content swaps. */
+function applyAyahPanelContent(surahNo, ayahNo) {
+  showAyahContext(surahNo, ayahNo);
+  updateTafsirUI(surahNo, ayahNo);
+  updateNavButtons(surahNo, ayahNo);
+  resetComparePanel({ hide: true, silent: true });
+}
+
+/* ── Round 5.2: Tafsir ayah→ayah PURE CROSSFADE ──────────────────────────
+ * The outgoing page is snapshotted (cloneNode) and overlaid FIRST, the
+ * heavy apply runs hidden behind that pixel-identical snapshot (the
+ * screen never blanks — this is what killed the old "lag in the middle"),
+ * then the snapshot simply fades away while the new page fades in.
+ * Opacity ONLY: no translate, no blur, no height choreography — chrome
+ * that is identical between ayahs overlaps pixel-exactly, so the eye sees
+ * just the changed text dissolve. The clone keeps its descendant ids: it
+ * sits AFTER the live page in tree order, so getElementById / el(...)
+ * still resolve to the live elements, while CSS #id rules style the
+ * snapshot identically. Rapid steps retarget the live (entering) page;
+ * resets cancel cleanly. First reveal and the mode switch keep the
+ * .t-panel-slide choreography — untouched. */
+let TAFSIR_SWAP_TIMER = null;
+let TAFSIR_SWAP_GHOST = null;
+/* True for the whole swap lifecycle — updateTafsirUI reads it to suppress
+ * the inner .tafsir-swap text animations (a second competing motion). */
+let TAFSIR_SLIDE_ACTIVE = false;
+
+function cancelTafsirSwap() {
+  if (TAFSIR_SWAP_TIMER) { clearTimeout(TAFSIR_SWAP_TIMER); TAFSIR_SWAP_TIMER = null; }
+  if (TAFSIR_SWAP_GHOST) { TAFSIR_SWAP_GHOST.remove(); TAFSIR_SWAP_GHOST = null; }
+  TAFSIR_SLIDE_ACTIVE = false;
+  el("tafsirPages")?.classList.remove("is-swapping");
+  const cur = el("tafsirPageCurrent");
+  if (cur) {
+    // Snap to rest with no transition (cancel = instant, mid-flight or not).
+    const prev = cur.style.transition;
+    cur.style.transition = "none";
+    cur.classList.remove("t-page-enter");
+    void cur.offsetWidth;
+    cur.style.transition = prev;
+  }
+}
+
+function softSwapTafsir(applyContent) {
+  const cur = el("tafsirPageCurrent");
+  const pages = el("tafsirPages");
+  if (!cur || !pages || prefersReducedMotion()) { applyContent(); return; }
+  if (TAFSIR_SLIDE_ACTIVE) {
+    // Mid-swap: retarget — the entering page simply becomes the newest
+    // ayah (it keeps its in-flight fade; the snapshot keeps its exit).
+    applyContent();
+    return;
+  }
+  TAFSIR_SLIDE_ACTIVE = true;
+
+  // 1. Pixel-identical snapshot of the outgoing page, overlaid on top.
+  const ghost = cur.cloneNode(true);
+  ghost.removeAttribute("id");
+  ghost.className = "t-page-ghost";
+  ghost.setAttribute("aria-hidden", "true");
+  // cloneNode copies attributes, not live state — sync what a user can
+  // actually see in the snapshot: the chosen selects (tafsir book,
+  // translation language) and the tafsir box's scroll offset.
+  const liveSelects = cur.querySelectorAll("select");
+  ghost.querySelectorAll("select").forEach((s, i) => {
+    if (liveSelects[i]) s.value = liveSelects[i].value;
+  });
+  pages.classList.add("is-swapping");
+  pages.appendChild(ghost);
+  TAFSIR_SWAP_GHOST = ghost;
+  const liveBox = cur.querySelector("#tafsirBox");
+  const ghostBox = ghost.querySelector("#tafsirBox");
+  if (liveBox && ghostBox && liveBox.scrollTop) ghostBox.scrollTop = liveBox.scrollTop;
+
+  // 2. The heavy apply runs NOW, hidden behind the snapshot — the screen
+  //    keeps painting the identical clone, so there is no blank middle.
+  cur.classList.add("t-page-enter"); // opacity 0, transition:none
+  applyContent();
+
+  // 3. Next frame: pure crossfade — the snapshot fades away while the new
+  //    page fades in beneath it; the fade curves cross high, so combined
+  //    visibility never dips and there is no perceivable hand-off.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (TAFSIR_SWAP_GHOST !== ghost) return; // cancelled / restarted
+    ghost.classList.add("is-out");
+    cur.classList.remove("t-page-enter");
+  }));
+
+  const total = Math.max(
+    cssMs("--page-swap-out-dur", 320),
+    cssMs("--page-swap-in-dur", 320)) + 80;
+  TAFSIR_SWAP_TIMER = setTimeout(() => {
+    TAFSIR_SWAP_TIMER = null;
+    if (TAFSIR_SWAP_GHOST === ghost) { ghost.remove(); TAFSIR_SWAP_GHOST = null; }
+    pages.classList.remove("is-swapping");
+    TAFSIR_SLIDE_ACTIVE = false;
+  }, total);
+}
+
+function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scroll = true, animate = true, skipAudioStop = false, panelReveal = "auto" } = {}) {
   // Engine playing the same surah → seek to the clicked ayah instead of
   // tearing down. Cross-surah clicks (or non-engine playback) fall through
   // to the existing stop-on-switch behavior.
@@ -4270,16 +4614,19 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   } else if (!skipAudioStop) {
     stopAudio();
   }
+  const prevAyah = CURRENT;
   CURRENT = { s: surahNo, a: ayahNo };
-  // Mirror the selection into the chip card on EVERY path that sets an
-  // ayah (search pick, deep link, next/prev, popstate) — the card carries
-  // the مسح button, so it must exist whenever an ayah is active, and its
-  // snippet must not go stale while navigating.
-  const chipSurah = QURAN?.surahs?.find((x) => x.number === surahNo);
-  const chipAyah = chipSurah?.ayahs?.find((x) => x.numberInSurah === ayahNo);
-  if (chipAyah) {
-    updateSelectedChip({ textRaw: chipAyah.text });
-    resultsShell?.classList.remove("is-empty");
+  // Round 5: the locked bar replaced the chip card as the selected-ayah
+  // display — keep it tracking EVERY path that sets an ayah (search pick,
+  // deep link, next/prev, popstate) so it never goes stale.
+  reflectAyahInBar(surahNo, ayahNo);
+  // Bug 2 hygiene: a stale results list whose only content is the
+  // "لا توجد نتائج" empty-state block (left by a no-match search) must
+  // never linger around — wipe it; real result cards stay.
+  if (results && !results.querySelector(".result-card") && results.innerHTML !== "") {
+    results.innerHTML = "";
+    results.classList.add("is-empty", "collapsed");
+    results.style.maxHeight = "0";
   }
   // Keep the search-pill surah selector's label (visible in both modes)
   // tracking the surah being read, and LAST_VIEWED_AYAH fresh for a later
@@ -4296,29 +4643,52 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   // change captures the new position. Page is null in Tafsir mode.
   _recordResume({ mode: "tafsir", surah: surahNo, ayah: ayahNo, page: null });
 
-  showAyahContext(surahNo, ayahNo);
-  updateTafsirUI(surahNo, ayahNo);
-  updateNavButtons(surahNo, ayahNo);
-  resetComparePanel({ hide: true, silent: true });
+  /* Ayah panel choreography:
+   *   • first reveal → content applies, panel slides up/open (Task 3
+   *     .t-panel-slide — UNCHANGED, as is the Task-7 mode switch);
+   *   • ayah → ayah change while the panel is open → soft swap (round 5):
+   *     gentle fade-out, swap while invisible, gentle fade-in;
+   *   • panelReveal:"defer" → setAppMode's mode-switch choreography stages
+   *     and opens the panel itself (Task 7);
+   *   • animate:false / engine auto-advance (skipAudioStop) / same-ayah
+   *     refresh → instant content update, panel stays put (the listening
+   *     mode keeps its light inner tafsir-swap instead of pulsing the
+   *     panel every few seconds).
+   */
+  const wasVisible = !!tafsirSection
+    && !tafsirSection.classList.contains("hidden")
+    && tafsirSection.dataset.open === "true";
+  const ayahChanged = !prevAyah || prevAyah.s !== surahNo || prevAyah.a !== ayahNo;
 
   if (tafsirSection) {
     tafsirSection.classList.remove("is-hidden");
     tafsirSection.classList.remove("hidden");
-    if (animate) {
-      // Strip + rAF re-add re-fires the entrance animation. Skip this path
-      // when the caller (e.g. the mode toggle) wants the panel to appear
-      // without re-running tafsirGlow / is-visible transitions — otherwise
-      // they fight a concurrent mode-fade-in and the user sees a double paint.
-      tafsirSection.classList.remove("is-visible");
-      tafsirSection.classList.remove("tafsir-animate");
-      requestAnimationFrame(() => {
-        tafsirSection.classList.add("is-visible");
-        tafsirSection.classList.add("tafsir-animate");
-      });
-    } else {
-      tafsirSection.classList.add("is-visible");
-    }
   }
+
+  if (!tafsirSection) {
+    applyAyahPanelContent(surahNo, ayahNo);
+  } else if (panelReveal === "defer") {
+    cancelTafsirSwap();
+    applyAyahPanelContent(surahNo, ayahNo);
+    panelPrepare(tafsirSection);
+  } else if (!wasVisible) {
+    cancelTafsirSwap();
+    applyAyahPanelContent(surahNo, ayahNo);
+    if (animate && !prefersReducedMotion()) panelOpen(tafsirSection);
+    else panelOpenInstant(tafsirSection);
+  } else if (!animate || skipAudioStop || !ayahChanged || prefersReducedMotion()) {
+    if (TAFSIR_SLIDE_ACTIVE) {
+      // Mid-swap: route through the retarget path so a pending (older)
+      // apply can't overwrite this newer content at exit-end.
+      softSwapTafsir(() => applyAyahPanelContent(surahNo, ayahNo));
+    } else {
+      applyAyahPanelContent(surahNo, ayahNo);
+    }
+    panelOpenInstant(tafsirSection);
+  } else {
+    softSwapTafsir(() => applyAyahPanelContent(surahNo, ayahNo));
+  }
+
   if (scroll) {
     try { tafsirSection?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { }
   }
@@ -4327,7 +4697,10 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
 function setSelected(surahNo, ayahNo) {
   // helper used by AI "open ayah"
   setPrimaryAyah(surahNo, ayahNo);
-  expandResultsList();
+  // Bug 2: only re-open the results list when it holds REAL result cards —
+  // expanding a list whose content is the stale "لا توجد نتائج" empty-state
+  // would paint that block right under the chip/مسح area.
+  if (results?.querySelector(".result-card")) expandResultsList();
 }
 
 /* ---------------- AI UI ---------------- */
@@ -4982,6 +5355,24 @@ async function init() {
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
 
+  // Round 2, Fix 5: the top bar is position:fixed; body padding-top
+  // re-reserves its flow space via --m7-header-h. Measure the REAL height
+  // (web ~63px; app adds the safe-area inset) and keep it fresh across
+  // resizes / status-bar var changes. rAF defer keeps the layout read out
+  // of the ResizeObserver delivery (Chrome RO loop-limit).
+  const headerEl = document.querySelector("header.site-header");
+  if (headerEl) {
+    const syncHeaderHeight = () => {
+      const h = headerEl.offsetHeight;
+      if (h > 0) document.documentElement.style.setProperty("--m7-header-h", `${h}px`);
+    };
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => requestAnimationFrame(syncHeaderHeight)).observe(headerEl);
+    }
+    window.addEventListener("resize", () => requestAnimationFrame(syncHeaderHeight));
+    syncHeaderHeight();
+  }
+
   // Capacitor app only: measure the real Android status-bar height and
   // expose it as a CSS var. Fixes Pixel 8 / Android 14 where env() lies
   // and our 24px floor undershoots the actual ~30dp inset. No-op on web.
@@ -5069,10 +5460,11 @@ async function init() {
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
     getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
     openTafsirForAyah: (s, a, opts) => {
-      // Mode switch: skip the tafsir entrance animation (double-render with
-      // mode-fade-in) and skip scrollIntoView (jarring during a toggle).
-      // The surah-selector submit overrides both (a user pick SHOULD
-      // animate + scroll, like a search-result click).
+      // Mode switch: skip the panel's own entrance (setAppMode choreographs
+      // the Task-7 reveal itself via panelReveal:"defer") and skip
+      // scrollIntoView (jarring during a toggle). The surah-selector submit
+      // overrides both (a user pick SHOULD animate + scroll, like a
+      // search-result click).
       setPrimaryAyah(s, a, { scroll: false, animate: false, ...opts });
     },
     // Opening the Mushaf panel counts as choosing an ayah → fade the
@@ -5129,6 +5521,12 @@ async function init() {
     // every page / ayah / surah navigation. Pass the no-op-by-default
     // shim so mushaf.js can call it unconditionally.
     recordResume: (patch) => _recordResume(patch),
+    // Round 2, Fix 4: surah-selector → search-bar reflection. Reflect fires
+    // for the wheel's every value (open + steps), commit on اذهب, abandon
+    // when the dropdown closes without a pick.
+    onSelectorReflect: (s, a) => selectorReflect(s, a),
+    onSelectorCommit: () => selectorReflectCommit(),
+    onSelectorAbandon: () => selectorReflectAbandon(),
   });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
@@ -5234,24 +5632,25 @@ async function init() {
   // SEO tags, mode toggle and search beam back to how a fresh load of "/"
   // looks. pushState (not replace) so Back still returns to the ayah.
   const resetToHome = () => {
+    if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL(); // settle any in-flight materialize
     textSearch.value = "";
+    clearInputLock();         // drop the lock (mirror cleanup waits for the dissolve)
     results.innerHTML = "";
     results.classList.add("is-empty");
     resultsShell?.classList.add("is-empty");
     results.classList.add("collapsed");
     resultsShell?.classList.add("collapsed");
     results.style.maxHeight = "0";
-    if (chipTitle) chipTitle.textContent = chipDefaults.title;
-    if (chipSnippet) chipSnippet.textContent = chipDefaults.snippet;
-    if (chipIcon) chipIcon.textContent = chipDefaults.icon;
 
     stopAudio();              // Tafsir per-ayah <audio> + surahAudio engine
     resetMushafHomeState();   // close Mushaf panel, drop its anchor ayah, toggle → تفسير
     CURRENT = null;
+    // A soft swap mid-flight from a just-clicked ayah change must not
+    // apply stale content / leave exit classes on the retracted panel.
+    cancelTafsirSwap();
     if (tafsirSection) {
       tafsirSection.classList.add("hidden");
-      tafsirSection.classList.remove("is-visible");
-      tafsirSection.classList.remove("tafsir-animate");
+      tafsirSection.dataset.open = "false";   // next reveal stages from closed
     }
     resetComparePanel({ hide: true, silent: true });
     updateCompareButtonState();
@@ -5264,6 +5663,13 @@ async function init() {
   };
 
   // The teardown is STAGED so مسح feels composed instead of abrupt:
+  //   0. (Task 1) when an ayah text is LOCKED in the search pill, it first
+  //      dissolves out — per-word fly-up + blur with glow streaks measured
+  //      from the real RTL word rects (Transitions.dev "input clear with
+  //      dissolve", driven per-frame from src/transitions.js). The rest of
+  //      the teardown starts the moment the text has fully dissolved, so
+  //      the glow tail and the page fade read as one motion; the fake
+  //      placeholder flies in during the reset.
   //   1. the open content (chip card, results, Tafsir panel / Mushaf panel)
   //      fades out over 280ms (.m7-clear-fade, index.html);
   //   2. behind that blank moment the actual reset + jump-to-top run —
@@ -5279,30 +5685,86 @@ async function init() {
       tafsirSection,
       document.getElementById("mushafRoot"),
     ].filter((n) => n && !n.classList.contains("hidden") && n.offsetParent !== null);
-    let reduceMotion = false;
-    try { reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { }
-    if (reduceMotion || fadeTargets.length === 0) {
+    const reduceMotion = prefersReducedMotion();
+    const lockedText = !!textSearch?.value
+      && !!searchClearWrap?.classList.contains("has-value");
+    if (reduceMotion || (fadeTargets.length === 0 && !lockedText)) {
       resetToHome();
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { }
       return;
     }
     clearing = true;
-    fadeTargets.forEach((n) => n.classList.add("m7-clear-fade"));
-    setTimeout(() => {
-      resetToHome();
-      fadeTargets.forEach((n) => n.classList.remove("m7-clear-fade"));
-      try { window.scrollTo(0, 0); } catch { }
-      const searchPanelEl2 = el("searchPanel");
-      if (searchPanelEl2) {
-        searchPanelEl2.classList.remove("m7-home-enter");
-        void searchPanelEl2.offsetWidth;
-        searchPanelEl2.classList.add("m7-home-enter");
-        // Drop the class once the entrance ends so the transform/stacking
-        // side effects don't outlive the animation.
-        setTimeout(() => searchPanelEl2.classList.remove("m7-home-enter"), 420);
-      }
-      clearing = false;
-    }, 300);
+    const runStagedReset = () => {
+      fadeTargets.forEach((n) => n.classList.add("m7-clear-fade"));
+      setTimeout(() => {
+        resetToHome();
+        fadeTargets.forEach((n) => n.classList.remove("m7-clear-fade"));
+        try { window.scrollTo(0, 0); } catch { }
+        const searchPanelEl2 = el("searchPanel");
+        if (searchPanelEl2) {
+          searchPanelEl2.classList.remove("m7-home-enter");
+          void searchPanelEl2.offsetWidth;
+          searchPanelEl2.classList.add("m7-home-enter");
+          // Drop the class once the entrance ends so the transform/stacking
+          // side effects don't outlive the animation.
+          setTimeout(() => searchPanelEl2.classList.remove("m7-home-enter"), 420);
+        }
+        clearing = false;
+      }, 300);
+    };
+    if (lockedText) {
+      if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL(); // never two routines on the mirror
+      syncClearMetrics(); // layout may have shifted since the lock
+      dissolveSearchClear({
+        wrapper: searchClearWrap,
+        input: textSearch,
+        mirror: searchClearMirror,
+        placeholder: searchClearPlaceholder,
+        glow: searchClearGlow,
+        onTextGone: runStagedReset,
+        onFinished: () => { if (searchClearMirror) searchClearMirror.textContent = ""; },
+      });
+    } else {
+      runStagedReset();
+    }
+  });
+
+  // Editing the search text releases the lock (keyboard/tab flows): the
+  // input's own glyphs come back and the user keeps typing. Ignored
+  // mid-dissolve — resetToHome owns the value then.
+  textSearch?.addEventListener("input", () => {
+    if (searchClearWrap?.classList.contains("is-clearing")) return;
+    clearInputLock();
+  });
+
+  // Round 5: clicking the LOCKED pill slowly unlocks it — the tint eases
+  // back over the same slow transition while the text dissolves away —
+  // leaving a focused, empty bar to write a brand-new search from zero.
+  let unlockingPill = false;
+  textSearch?.addEventListener("click", () => {
+    if (!searchClearWrap?.classList.contains("has-value")) return;
+    if (searchClearWrap.classList.contains("is-clearing")
+      || searchClearWrap.classList.contains("is-materializing")) return;
+    if (SELECTOR_REFLECT) return; // the open selector owns the bar right now
+    if (unlockingPill) return;
+    unlockingPill = true;
+    if (MATERIALIZE_CANCEL) MATERIALIZE_CANCEL();
+    dissolveSearchClear({
+      wrapper: searchClearWrap,
+      input: textSearch,
+      mirror: searchClearMirror,
+      placeholder: searchClearPlaceholder,
+      glow: searchClearGlow,
+      onTextGone: () => {
+        textSearch.value = "";
+        clearInputLock(); // has-value off → the surface un-tints slowly
+      },
+      onFinished: () => {
+        unlockingPill = false;
+        if (searchClearMirror) searchClearMirror.textContent = "";
+        try { textSearch.focus({ preventScroll: true }); } catch { }
+      },
+    });
   });
 
   // The search input's left padding must clear the surah-selector cluster,
@@ -5316,12 +5778,19 @@ async function init() {
     const syncActionsWidth = () => {
       const w = pillActionsEl.offsetLeft + pillActionsEl.offsetWidth;
       beamPillEl.style.setProperty("--search-actions-w", `${w}px`);
+      // The lock mirror copies the input's resolved padding — keep it in
+      // step whenever the cluster (and thus the padding calc) changes.
+      // Deferred one frame: it reads getComputedStyle, and a forced layout
+      // inside the ResizeObserver callback trips Chrome's "loop completed
+      // with undelivered notifications" error.
+      requestAnimationFrame(syncClearMetrics);
     };
     if (window.ResizeObserver) {
       new ResizeObserver(syncActionsWidth).observe(pillActionsEl);
     }
     syncActionsWidth();
   }
+  window.addEventListener("resize", syncClearMetrics);
 
   // Click anywhere outside the search panel → drop a stale autofill
   // visual on the input. Only fires when the value actually came from
@@ -5344,37 +5813,10 @@ async function init() {
     });
   }
 
-  // The chip card is the تغيير control: tapping it re-opens the results
-  // list. When there is no list to reopen (the ayah came from a deep link,
-  // not a search), send the user to the search input instead — expanding
-  // an empty container would just make the card vanish.
-  const activateChip = () => {
-    if (results?.querySelector(".result-card")) {
-      toggleResultsList();
-    } else {
-      textSearch?.focus();
-    }
-  };
-  resultsShell?.addEventListener("click", (e) => {
-    let target = e.target;
-    if (target && !(target instanceof Element)) {
-      target = target.parentElement;
-    }
-    if (!target || !(target instanceof Element)) return;
-    // مسح rides on the chip: its full-reset must not also toggle the card.
-    if (target.closest("#clearBtn")) return;
-    if (!target.closest("#selectedChip")) return;
-    e.preventDefault();
-    activateChip();
-  });
-  // The chip is a div[role=button] (it nests the real مسح <button>), so
-  // Enter/Space don't come for free. Keys bubbling up from مسح stay مسح's.
-  selectedChip?.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    if (e.target instanceof Element && e.target.closest("#clearBtn")) return;
-    e.preventDefault();
-    activateChip();
-  });
+  // (Round 5) The selected-ayah chip card and its re-open/change handlers
+  // are gone — the locked pill text is the selection display, the surah
+  // selector is the change-ayah control, and clicking the locked pill
+  // dissolves it for a fresh search (wired below with the lock listeners).
 
   // AI quick prompts (chips)
   for (const b of aiQuickBtns) {
@@ -5580,10 +6022,10 @@ async function init() {
       CURRENT = null;
       // "/" renders the homepage default — retract the tafsir panel too,
       // matching what the مسح reset (which pushState'd this entry) shows.
+      cancelTafsirSwap();
       if (tafsirSection) {
         tafsirSection.classList.add("hidden");
-        tafsirSection.classList.remove("is-visible");
-        tafsirSection.classList.remove("tafsir-animate");
+        tafsirSection.dataset.open = "false";
       }
       resetSeoMetaToHome();
       resetComparePanel({ hide: true, silent: true });

@@ -54,8 +54,15 @@ function makeNativeHider() {
 export function initSplash({ appReady, isDark } = {}) {
   const dark = typeof isDark === "function" ? !!isDark() : false;
 
-  const overlay = document.createElement("div");
+  // Round 2, Fix 2: ADOPT the static overlay that index.html ships in the
+  // initial markup (painted on the literal first frame, before any JS —
+  // that's what closes the bare-app flash). Building our own node is now
+  // only the fallback for an unexpectedly missing placeholder. data-adopted
+  // tells the placeholder's inline escape-hatch timer to stand down — this
+  // module's own SAFETY_MS teardown owns the lifecycle from here.
+  const overlay = document.getElementById("m7-splash") || document.createElement("div");
   overlay.id = "m7-splash";
+  overlay.dataset.adopted = "1";
   Object.assign(overlay.style, {
     position: "fixed",
     inset: "0",
@@ -77,7 +84,7 @@ export function initSplash({ appReady, isDark } = {}) {
   host.style.transform = `translate(${NUDGE_X_PX}px, ${NUDGE_Y_PX}px)`;
   overlay.appendChild(host);
 
-  document.body.appendChild(overlay);
+  if (!overlay.parentElement) document.body.appendChild(overlay);
 
   const hideNative = makeNativeHider();
 

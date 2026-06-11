@@ -35,6 +35,7 @@ import {
     deleteTafsirCache,
     TAFSIR_TOTAL_MB,
 } from "./app.js";
+import { swapText, swapBlock } from "./transitions.js";
 
 let SHEET_EL = null;
 let BTN_EL = null;
@@ -93,11 +94,16 @@ function statusHtml(rowKey, state) {
     if (status === "downloading") {
         const pct = Math.max(0, Math.min(100, Number(state.pct) || 0));
         const message = state.message || "";
+        // The rotating message is a .t-text-swap node: while the row stays
+        // in "downloading", renderRow updates it IN PLACE through swapText.
+        // The PERCENTAGE deliberately is NOT animated (round 2, Fix 3): a
+        // counter ticking through exit/enter motion read as flicker — it
+        // updates via plain textContent. The bar fill stays direct too.
         return `
           <div class="offline-row__progress">
             <div class="mushaf-download__bar"><div class="mushaf-download__fill" style="width:${pct}%"></div></div>
             <div class="offline-row__progress-row">
-              <span class="offline-row__progress-msg">${message}</span>
+              <span class="offline-row__progress-msg t-text-swap">${message}</span>
               <span class="offline-row__progress-pct">${pct}%</span>
             </div>
           </div>`;
@@ -114,7 +120,7 @@ function statusHtml(rowKey, state) {
     if (status === "error") {
         return `
           <div class="offline-row__pill offline-row__pill--err">
-            <span>${state.message || "تعذّر التحميل"}</span>
+            <span class="t-text-swap">${state.message || "تعذّر التحميل"}</span>
             <button type="button" class="offline-btn offline-btn--ghost" data-offline-act="download" data-offline-row="${rowKey}">إعادة المحاولة</button>
           </div>`;
     }
@@ -144,7 +150,33 @@ function statusHtml(rowKey, state) {
 function renderRow(rowKey, state) {
     if (!SHEET_EL) return;
     const slot = SHEET_EL.querySelector(`.offline-row[data-offline-row="${rowKey}"] .offline-row__status`);
-    if (slot) slot.innerHTML = statusHtml(rowKey, state);
+    if (!slot) return;
+
+    // Task 5 (+ round 2, Fix 3): animate status-text changes instead of
+    // hard innerHTML swaps on each progress event.
+    //   • Same status shape → the rotating message swaps via swapText; the
+    //     percentage and the bar fill update DIRECTLY (no motion — a
+    //     ticking counter through exit/enter motion read as flicker).
+    //   • Status shape changed (idle→downloading→done, confirm prompts…) →
+    //     swap the whole block with the three-phase motion.
+    const status = state?.status || "idle";
+    const sig = `${status}|${PENDING_CONFIRM[rowKey] || ""}`;
+    if (slot.dataset.sig === sig) {
+        if (status === "downloading") {
+            const pct = Math.max(0, Math.min(100, Number(state.pct) || 0));
+            const fill = slot.querySelector(".mushaf-download__fill");
+            if (fill) fill.style.width = `${pct}%`;
+            swapText(slot.querySelector(".offline-row__progress-msg"), state.message || "");
+            const pctEl = slot.querySelector(".offline-row__progress-pct");
+            if (pctEl) pctEl.textContent = `${pct}%`;
+        } else if (status === "error") {
+            swapText(slot.querySelector(".offline-row__pill--err .t-text-swap"),
+                state.message || "تعذّر التحميل");
+        }
+        return;
+    }
+    slot.dataset.sig = sig;
+    swapBlock(slot, () => { slot.innerHTML = statusHtml(rowKey, state); });
 }
 
 function renderAllRows() {

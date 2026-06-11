@@ -157,25 +157,12 @@ body.dark .mode-toggle__knob {
     display: none !important;
 }
 
-/* Fix 4: opacity transitions used by setAppMode to fade panels in/out
- * sequentially during a mode toggle. mode-fade-out: fade to 0 over 120ms.
- * mode-fade-in: starts at 0; JS removes the class on the next frame so the
- * panel animates back to 1. Duration was 180ms; shortened to 120ms together
- * with the matching setTimeout in mushaf.js fadeOutPanel so the toggle
- * floor drops from ~360ms to ~240ms while the fade stays visible. */
-.mushaf-root,
-#tafsirSection {
-    transition: opacity 120ms ease;
-}
-
-.mode-fade-out {
-    opacity: 0 !important;
-    pointer-events: none;
-}
-
-.mode-fade-in {
-    opacity: 0;
-}
+/* The old mode-fade-in/out opacity pair (and its shared 120ms transition on
+ * .mushaf-root/#tafsirSection) is retired: mode switching now runs through
+ * the shared Transitions.dev panel reveal (.t-panel-slide + data-open —
+ * CSS in index.html, choreography in mushaf.js setAppMode). The shared
+ * transition rule HAD to go with it: an ID-specificity `transition: opacity`
+ * would override .t-panel-slide's transform/filter transitions entirely. */
 
 /* ============================================================
  * Surah header — small "سورة" label above the large Arabic name.
@@ -785,19 +772,31 @@ body.dark .mushaf-toolbar__btn--play::after {
     /* no visual properties — see comment above */
 }
 
-/* Copy-confirmation toast — single shared element, bottom-center. */
+/* Copy-confirmation toast — single shared element, bottom-center.
+ * Theme-following glass colors (was a solid blue pill): the success-check
+ * SVG inside draws with currentColor, so light theme gets the dark ink
+ * (var(--text) = #0b1326) and dark theme the light one (#e5e7eb) — exactly
+ * the Task-6 requirement — and the label follows along for free.
+ * overflow:hidden clips the check's 40px entrance bob to the pill. */
 .copy-toast {
     position: fixed;
     bottom: 24px;
     left: 50%;
     transform: translate(-50%, 8px);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
     padding: 10px 18px;
     border-radius: 999px;
-    background: #2644cd;
-    color: #fff;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    color: var(--text);
     font-size: 0.92rem;
     font-weight: 800;
-    box-shadow: 0 8px 22px rgba(38, 68, 205, 0.35);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     z-index: 2000;
@@ -810,7 +809,7 @@ body.dark .mushaf-toolbar__btn--play::after {
 }
 
 body.dark .copy-toast {
-    background: #3b5bd9;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 
 /* ============================================================
@@ -830,18 +829,13 @@ body.dark .copy-toast {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     z-index: 1000;
-    opacity: 0;
-    pointer-events: none;
-    /* Fade only — NO transform on open. If we animate transform here,
-       grabbing the card mid-transition makes the --dragging class snap
-       it to translateY(0), which visually yanks the card upward by
-       however many pixels were left in the animation. */
-    transition: opacity 170ms ease;
-}
-
-.mushaf-mukhtasar--open {
-    opacity: 1;
-    pointer-events: auto;
+    /* Visibility/motion is owned by the shared .t-modal scale+fade
+       (Transitions.dev — CSS in index.html, driven from mushaf.js with the
+       transform-origin set to the long-press point). The scale transform is
+       drag-safe: it animates around the origin without moving left/top, and
+       --dragging suppresses transitions outright while grabbing. The old
+       opacity-only fade that lived here is gone — .mushaf-mukhtasar--open
+       remains as the JS state marker only. */
 }
 
 body.dark .mushaf-mukhtasar {

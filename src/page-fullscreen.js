@@ -94,6 +94,14 @@ export function openFullscreen(deps) {
     // opens (hover or long-press, fired from src/mushaf.js's wireToolbar),
     // close our floating settings panel so the two never overlap.
     document.addEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
+    // Scroll-lock symmetry: the body position:fixed lock below is ONLY ever
+    // valid while the Mushaf panel itself is visible. Any path that closes
+    // the panel out from under fullscreen (مختصر → "عرض التفسير الكامل"
+    // switching to the Tafsir tab, browser back, the مسح reset) fires this
+    // event from mushaf.js closePanel() — exit fullscreen so the lock is
+    // released by the same closeFullscreen() that installed it. Without
+    // this, the page behind stayed position:fixed forever (unscrollable).
+    document.addEventListener("m7:mushaf-panel-closed", onPanelClosed);
     window.addEventListener("resize", updatePageNum);
     // Distraction-free toggle + double-tap-zoom guard (background taps only).
     _rootEl.addEventListener("click", onRootClick);
@@ -107,6 +115,7 @@ export function closeFullscreen() {
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("click", onDocumentClick, true);
     document.removeEventListener("m7:vol-dropdown-open", onVolDropdownOpen);
+    document.removeEventListener("m7:mushaf-panel-closed", onPanelClosed);
     window.removeEventListener("resize", updatePageNum);
     _rootEl?.removeEventListener("click", onRootClick);
     _rootEl?.removeEventListener("touchend", onRootTouchEnd);
@@ -157,6 +166,10 @@ function onDocumentClick(e) {
 
 function onVolDropdownOpen() {
     if (_settingsOpen) closeSettingsPanel();
+}
+
+function onPanelClosed() {
+    closeFullscreen();
 }
 
 /* ============================================== Distraction-free mode ==== */

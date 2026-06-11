@@ -538,42 +538,59 @@
       transform: translateY(-2px) scale(.99);
     }
 
-    .results-shell.collapsed .selected-chip {
-      display: flex;
-    }
-
-    .results-shell.is-empty .selected-chip {
-      display: none;
-    }
-
     .results-shell.is-empty {
       margin-top: 0;
       display: none;
     }
 
-    .selected-chip {
+    /* ── مسح in the pill (replaces the selected-ayah chip card) ─────────
+       Sits in the action cluster on the surah selector's RIGHT. Hidden on
+       the homepage; once an ayah is selected it slowly fades into
+       existence (JS toggles is-shown — display flips first, opacity
+       transitions after a staged frame). Geometry mirrors the selector
+       pill so the cluster reads as one control group, and the cluster's
+       ResizeObserver automatically widens the input padding + the
+       text-fade mask to clear it. */
+    .pill-clear-btn {
       display: none;
+      box-sizing: border-box;
+      height: 28px;
+      align-items: center;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, .06);
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
       cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease;
+      opacity: 0;
+      transition: opacity 600ms ease, background 150ms ease;
     }
 
-    .selected-chip:hover {
-      border-color: rgba(37, 99, 235, .30);
+    .pill-clear-btn.is-shown {
+      display: inline-flex;
     }
 
-    .selected-chip:active {
-      transform: scale(.985);
+    .pill-clear-btn.is-visible {
+      opacity: 1;
     }
 
-    .selected-chip:focus-visible {
-      outline: 3px solid rgba(59, 130, 246, .45);
-      outline-offset: 2px;
+    .pill-clear-btn:hover {
+      background: rgba(15, 23, 42, .12);
     }
 
-    /* The snippet truncates; never let flex squash the مسح pill instead. */
-    #selectedChip #clearBtn {
-      flex-shrink: 0;
+    body.dark .pill-clear-btn,
+    html.dark .pill-clear-btn {
+      background: rgba(148, 163, 184, .18);
+      color: #e2e8f0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pill-clear-btn {
+        transition: none !important;
+      }
     }
 
     /* ── مسح staged teardown ──────────────────────────────────────────
@@ -2089,20 +2106,11 @@
       animation: contextFade .35s ease;
     }
 
+    /* Entrance/exit motion for #tafsirSection now lives in the shared
+       Transitions.dev panel-reveal (.t-panel-slide + data-open, end of this
+       style block) — the old is-visible / tafsir-animate pair is retired. */
     #tafsirSection {
-      opacity: 0;
-      transform: translateY(10px);
-      transition: opacity .55s ease, transform .55s ease;
       overflow-anchor: none;
-    }
-
-    #tafsirSection.is-visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    #tafsirSection.tafsir-animate {
-      animation: tafsirGlow .55s ease;
     }
 
     #tafsirBox {
@@ -2129,18 +2137,6 @@
     .ayah-quote,
     .quran-word {
       font-family: "MeQuran", "Amiri", serif;
-    }
-
-    @keyframes tafsirGlow {
-      from {
-        opacity: .7;
-        transform: translateY(6px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
 
     @keyframes tafsirSwap {
@@ -3028,6 +3024,22 @@
       z-index: 50;
     }
 
+    /* ── Round 3: cap the panel's stacking domain ──────────────────────
+       The z-values above (top-row 50, the wraps' 99999, audio dropdowns
+       50, the tafsir-select menu 60) exist for LOCAL ordering inside the
+       panel — but with no z-capped ancestor they competed at ROOT level
+       and floated the cog / play / مختصر / select right over the frozen
+       header (z-40) and the status-bar strip when the page scrolled.
+       isolation:isolate turns each panel into its own stacking context
+       with z-index:auto: every inner z keeps its relative meaning, yet
+       nothing inside can ever paint above the header or any overlay.
+       Fullscreen is unaffected — .mushaf-root--fullscreen's z-index:1000
+       sits on the root element itself, which still competes at root level. */
+    #tafsirSection,
+    .mushaf-root {
+      isolation: isolate;
+    }
+
     .compare-scroll {
       max-height: 60vh;
       overflow: auto;
@@ -3757,6 +3769,585 @@
       user-select: text;
     }
 
+    /* ═══════════════════════════════════════════════════════════════════
+       Transitions.dev animation pack (Tasks 1, 3–7 + Bug 3)
+       ONE home for all the ported animation variables + component classes.
+       Variables are merged into the single :root block below (Tasks 3 & 7
+       share the panel vars; Task 4 & Bug 3 share the modal vars). Timing
+       values / easings / structure match the source snippets; structural
+       adaptations are noted inline. JS drivers: src/transitions.js.
+       ═══════════════════════════════════════════════════════════════════ */
+    :root {
+      /* — Input clear with dissolve (Task 1) — */
+      --clear-dur: 1000ms;
+      --clear-out-dur: 400ms;
+      --clear-in-dur: 400ms;
+      --clear-out-fly: 12px;
+      --clear-in-fly: 12px;
+      --clear-out-ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --clear-in-ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --clear-blur: 2px;
+      --glow-delay: 50ms;
+      --glow-peak-at: 0.15;
+      --glow-opacity: 0.85;
+      --glow-spread: 1.5;
+      /* Shimmer color (r,g,b): the gallery uses plain ink — black on the
+         light theme (multiply darkens), white on dark (screen lightens;
+         override below). The per-ellipse alphas (0.14–0.22 in
+         transitions.js) carry the subtlety. */
+      --clear-glow-rgb: 0, 0, 0;
+
+      /* — Panel reveal (Tasks 3 + 7) — */
+      --panel-open-dur: 400ms;
+      --panel-close-dur: 350ms;
+      --panel-translate-y: calc(187px * 0.5);
+      --panel-blur: 2px;
+      --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+      /* — Tafsir ayah→ayah PURE CROSSFADE (round 5.2: zero movement — the
+           outgoing page is snapshotted and simply fades away while the new
+           ayah fades in beneath it. All the chrome that is identical
+           between pages (buttons, selects, labels) overlaps pixel-exactly,
+           so to the eye only the TEXT that actually changes dissolves;
+           nothing slides, nothing flies) — */
+      --page-swap-out-dur: 320ms;
+      --page-swap-in-dur: 320ms;
+      /* Entering page: fast-start ease (reaches visibility quickly);
+         snapshot fade: gentle symmetric curve. Their crossing keeps
+         combined visibility near 1 the whole way — no blank middle, no
+         visible dip. */
+      --page-swap-ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --page-swap-fade-ease: cubic-bezier(0.45, 0, 0.55, 1);
+
+      /* — Modal open/close (Task 4 + Bug 3) — */
+      --modal-open-dur: 250ms;
+      --modal-close-dur: 150ms;
+      --modal-scale: 0.96;
+      --modal-scale-close: 0.96;
+      --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+      /* — Text states swap (Task 5) — */
+      --text-swap-dur: 150ms;
+      --text-swap-translate-y: 4px;
+      --text-swap-blur: 2px;
+      --text-swap-ease: ease-in-out;
+
+      /* — Success check (Task 6) — */
+      --check-opacity-dur: 500ms;
+      --check-rotate-dur: 500ms;
+      --check-rotate-from: 80deg;
+      --check-bob-dur: 500ms;
+      --check-y-amount: 40px;
+      --check-blur-dur: 500ms;
+      --check-blur-from: 10px;
+      --check-path-dur: 500ms;
+      --check-path-delay: 80ms;
+      --check-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --check-ease-opacity: cubic-bezier(0.22, 1, 0.36, 1);
+      --check-ease-rotate: cubic-bezier(0.22, 1, 0.36, 1);
+      --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+      --check-ease-path: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    body.dark,
+    html.dark body {
+      --clear-glow-rgb: 255, 255, 255;
+    }
+
+    /* ── Task 1: input clear with dissolve ─────────────────────────────
+       Adaptations from the snippet, both required by this pill:
+       • NO overflow:hidden on .t-clear — it would clip the input's focus
+         ring and the surah-selector dropdown that lives inside the pill.
+         Each layer self-clips with the pill's 18px radius instead.
+       • The fake placeholder only renders DURING the clear (base opacity 0,
+         JS drives the fly-in); the native placeholder keeps serving the
+         everyday empty state, and is hidden while .is-clearing so the two
+         never double-paint during the handoff. */
+    .t-clear {
+      position: relative;
+    }
+
+    .t-clear-mirror,
+    .t-clear-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      pointer-events: none;
+      white-space: nowrap;
+      overflow: hidden;
+      z-index: 2;
+      border-radius: 18px;
+      color: var(--text);
+    }
+
+    .t-clear-mirror {
+      opacity: 0;
+      /* Cluster-aware fade (round 4 rework of Fix 4b): full opacity from
+         the RTL reading start, easing out across a fixed 130px ramp that
+         ENDS — at exactly alpha 0 — on the surah selector's right edge.
+         --search-actions-w is the cluster's LIVE footprint (offsetLeft +
+         width, ResizeObserver-maintained in app.js), so the fade tracks
+         the selector as its label changes width and nothing ever bleeds
+         under or behind it. Fixed-px stops replace the old %-based ones,
+         which scaled with the pill: on a wide pill they dimmed half the
+         bar prematurely AND still left the tail readable at ~30-50% alpha
+         behind the selector (the reported bug). The mask lives on this
+         wrapper; swaps animate inner spans so they never fight it.
+         -webkit- prefix is the one WKWebView needs; both set for parity. */
+      --clear-fade-end: calc(var(--search-actions-w, 60px) + 6px);
+      -webkit-mask-image: linear-gradient(to left,
+          #000 0,
+          #000 calc(100% - var(--clear-fade-end) - 130px),
+          rgba(0, 0, 0, 0.45) calc(100% - var(--clear-fade-end) - 60px),
+          transparent calc(100% - var(--clear-fade-end)),
+          transparent 100%);
+      mask-image: linear-gradient(to left,
+          #000 0,
+          #000 calc(100% - var(--clear-fade-end) - 130px),
+          rgba(0, 0, 0, 0.45) calc(100% - var(--clear-fade-end) - 60px),
+          transparent calc(100% - var(--clear-fade-end)),
+          transparent 100%);
+    }
+
+    .t-clear.has-value .t-clear-mirror,
+    .t-clear.is-clearing .t-clear-mirror {
+      opacity: 1;
+    }
+
+    .t-clear.has-value > input,
+    .t-clear.is-clearing > input,
+    .t-clear.is-materializing > input {
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Locked-state tint: once an ayah is locked into the bar the surface
+       SLOWLY shifts color so the lock reads at a glance; clicking the bar
+       un-tints just as slowly while the dissolve clears the text. The
+       transition lives on the input itself so both directions ease. */
+    #textSearch {
+      transition: background-color 700ms ease, border-color 700ms ease,
+        box-shadow .15s ease;
+    }
+
+    .t-clear.has-value > input {
+      background-color: rgba(14, 165, 233, 0.08);
+      border-color: rgba(56, 189, 248, 0.40);
+    }
+
+    body.dark .t-clear.has-value > input,
+    html.dark .t-clear.has-value > input {
+      background-color: rgba(148, 163, 184, 0.14);
+      border-color: rgba(148, 163, 184, 0.45);
+    }
+
+    .t-clear.is-clearing > input::placeholder {
+      color: transparent !important;
+    }
+
+    .t-clear-placeholder {
+      opacity: 0;
+      /* Same formula Tailwind's preflight gives the native placeholder. */
+      color: color-mix(in oklab, var(--text) 50%, transparent);
+    }
+
+    .t-clear.has-value .t-clear-placeholder {
+      opacity: 0;
+    }
+
+    .t-clear-mirror .t-clear-word {
+      display: inline-block;
+    }
+
+    /* Whitespace between words must be its own flex item — flex containers
+       drop whitespace-only TEXT NODES entirely. pre keeps the run intact. */
+    .t-clear-mirror .t-clear-space {
+      white-space: pre;
+    }
+
+    /* Round 3: the selector reflection renders the AYAH TEXT as one
+       swappable line inside the mirror. The double selector keeps the flex
+       layout even while swapText/swapBlock add their .t-text-swap display
+       classes — the swap's translateY/blur animates the line as a unit
+       while the gradient mask stays on the parent mirror. */
+    .t-clear-mirror .t-clear-line,
+    .t-clear-mirror .t-clear-line.t-text-swap {
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    .t-clear-glow {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 3;
+      mix-blend-mode: multiply;
+      border-radius: 18px;
+      /* Same mask as the mirror: streaks are hard-limited to the
+         observable text — nothing can glow over the selector cluster or
+         past the fade. (The JS painter also skips invisible words and
+         attenuates through the ramp; this is the visual guarantee.) */
+      --clear-fade-end: calc(var(--search-actions-w, 60px) + 6px);
+      -webkit-mask-image: linear-gradient(to left,
+          #000 0,
+          #000 calc(100% - var(--clear-fade-end) - 130px),
+          rgba(0, 0, 0, 0.45) calc(100% - var(--clear-fade-end) - 60px),
+          transparent calc(100% - var(--clear-fade-end)),
+          transparent 100%);
+      mask-image: linear-gradient(to left,
+          #000 0,
+          #000 calc(100% - var(--clear-fade-end) - 130px),
+          rgba(0, 0, 0, 0.45) calc(100% - var(--clear-fade-end) - 60px),
+          transparent calc(100% - var(--clear-fade-end)),
+          transparent 100%);
+    }
+
+    body.dark .t-clear-glow,
+    html.dark .t-clear-glow {
+      mix-blend-mode: screen;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-clear-glow {
+        opacity: 0 !important;
+      }
+    }
+
+    /* ── Tasks 3 + 7: panel reveal ──────────────────────────────────────
+       data-open drives it; JS sets --panel-translate-y to ~50% of the real
+       panel height (capped — see transitions.js). The OPEN state uses
+       none-values for transform/filter (visually identical to translateY(0)
+       / blur(0)) so an open panel never becomes a containing block for
+       position:fixed descendants (fullscreen chrome, dropdowns). */
+    .t-panel-slide {
+      transform: translateY(var(--panel-translate-y));
+      opacity: 0;
+      filter: blur(var(--panel-blur));
+      pointer-events: none;
+      transition:
+        transform var(--panel-close-dur) var(--panel-ease),
+        opacity var(--panel-close-dur) var(--panel-ease),
+        filter var(--panel-close-dur) var(--panel-ease);
+    }
+
+    .t-panel-slide[data-open="true"] {
+      transform: none;
+      opacity: 1;
+      filter: none;
+      pointer-events: auto;
+      transition:
+        transform var(--panel-open-dur) var(--panel-ease),
+        opacity var(--panel-open-dur) var(--panel-ease),
+        filter var(--panel-open-dur) var(--panel-ease);
+    }
+
+    /* Fullscreen Mushaf: the root is a fixed surface with fixed chrome
+       children — panel-slide must be fully inert there (transform/filter/
+       transition would re-anchor the fixed chrome / fight the lock). */
+    .mushaf-root--fullscreen.t-panel-slide,
+    .mushaf-root--fullscreen.t-panel-slide[data-open="true"] {
+      transform: none !important;
+      filter: none !important;
+      opacity: 1 !important;
+      transition: none !important;
+      pointer-events: auto !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-panel-slide {
+        transition: none !important;
+      }
+    }
+
+    /* ── Round 5.2: Tafsir ayah→ayah PURE CROSSFADE ─────────────────────
+       softSwapTafsir() in src/app.js clones the outgoing page into an
+       absolutely-positioned snapshot (.t-page-ghost), applies the new
+       ayah BEHIND it (the screen keeps painting the identical clone while
+       the heavy DOM work runs — no blank frame ever), then the snapshot
+       fades away while the live page fades in. Opacity ONLY — no
+       translate, no blur, no height choreography: chrome that is
+       identical between pages overlaps pixel-exactly, so the eye sees
+       just the changed text dissolve. Cheapest composite in WKWebView. */
+    #tafsirPages {
+      position: relative;
+    }
+
+    /* Clip a taller outgoing snapshot to the panel's new height. */
+    #tafsirPages.is-swapping {
+      overflow: hidden;
+    }
+
+    .t-page-ghost {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+      pointer-events: none;
+      transition: opacity var(--page-swap-out-dur) var(--page-swap-fade-ease);
+    }
+
+    .t-page-ghost.is-out {
+      opacity: 0;
+    }
+
+    #tafsirPageCurrent {
+      transition: opacity var(--page-swap-in-dur) var(--page-swap-ease);
+    }
+
+    /* Staged by JS the same frame the new content applies — invisible,
+       NO transition; removing this class is what fades it in. */
+    #tafsirPageCurrent.t-page-enter {
+      opacity: 0;
+      transition: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #tafsirPageCurrent {
+        transition: none !important;
+      }
+
+      .t-page-ghost {
+        display: none !important;
+      }
+    }
+
+    /* ── Task 4 + Bug 3: modal open/close ───────────────────────────── */
+    .t-modal {
+      transform-origin: center;
+      transform: scale(var(--modal-scale));
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        transform var(--modal-open-dur) var(--modal-ease),
+        opacity var(--modal-open-dur) var(--modal-ease);
+      will-change: transform, opacity;
+    }
+
+    .t-modal.is-open {
+      transform: scale(1);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .t-modal.is-closing {
+      transform: scale(var(--modal-scale-close));
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        transform var(--modal-close-dur) var(--modal-ease),
+        opacity var(--modal-close-dur) var(--modal-ease);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-modal {
+        transition: none !important;
+      }
+    }
+
+    /* ── Task 5: text states swap ─────────────────────────────────────── */
+    .t-text-swap {
+      display: inline-block;
+      transform: translateY(0);
+      filter: blur(0);
+      opacity: 1;
+      transition:
+        transform var(--text-swap-dur) var(--text-swap-ease),
+        filter var(--text-swap-dur) var(--text-swap-ease),
+        opacity var(--text-swap-dur) var(--text-swap-ease);
+      will-change: transform, filter, opacity;
+    }
+
+    /* Block variant for whole-status swaps in the offline sheet rows. */
+    .t-text-swap--block {
+      display: block;
+    }
+
+    .t-text-swap.is-exit {
+      transform: translateY(calc(var(--text-swap-translate-y) * -1));
+      filter: blur(var(--text-swap-blur));
+      opacity: 0;
+    }
+
+    .t-text-swap.is-enter-start {
+      transform: translateY(var(--text-swap-translate-y));
+      filter: blur(var(--text-swap-blur));
+      opacity: 0;
+      transition: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-text-swap {
+        transition: none !important;
+      }
+    }
+
+    /* ── Task 6: success check (copy confirmation) ───────────────────── */
+    .t-success-check {
+      display: inline-block;
+      transform-origin: center;
+      opacity: 0;
+      will-change: transform, opacity, filter;
+    }
+
+    .t-success-check svg {
+      display: block;
+      overflow: visible;
+    }
+
+    .t-success-check svg path {
+      stroke-dasharray: 20;
+      stroke-dashoffset: 20;
+    }
+
+    .t-success-check[data-state="in"] {
+      animation:
+        t-check-fade var(--check-opacity-dur) var(--check-ease-opacity) forwards,
+        t-check-rotate var(--check-rotate-dur) var(--check-ease-rotate) forwards,
+        t-check-blur var(--check-blur-dur) var(--check-ease-out) forwards,
+        t-check-bob var(--check-bob-dur) var(--check-ease-bob) forwards;
+    }
+
+    .t-success-check[data-state="in"] svg path {
+      animation: t-check-draw var(--check-path-dur) var(--check-ease-path) var(--check-path-delay, 0ms) forwards;
+    }
+
+    @keyframes t-check-fade {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes t-check-rotate {
+      from {
+        transform: rotate(var(--check-rotate-from));
+      }
+
+      to {
+        transform: rotate(0deg);
+      }
+    }
+
+    @keyframes t-check-blur {
+      from {
+        filter: blur(var(--check-blur-from));
+      }
+
+      to {
+        filter: blur(0);
+      }
+    }
+
+    @keyframes t-check-bob {
+      from {
+        translate: 0 var(--check-y-amount);
+      }
+
+      to {
+        translate: 0 0;
+      }
+    }
+
+    @keyframes t-check-draw {
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .t-success-check {
+        animation: none !important;
+        opacity: 1;
+      }
+
+      .t-success-check svg path {
+        animation: none !important;
+        stroke-dashoffset: 0 !important;
+      }
+    }
+
+    /* The copy toast holds the bobbing check (40px travel) — clip it so the
+       bob never paints outside the pill while still letting the check own
+       the toast's vertical center. */
+    .copy-toast .t-success-check svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    /* ── Round 2, Fix 5: frozen top bar ────────────────────────────────
+       position:sticky verifies pinned in desktop Chrome (no overflow/
+       transform ancestor breaks it in this codebase) — but on the device
+       WKWebView's rubber-band drags sticky elements with the bounce
+       (overscroll-behavior is unreliable there, and this codebase has a
+       documented history of WebKit scroll-state staleness around the
+       fullscreen body lock). position:fixed is immune to both. The body
+       padding-top below re-reserves exactly the header's flow space (JS
+       measures the real height into --m7-header-h, incl. the app's
+       safe-area padding), so there is zero layout shift; scroll-padding
+       keeps scrollIntoView targets from tucking under the bar. The
+       fullscreen lock is untouched: a fixed header coexists with the
+       body position:fixed lock, and the Mushaf fullscreen surface
+       (z-index 1000) still covers the bar (z-40). */
+    header.site-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+    }
+
+    body {
+      padding-top: var(--m7-header-h, 64px);
+    }
+
+    html.is-app body {
+      padding-top: var(--m7-header-h,
+          calc(64px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px))));
+    }
+
+    html {
+      scroll-padding-top: calc(var(--m7-header-h, 64px) + 8px);
+    }
+
+    /* ── Round 2, Fix 4d: surah selector must never sink ───────────────
+       The pill's dropdown lives inside #searchPanel (z-30), which sits
+       below the frozen header (z-40) by design — so a scrolled-up pill
+       would slide its open dropdown UNDER the bar. While the dropdown is
+       open, mushaf.js raises the panel above the header (and any panel
+       chrome); closed, the normal stacking returns. */
+    #searchPanel.surah-dd-raised {
+      z-index: 70;
+    }
+
+    /* ── Round 2, Fix 2: app-only static splash cover ───────────────────
+       Painted on the literal first frame (initial HTML + html.is-app set
+       in <head>), before any JS runs — the bare app can never flash.
+       Colors MUST stay in sync with src/splash.js (LIGHT_BG / DARK_BG)
+       and the native launch screen. src/splash.js adopts this node. */
+    #m7-splash {
+      display: none;
+    }
+
+    html.is-app #m7-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eff5ff;
+      touch-action: none;
+    }
+
+    html.is-app.dark #m7-splash {
+      background: #1f252e;
+    }
+
     /* ═══════ TEST — Mushaf ayah faux-bold (Option 2) — DELETE THIS BLOCK TO REVERT ═══════
        Thin synthetic bold on ayah TEXT ONLY, app-only (authoritative copy; this
        inline \3c style> loads last so it wins). -webkit-text-stroke is paint-only
@@ -3773,12 +4364,33 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-wPe4sj3h.js"></script>
+  <script type="module" crossorigin src="/assets/index-BZjNmFoN.js"></script>
 </head>
 
 <body>
-  <!-- Minimal top bar -->
-  <header class="site-header sticky top-0 z-40 border-b border-black/5">
+  <!-- App-only opening splash — STATIC first-frame cover (Fix 2). The old
+       overlay was built by JS inside a dynamically-imported chunk, so the
+       WebView painted the bare app for a few frames before it mounted.
+       This placeholder is plain initial HTML: html.is-app is set by the
+       <head> script BEFORE the body parses, so inside the app the very
+       first paint is this solid surface (matching the native launch screen
+       AND the Lottie's frame-0 background — both handoffs invisible).
+       src/splash.js ADOPTS this node (data-adopted) and runs the Lottie +
+       fade-out lifecycle on it; the inline timer below is a last-resort
+       escape if app JS never boots. display:none on the website. -->
+  <div id="m7-splash" aria-hidden="true"></div>
+  <script>
+    (function () {
+      if (!document.getElementById("m7-splash")) return;
+      setTimeout(function () {
+        var s = document.getElementById("m7-splash");
+        if (s && s.dataset.adopted !== "1" && s.parentNode) s.parentNode.removeChild(s);
+      }, 8000);
+    })();
+  </script>
+
+  <!-- Minimal top bar (frozen — position:fixed via CSS, Fix 5) -->
+  <header class="site-header top-0 z-40 border-b border-black/5">
     <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
       <!-- App-only action buttons (offline downloads + feedback). Empty wrapper
            on the website — both buttons start display:none and are revealed by
@@ -3824,15 +4436,29 @@
 
       <div class="mt-8 mx-auto max-w-2xl text-center">
         <div class="glass rounded-3xl p-4" id="searchPanel">
-          <div class="relative border-beam" data-active>
+          <div class="relative border-beam t-clear" data-active>
             <input id="textSearch"
               class="input-glass w-full bg-white/70 border border-slate-900/10 rounded-2xl px-10 py-4 outline-none focus:ring-4 focus:ring-blue-500/10 transition"
               placeholder="اكتب حرفين فأكثر من آية..." />
-            <!-- Left-corner action cluster: holds the surah selector, which
-                 mushaf.js relocates here from its toolbar at shell-build time
-                 (visible in both modes). RTL ⇒ the cluster sits at the pill's
-                 left end. مسح lives on the selected-ayah chip below. -->
+            <!-- Input clear with dissolve (Transitions.dev): the mirror
+                 visualizes the LOCKED ayah text (the real input text goes
+                 transparent while locked), the placeholder layer flies in
+                 during the مسح dissolve, and the glow layer hosts the
+                 per-word streaks. All three self-clip to the pill radius;
+                 app.js owns the locking + the per-frame clear routine. -->
+            <div class="t-clear-mirror" id="searchClearMirror" aria-hidden="true"></div>
+            <div class="t-clear-placeholder" id="searchClearPlaceholder" aria-hidden="true"></div>
+            <div class="t-clear-glow" id="searchClearGlow" aria-hidden="true"></div>
+            <!-- Left-corner action cluster: مسح + the surah selector (which
+                 mushaf.js relocates here from its toolbar at shell-build
+                 time; both visible in both modes). RTL ⇒ the cluster sits
+                 at the pill's left end, with مسح on the selector's RIGHT
+                 (first in DOM = rightmost in RTL flex). مسح starts hidden
+                 and fades into existence once an ayah is selected — the
+                 old selected-ayah chip card it used to ride on is gone. -->
             <div id="searchPillActions" class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              <button type="button" id="clearBtn" class="pill-clear-btn"
+                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
             </div>
             <div data-beam-bloom aria-hidden="true"></div>
           </div>
@@ -3852,26 +4478,11 @@
             </div>
           </div>
 
-          <!-- Results area (IDs preserved) -->
+          <!-- Results area (IDs preserved). The selected-ayah chip card that
+               used to live here is REMOVED — selection now shows as the
+               locked ayah text in the pill itself, and مسح moved up into
+               the pill's action cluster. -->
           <div class="results-shell mt-3 collapsed is-empty" id="resultsShell">
-            <!-- The chip card IS the "change ayah" control (tap → re-open the
-                 results list, or focus the search input when no list exists).
-                 div[role=button], not <button>: it nests the real مسح button,
-                 and button-in-button is invalid HTML. -->
-            <div role="button" tabindex="0"
-              class="selected-chip w-full text-right glass rounded-2xl p-4 flex items-center gap-3"
-              id="selectedChip" aria-live="polite" aria-label="تغيير الآية المختارة" title="اضغط لتغيير الآية">
-              <div class="w-10 h-10 rounded-2xl bg-slate-900/5 grid place-items-center font-black text-slate-700"
-                id="chipIcon">✓</div>
-              <div class="flex-1 min-w-0">
-                <div class="font-extrabold text-sm" id="chipTitle">تم اختيار آية</div>
-                <div class="text-xs font-semibold text-slate-500 truncate" id="chipSnippet">—</div>
-              </div>
-              <button type="button" id="clearBtn"
-                class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition"
-                title="مسح والعودة إلى الصفحة الرئيسية">مسح</button>
-            </div>
-
             <div
               class="results results-list mt-3 rounded-2xl overflow-hidden border border-slate-900/10 bg-white/50 is-empty collapsed"
               id="results" style="max-height:480px; overflow:auto;"></div>
@@ -3879,7 +4490,14 @@
         </div>
         <div class="mt-6">
           <div class="mx-auto max-w-4xl">
-            <div id="tafsirSection" class="glass hidden rounded-3xl p-6">
+            <div id="tafsirSection" class="glass hidden rounded-3xl p-6 t-panel-slide" data-open="false">
+              <!-- Round 5.2: #tafsirPageCurrent is the ayah→ayah crossfade
+                   target — softSwapTafsir (src/app.js) overlays a cloned
+                   snapshot (.t-page-ghost) inside #tafsirPages and the two
+                   layers purely cross-fade (opacity only). Plain flow
+                   content at rest. -->
+              <div id="tafsirPages">
+              <div id="tafsirPageCurrent">
               <!-- App-only "audio needs internet" notice (top of the tab) -->
               <div id="tafsirAudioMsg" class="tafsir-audio-msg" aria-live="polite" hidden></div>
               <!-- Controls layout: tafsir menu up, compare centered, nav centered -->
@@ -4107,6 +4725,8 @@
                     style="transition: opacity 0.2s ease, transform 0.2s ease;"></div>
                 </div>
               </div>
+              </div>
+              </div><!-- /tafsirPages crossfade stage -->
             </div>
           </div>
         </div>

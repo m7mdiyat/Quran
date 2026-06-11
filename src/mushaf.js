@@ -20,6 +20,11 @@
 
 import { surahAudio } from "./surahAudio.js";
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, subscribeRepeat } from "./repeat.js";
+import {
+    panelPrepare, panelStageClosed, panelOpen, panelModeClose,
+    modalOpen, modalClose,
+    buildSuccessCheck, playSuccessCheck,
+} from "./transitions.js";
 
 /* ============================================================
  * QCF4 asset source + offline caching (Capacitor app only)
@@ -201,6 +206,11 @@ let MUKHTASAR_REF_EL = null;
 let MUKHTASAR_MORE_BTN = null;
 let MUKHTASAR_VERSE = null;       // "s:a" the quick-view card is currently showing
 let MUKHTASAR_REQ_ID = 0;         // guards against out-of-order fetch responses
+let MUKHTASAR_ANCHOR_EL = null;   // the EXACT pressed .mushaf-ayah line fragment (Bug 3)
+let MUKHTASAR_POINT = null;       // {x,y} long-press viewport coords, when known
+let MUKHTASAR_SIDE = null;        // "below" | "above" — decided once per open
+let MUKHTASAR_DRAGGED = false;    // user moved the card → stop auto-repositioning
+let MENU_PRESS_POINT = null;      // press point captured when the ayah menu opened
 let NAV_PREV = null;
 let NAV_NEXT = null;
 let PLAYBACK_BAR_EL = null;
@@ -450,11 +460,13 @@ export async function setAppMode(mode) {
             const target = engineLive
                 ? { s: surahAudio.getSurah(), a: surahAudio.getActiveAyah() }
                 : (LAST_VIEWED_AYAH || DEPS?.getCurrentAyah?.());
-            await fadeOutPanel(ROOT_EL);
-            // Stage the tafsir view at opacity 0 BEFORE unhiding it so the
-            // transition from hidden→opacity-1 doesn't flash at full opacity.
+            // Task 7: outgoing Mushaf group CLOSES with the shared panel
+            // reveal; the incoming Tafsir group is staged in its closed
+            // state BEFORE it becomes visible so there is never a frame
+            // showing both panels (or the new one fully-popped).
+            await panelModeClose(ROOT_EL);
             const tafsirEl = DEPS?.tafsirSectionEl;
-            if (tafsirEl) tafsirEl.classList.add("mode-fade-in");
+            panelStageClosed(tafsirEl);
             // Don't tear down ANY live playback during the close —
             // resumeTafsirFromEngine needs the engine intact; a Mushaf-side
             // per-ayah Audio should also keep playing until the ayah ends.
@@ -469,18 +481,19 @@ export async function setAppMode(mode) {
                 DEPS.resumeTafsirFromEngine();
                 history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
             } else if (target && DEPS?.openTafsirForAyah) {
-                DEPS.openTafsirForAyah(target.s, target.a);
+                DEPS.openTafsirForAyah(target.s, target.a, { panelReveal: "defer" });
                 history.replaceState({ s: target.s, a: target.a }, "", `/${target.s}/${target.a}`);
             } else if (DEPS?.openTafsirForAyah) {
                 // No anchor ayah — default to Al-Fatiha 1:1 so the toggle
                 // lands somewhere predictable instead of dropping the user
                 // onto a blank homepage with a stale /read/page/N URL.
-                DEPS.openTafsirForAyah(1, 1);
+                DEPS.openTafsirForAyah(1, 1, { panelReveal: "defer" });
                 history.replaceState({ s: 1, a: 1 }, "", `/1/1`);
             } else {
                 history.replaceState(null, "", "/");
             }
-            commitFadeIn(tafsirEl);
+            // Incoming Tafsir group opens (slide-up reveal).
+            panelOpen(tafsirEl);
         }
         // Tafsir mode is always a safe fall-back even with no current ayah
         // (the homepage/search state is shown), so commit unconditionally.
@@ -496,10 +509,10 @@ export async function setAppMode(mode) {
         : (DEPS?.getCurrentAyah?.() || LAST_VIEWED_AYAH || null);
     const tafsirEl = DEPS?.tafsirSectionEl;
     if (tafsirEl && !tafsirEl.classList.contains("hidden")) {
-        await fadeOutPanel(tafsirEl);
+        // Task 7: outgoing Tafsir group closes; openPanel() (inside the
+        // openMushafAtAyah path below) stages + reveals the Mushaf group.
+        await panelModeClose(tafsirEl);
     }
-    // Stage the mushaf root at opacity 0 BEFORE openPanel removes display:none.
-    ROOT_EL?.classList.add("mode-fade-in");
     // noScroll: the mode toggle must not move the viewport (Fix 3).
     if (engineLive) {
         await resumeMushafFromEngine();
@@ -511,40 +524,10 @@ export async function setAppMode(mode) {
         // of restoring whatever page the user last browsed.
         await openMushafAtAyah(1, 1, { noScroll: true });
     }
-    commitFadeIn(ROOT_EL);
     commitMode("mushaf");
     } finally {
         MODE_TRANSITIONING = false;
     }
-}
-
-/* Fix 4: fade helpers used by setAppMode. We don't tear down the existing
- * panel-toggle logic — we just bracket it with opacity transitions.
- * Durations shortened from 180ms → 120ms (and the rAF safety from
- * 260ms → 180ms) to cut the mode-toggle latency floor from ~360ms to
- * ~240ms while keeping a smooth, visible fade in both directions. */
-function fadeOutPanel(el) {
-    if (!el) return Promise.resolve();
-    return new Promise((resolve) => {
-        el.classList.add("mode-fade-out");
-        // Wait one frame so the class is applied, then resolve after transition.
-        setTimeout(() => {
-            el.classList.remove("mode-fade-out");
-            resolve();
-        }, 120);
-    });
-}
-
-function commitFadeIn(el) {
-    if (!el) return;
-    // The caller is responsible for having already added `mode-fade-in`
-    // BEFORE making the element visible. We only flush it back to opacity 1
-    // here, after layout has settled with the staged opacity:0.
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => el.classList.remove("mode-fade-in"));
-    });
-    // Safety net in case the rAF chain misses (tab backgrounded, etc.)
-    setTimeout(() => el.classList.remove("mode-fade-in"), 180);
 }
 
 export function closeMushafPanel() {
@@ -629,7 +612,7 @@ export async function openMushafAtSurah(s, opts = {}) {
     TARGET_SURAH = Number(s);
     LAST_VIEWED_AYAH = { s: Number(s), a: 1 };
     openPanel();
-    await goToPage(page, { direction: "none" });
+    await goToPage(page, { direction: "none", noScroll: !!opts.noScroll });
     if (opts.updateUrl !== false) {
         history.pushState({ mushaf: true, page, surah: Number(s) }, "", `/read/surah/${s}`);
     }
@@ -646,10 +629,22 @@ function openPanel() {
     if (!ROOT_EL) buildShell();
     if (PANEL_OPEN) return;
     PANEL_OPEN = true;
+    // Stage the closed panel-reveal state BEFORE display flips on, then
+    // open — every Mushaf entry (mode toggle, search pick, deep link,
+    // popstate) animates in with the shared reveal instead of popping
+    // (Tasks 3 + 7). Double rAF: frame 1 paints the staged closed state
+    // (a just-displayed element can't transition), and deferring the open
+    // to frame 2 also keeps panelOpen's layout reads clear of the display
+    // flip's same-frame ResizeObserver delivery (PAGES_EL's autoFit
+    // observer trips Chrome's RO loop limit otherwise).
+    panelStageClosed(ROOT_EL);
     ROOT_EL.classList.add("is-open");
     const wrapper = ROOT_EL.parentElement;
     if (wrapper) wrapper.classList.add("has-mushaf");
     if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.add("hidden");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (PANEL_OPEN) panelOpen(ROOT_EL);
+    }));
     // Opening the Mushaf counts as "an ayah is chosen" — fade the search
     // pill's border beam, same as picking a search result in Tafsir mode.
     DEPS?.deactivateSearchBeam?.();
@@ -658,6 +653,14 @@ function openPanel() {
 function closePanel({ keepAudio = false } = {}) {
     if (!PANEL_OPEN) return;
     PANEL_OPEN = false;
+    // Bug 1: any path that closes the Mushaf panel while the fullscreen
+    // overlay is active (مختصر → "عرض التفسير الكامل", browser back, مسح)
+    // MUST also tear the fullscreen scroll-lock down — page-fullscreen.js
+    // listens for this while open and runs its own symmetric unlock.
+    // Dispatched unconditionally; it's a no-op when fullscreen isn't open.
+    try { document.dispatchEvent(new CustomEvent("m7:mushaf-panel-closed")); } catch { }
+    // Reset the reveal state so the next open stages from closed again.
+    if (ROOT_EL) ROOT_EL.dataset.open = "false";
     // The surah dropdown lives in the always-visible search pill (not
     // inside ROOT_EL), so an open panel would otherwise survive the
     // close and pop back already-open on the next Mushaf entry.
@@ -670,7 +673,13 @@ function closePanel({ keepAudio = false } = {}) {
     // hasCurrentAyah() used to leave the tafsir section hidden after a
     // /read/* → toggle-to-Tafsir from a cold start (CURRENT was still null
     // at close time), so the user ended up staring at a blank page.
-    if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.remove("hidden");
+    // Stage it CLOSED first: data-open survives the display:none round-trip,
+    // and an unhidden panel still flagged open would pop in fully-painted
+    // instead of running the reveal that every follow-up path expects.
+    if (DEPS?.tafsirSectionEl) {
+        panelStageClosed(DEPS.tafsirSectionEl);
+        DEPS.tafsirSectionEl.classList.remove("hidden");
+    }
     // keepAudio: setAppMode hands the live engine over to Tafsir without
     // stopping audio. The default closePanel still tears audio down so the
     // panel-close case (toggle off, etc.) behaves as before.
@@ -1183,7 +1192,10 @@ function buildShell() {
     // active mode (Tafsir panel vs Mushaf navigation).
     const pillActions = document.getElementById("searchPillActions");
     const surahWrap = root.querySelector("#mushafSurahWrap");
-    if (pillActions && surahWrap) pillActions.prepend(surahWrap);
+    // APPEND (not prepend): the pill مسح button ships in the markup as the
+    // cluster's first child = visually RIGHTMOST in the RTL flex row, so
+    // the selector lands on its left — مسح sits on the selector's right.
+    if (pillActions && surahWrap) pillActions.appendChild(surahWrap);
 
     ROOT_EL = root;
     PAGES_EL = document.getElementById("mushafPages");
@@ -1792,14 +1804,18 @@ function wireAyahInteractions(pageEl) {
             TOUCH_MOVED = false;
             return;
         }
-        TOUCH_START = { x: e.touches[0].clientX, y: e.touches[0].clientY, target: ayah };
+        const pressX = e.touches[0].clientX;
+        const pressY = e.touches[0].clientY;
+        TOUCH_START = { x: pressX, y: pressY, target: ayah };
         TOUCH_MOVED = false;
         LONG_PRESS_FIRED = false;
         clearTimeout(LONG_PRESS_TIMER);
         LONG_PRESS_TIMER = setTimeout(() => {
             if (!TOUCH_MOVED) {
                 LONG_PRESS_FIRED = true;
-                showMenu(ayah);
+                // Bug 3: remember WHERE the finger pressed so the مختصر
+                // card can anchor (and scale out of) that exact spot.
+                showMenu(ayah, { point: { x: pressX, y: pressY } });
             }
         }, LONG_PRESS_MS);
     }, { passive: true });
@@ -1953,8 +1969,12 @@ function wireMenu() {
         if (!btn || !AYAH_MENU_VERSE) return;
         if (btn.dataset.act === "mukhtasar") {
             const verse = AYAH_MENU_VERSE;
+            // Capture the anchor BEFORE closeAyahMenu wipes it: the exact
+            // pressed line fragment + (touch) the press coordinates.
+            const anchorEl = AYAH_MENU_ANCHOR;
+            const point = MENU_PRESS_POINT;
             closeAyahMenu();
-            openMukhtasarCard(verse);
+            openMukhtasarCard(verse, { anchorEl, point });
         } else if (btn.dataset.act === "copy") {
             const verse = AYAH_MENU_VERSE;
             const [s, a] = verse.split(":").map(Number);
@@ -2089,8 +2109,14 @@ function openSurahDropdown() {
     if (!dd || !btn) return;
     if (!_SURAH_LIST_BUILT) buildSurahSelectList();
     showSurahListPanel();
+    _selectorDirty = false;
+    _selectorCommitted = false;
     dd.classList.add("mushaf-toolbar__dropdown--open");
     btn.setAttribute("aria-expanded", "true");
+    // Round 2, Fix 4d: while open, lift the whole search panel above the
+    // frozen header (z-40) and the tafsir chrome so the dropdown can never
+    // sink under another layer. Removed on close.
+    document.getElementById("searchPanel")?.classList.add("surah-dd-raised");
     installDdScrollGuards();
     if (search) {
         search.value = "";
@@ -2127,6 +2153,12 @@ function closeSurahDropdown() {
     removeDdScrollGuards();
     dd.classList.remove("mushaf-toolbar__dropdown--open");
     btn.setAttribute("aria-expanded", "false");
+    document.getElementById("searchPanel")?.classList.remove("surah-dd-raised");
+    // Closed WITHOUT اذهب → put the search bar back to whatever it showed
+    // before the picker started reflecting into it (Fix 4a/4c).
+    if (_selectorDirty && !_selectorCommitted) DEPS?.onSelectorAbandon?.();
+    _selectorDirty = false;
+    _selectorCommitted = false;
     // Reset to list view so the next open starts fresh.
     showSurahListPanel();
 }
@@ -2176,7 +2208,11 @@ function submitSurahDetail() {
     if (v > max) v = max;
 
     hapticLight();   // confirm tic — the ayah is now chosen
+    // Fix 4: the pick is final — the reflected bar text persists (commit),
+    // and closeSurahDropdown must not run its abandon-restore.
+    _selectorCommitted = true;
     closeSurahDropdown();
+    DEPS?.onSelectorCommit?.();
     // The selector is always visible in the search pill, so honour the
     // active mode: Tafsir mode opens the ayah in the Tafsir panel, Mushaf
     // mode navigates the Mushaf (surah view when the wheel is at 1).
@@ -2184,8 +2220,11 @@ function submitSurahDetail() {
         DEPS.openTafsirForAyah(s, v, { scroll: true, animate: true });
         return;
     }
-    if (v === 1) openMushafAtSurah(s);
-    else openMushafAtAyah(s, v);
+    // Task 2: picking an ayah while ALREADY in Mushaf mode must not move
+    // the viewport at all — suppress applyTargetHighlight's scrollIntoView
+    // (the target-ayah flash still shows). Deep links / boot keep scrolling.
+    if (v === 1) openMushafAtSurah(s, { noScroll: true });
+    else openMushafAtAyah(s, v, { noScroll: true });
 }
 
 /* ============================================================
@@ -2309,6 +2348,24 @@ function applyWheelDistAttrs() {
 function updateWheelAria() {
     const wheel = document.getElementById("mushafAyahWheel");
     if (wheel) wheel.setAttribute("aria-valuenow", String(_wValue));
+    reflectWheelToSearchBar();
+}
+
+/* Round 2, Fix 4: every wheel value (initial build, taps, drags, edits)
+ * is mirrored into the search bar while the ayah picker is open — the
+ * number animates there via the shared swapText. updateWheelAria is the
+ * single chokepoint all wheel paths already funnel through. */
+let _selectorDirty = false;     // a reflection happened since the dropdown opened
+let _selectorCommitted = false; // اذهب was pressed (skip the abandon-restore)
+
+function reflectWheelToSearchBar() {
+    const detailPanel = document.getElementById("mushafSurahDetailPanel");
+    const form = document.getElementById("mushafSurahDetailForm");
+    if (!detailPanel || detailPanel.hidden || !form) return;
+    const s = Number(form.dataset.surah);
+    if (!s) return;
+    _selectorDirty = true;
+    DEPS?.onSelectorReflect?.(s, _wValue);
 }
 
 function wireAyahWheel() {
@@ -2863,11 +2920,14 @@ function updateVolumeIcon() {
     btn.classList.toggle("mushaf-volume-icon--muted", pct === 0);
 }
 
-function showMenu(ayahEl, { reposition = false } = {}) {
+function showMenu(ayahEl, { reposition = false, point = null } = {}) {
     if (!AYAH_MENU_EL || !ayahEl) return;
     if (!reposition) {
         AYAH_MENU_VERSE = ayahEl.dataset.verseKey;
         AYAH_MENU_ANCHOR = ayahEl;
+        // Long-press passes the touch point; desktop hover passes none and
+        // the مختصر card anchors to the hovered line fragment's rect.
+        MENU_PRESS_POINT = point;
         AYAH_MENU_EL.setAttribute("data-view", "main");
         AYAH_MENU_EL.classList.add("mushaf-ayah-menu--open");
         AYAH_MENU_EL.setAttribute("aria-hidden", "false");
@@ -2954,16 +3014,24 @@ async function copyAyahText(text) {
     }
     if (ok) {
         if (navigator.vibrate) { try { navigator.vibrate(10); } catch { } }
-        showCopyToast("تم النسخ");
+        showCopyToast("تم النسخ", { success: true });
     } else {
         showCopyToast("تعذّر النسخ");
     }
 }
 
-/* Lightweight one-off toast (bottom-center). Single shared element. */
+/* Lightweight one-off toast (bottom-center). Single shared element.
+ *
+ * Task 6: the success variant leads with the animated check (stroke-draw +
+ * fade + rotate + blur + bob — Transitions.dev success check) and keeps a
+ * small "تم النسخ" label beside it. The check strokes with currentColor and
+ * the toast's color is var(--text) (see .copy-toast in mushaf.css), so the
+ * mark is dark-on-light in the light theme and light-on-dark in the dark
+ * theme. Hold ≈900ms after the entrance, then the toast fades out.
+ * Failure messages keep the plain text-only toast. */
 let _copyToastEl = null;
 let _copyToastTimer = null;
-function showCopyToast(msg) {
+function showCopyToast(msg, { success = false } = {}) {
     if (!_copyToastEl) {
         _copyToastEl = document.createElement("div");
         _copyToastEl.className = "copy-toast";
@@ -2971,15 +3039,29 @@ function showCopyToast(msg) {
         _copyToastEl.setAttribute("aria-live", "polite");
         document.body.appendChild(_copyToastEl);
     }
-    _copyToastEl.textContent = msg;
+    let check = null;
+    if (success) {
+        _copyToastEl.textContent = "";
+        check = buildSuccessCheck();
+        _copyToastEl.appendChild(check);
+        const label = document.createElement("span");
+        label.className = "copy-toast__label";
+        label.textContent = msg;
+        _copyToastEl.appendChild(label);
+    } else {
+        _copyToastEl.textContent = msg;
+    }
     // Force reflow so the transition runs on each call.
     _copyToastEl.classList.remove("copy-toast--show");
     void _copyToastEl.offsetWidth;
     _copyToastEl.classList.add("copy-toast--show");
+    if (check) playSuccessCheck(check); // dasharray from getTotalLength at runtime
     clearTimeout(_copyToastTimer);
+    // Success: check entrance (~500ms) + ~900ms hold, then fade. Errors
+    // keep the previous 1800ms.
     _copyToastTimer = setTimeout(() => {
         _copyToastEl?.classList.remove("copy-toast--show");
-    }, 1800);
+    }, success ? 1400 : 1800);
 }
 
 /* ============================================================
@@ -3102,7 +3184,7 @@ async function fetchMukhtasarText(s, a) {
     }
 }
 
-async function openMukhtasarCard(verseKey) {
+async function openMukhtasarCard(verseKey, { anchorEl = null, point = null } = {}) {
     if (!MUKHTASAR_EL || !verseKey) return;
     const [s, a] = verseKey.split(":").map(Number);
     if (!Number.isFinite(s) || !Number.isFinite(a)) return;
@@ -3116,6 +3198,13 @@ async function openMukhtasarCard(verseKey) {
     }
 
     MUKHTASAR_VERSE = verseKey;
+    // Bug 3: anchor at the exact pressed line fragment (+ press point when
+    // the menu came from a long-press). The side decision is made once per
+    // open in positionMukhtasarCard so the card never jumps after loading.
+    MUKHTASAR_ANCHOR_EL = (anchorEl && anchorEl.isConnected) ? anchorEl : null;
+    MUKHTASAR_POINT = point || null;
+    MUKHTASAR_SIDE = null;
+    MUKHTASAR_DRAGGED = false;
     const reqId = ++MUKHTASAR_REQ_ID;
 
     if (MUKHTASAR_REF_EL) {
@@ -3130,6 +3219,9 @@ async function openMukhtasarCard(verseKey) {
     MUKHTASAR_EL.setAttribute("aria-hidden", "false");
     MUKHTASAR_EL.classList.add("mushaf-mukhtasar--open");
     positionMukhtasarCard();
+    // Task 4: scale+fade open, growing out of the anchor point
+    // (positionMukhtasarCard just set the transform-origin).
+    modalOpen(MUKHTASAR_EL);
 
     const result = await fetchMukhtasarText(s, a);
     if (reqId !== MUKHTASAR_REQ_ID) return; // a newer open() superseded this one
@@ -3149,13 +3241,28 @@ async function openMukhtasarCard(verseKey) {
         // own richer messaging — but is pointless when we're simply offline.
         if (MUKHTASAR_MORE_BTN) MUKHTASAR_MORE_BTN.disabled = result.reason === "offline";
     }
-    positionMukhtasarCard();
+    // Re-clamp for the grown content — same side, never a flip — unless the
+    // user already dragged the card somewhere on purpose.
+    if (!MUKHTASAR_DRAGGED) positionMukhtasarCard();
 }
+
+/* Card height estimate for the side decision: header + ref + body at its
+ * 220px max-height + footer + paddings. Using the grown size up front keeps
+ * the below/above choice stable across the loading → loaded transition. */
+const MUKHTASAR_EST_H = 350;
 
 function positionMukhtasarCard() {
     if (!MUKHTASAR_EL || !MUKHTASAR_VERSE) return;
-    const anchor = ACTIVE_PAGE_EL?.querySelector(
-        `.mushaf-ayah[data-verse-key="${CSS.escape(MUKHTASAR_VERSE)}"]`);
+    // Bug 3: prefer the captured pressed fragment — an ayah wrapped across
+    // lines has SEVERAL .mushaf-ayah spans with the same verse-key, and
+    // querySelector's first match may sit a line above the actual press
+    // (that mismatch is what made the card spawn above/below seemingly at
+    // random). Fall back to the first fragment if the anchor left the DOM.
+    let anchor = MUKHTASAR_ANCHOR_EL;
+    if (!anchor || !anchor.isConnected) {
+        anchor = ACTIVE_PAGE_EL?.querySelector(
+            `.mushaf-ayah[data-verse-key="${CSS.escape(MUKHTASAR_VERSE)}"]`);
+    }
     if (!anchor) return;
 
     const rect = anchor.getBoundingClientRect();
@@ -3163,21 +3270,40 @@ function positionMukhtasarCard() {
     const cardH = MUKHTASAR_EL.offsetHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const anchorX = MUKHTASAR_POINT ? MUKHTASAR_POINT.x : rect.left + rect.width / 2;
 
-    // Anchor below the ayah, viewport-relative (the card is position:fixed
-    // and lives on <body>, so no offset-parent subtraction needed).
-    let left = rect.left + rect.width / 2 - cardW / 2;
-    let top = rect.bottom + 10;
-
+    let left = anchorX - cardW / 2;
     if (left < 10) left = 10;
     if (left + cardW > vw - 10) left = Math.max(10, vw - cardW - 10);
-    // Flip above the ayah if there isn't room below.
-    if (top + cardH > vh - 10) {
-        const above = rect.top - cardH - 10;
-        top = above > 10 ? above : 10;
+
+    // Decide below/above ONCE per open, using the card's potential grown
+    // height: below the ayah by default, above ONLY when it genuinely
+    // won't fit below but fits above.
+    if (!MUKHTASAR_SIDE) {
+        const estH = Math.max(cardH, MUKHTASAR_EST_H);
+        const fitsBelow = rect.bottom + 10 + estH <= vh - 10;
+        const fitsAbove = rect.top - 10 - estH >= 10;
+        MUKHTASAR_SIDE = fitsBelow || !fitsAbove ? "below" : "above";
+    }
+    let top;
+    if (MUKHTASAR_SIDE === "below") {
+        top = rect.bottom + 10;
+        if (top + cardH > vh - 10) top = Math.max(10, vh - cardH - 10);
+    } else {
+        top = Math.max(10, rect.top - cardH - 10);
     }
     MUKHTASAR_EL.style.left = `${left}px`;
     MUKHTASAR_EL.style.top = `${top}px`;
+
+    // Task 4 + Bug 3: the open/close scale grows out of the press point
+    // (clamped into the card box). Desktop hover uses the fragment edge
+    // facing the card.
+    const anchorY = MUKHTASAR_POINT
+        ? MUKHTASAR_POINT.y
+        : (MUKHTASAR_SIDE === "below" ? rect.bottom : rect.top);
+    const ox = Math.min(Math.max(anchorX - left, 0), cardW);
+    const oy = Math.min(Math.max(anchorY - top, 0), cardH);
+    MUKHTASAR_EL.style.transformOrigin = `${ox.toFixed(1)}px ${oy.toFixed(1)}px`;
 }
 
 function closeMukhtasarCard() {
@@ -3186,6 +3312,10 @@ function closeMukhtasarCard() {
     MUKHTASAR_EL.classList.remove("mushaf-mukhtasar--open");
     MUKHTASAR_EL.setAttribute("aria-hidden", "true");
     MUKHTASAR_VERSE = null;
+    MUKHTASAR_ANCHOR_EL = null;
+    // Task 4: scale+fade close (is-closing dropped on transitionend, with
+    // the timeout fallback inside modalClose).
+    modalClose(MUKHTASAR_EL);
 }
 
 /* ============================================================
@@ -3210,6 +3340,9 @@ function wireMukhtasarDrag() {
         if (e.button !== undefined && e.button !== 0) return;
 
         dragging = true;
+        // The user is taking over placement — the post-load reposition in
+        // openMukhtasarCard must not snap the card back to the ayah.
+        MUKHTASAR_DRAGGED = true;
         activePointer = e.pointerId;
 
         // position:fixed + <body> parent means getBoundingClientRect IS the
