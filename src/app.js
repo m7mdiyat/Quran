@@ -361,7 +361,6 @@ const aiStatus = el("aiStatus");
 const aiResults = el("aiResults");
 
 const ayahContext = el("ayahContext");
-const contextHeader = el("contextHeader");
 const langSelect = el("langSelect");
 
 const tafsirHeader = el("tafsirHeader");
@@ -3475,7 +3474,6 @@ function showAyahContext(surahNo, ayahNo) {
       ayahContext.style.transform = "translateY(4px)";
     }
 
-    contextHeader.innerHTML = `<span class="quran-font font-bold">${escapeHtml(surahName)}</span> <span class="text-slate-400 mx-1">—</span> الآيات ${start} إلى ${end}`;
     ayahContext.innerHTML = "";
 
     for (let i = start; i <= end; i++) {

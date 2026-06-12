@@ -3413,6 +3413,60 @@ body.dark .gharib-tip::after {
     line-height: 1.8;
 }
 
+/* DOM-anchored placement: the card is a child of the lamp button
+   (position: relative; fixed in fullscreen — both fine anchors),
+   so the browser keeps it glued below the lantern in every state:
+   page scrolled, fullscreen re-anchor, mid-animation. No screen-
+   coordinate math to go stale — the old fixed-position placement
+   drifted off the lamp in the app once the page was scrolled.
+   right: calc(50% - 26px) puts the card's right edge 26px right of
+   the lamp's CENTRE, and the arrow sits 26px in from that edge —
+   the arrow tip lands on the lamp's centre at any lamp size
+   (40px toolbar / 32px fullscreen circle). width: max-content is
+   required: an absolute child shrink-wraps to the 40px button
+   otherwise. */
+.gharib-lamp > .gharib-tip--explain {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: calc(50% - 26px);
+    left: auto;
+    width: max-content;
+    cursor: default;
+    text-align: right;
+    --tip-ax: calc(100% - 26px);
+    transform-origin: calc(100% - 26px) 0;
+    /* Nuclear stacking fix — same cure as the Tafsir toolbar
+       dropdowns (index.html): inside the backdrop-filtered .glass,
+       sibling transient stacking contexts (.mushaf-page
+       will-change:transform, surah-header opacity/filter
+       transitions, animated gharib pseudos) composited this card
+       UNDER the page text despite z-index 2100. Own compositing
+       group + huge z on the card AND its wrap (the lamp, lifted
+       only while the card is open), and NO opacity fade —
+       visibility + scale only, so no mid-fade frame can ever
+       blend page content through the panel. */
+    z-index: 99999;
+    isolation: isolate;
+    opacity: 1 !important;
+    will-change: transform;
+    transition:
+        transform 170ms cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0s linear 170ms;
+}
+
+.gharib-lamp > .gharib-tip--explain.is-open {
+    transition:
+        transform 340ms cubic-bezier(0.34, 1.36, 0.64, 1),
+        visibility 0s;
+}
+
+/* The wrap's lift — applied by src/gharib.js while the explainer
+   is open (and through its close animation), so the lamp doesn't
+   permanently float above unrelated toolbar dropdowns. */
+.gharib-lamp.gharib-lamp--explaining {
+    z-index: 99999;
+}
+
 .gharib-tip--explain b {
     display: block;
     font-size: 0.78rem;

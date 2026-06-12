@@ -352,20 +352,33 @@ function decoratePage(pageEl, pageData) {
     }
 
     // Page-local word texts per verse key (insertion order = page order).
-    const byVk = new Map();      // vk → [{ pos, text }]
+    // Each word carries its own DOM span index (`dom`): mushaf.js renders
+    // EVERY vk-carrying entry as a .mushaf-word span inside the ayah
+    // container — including the 199 quarter (۞) markers, which only exist
+    // in the page data, not in this word list. Assuming word-index ==
+    // span-index shifted every highlight in a ۞-carrying ayah onto the
+    // WRONG word (e.g. 4:12 وَلَدٌ lit لَّهُنَّ). Counting every non-"end"
+    // vk entry per ayah mirrors spansFor() exactly, wherever the marker
+    // sits. (bismillah/surah_header entries never carry a verse_key and
+    // render outside .mushaf-ayah — they can't desync the count.)
+    const byVk = new Map();      // vk → [{ pos, text, dom }]
+    const domCount = new Map();  // vk → rendered .mushaf-word spans so far
     const completeVk = new Set();// ayah fully on this page (start + end marker)
     const hasStart = new Set();
     for (const line of pageData.lines || []) {
         for (const w of line.words || []) {
             if (!w.verse_key) continue;
-            if (w.type === "word") {
-                let list = byVk.get(w.verse_key);
-                if (!list) byVk.set(w.verse_key, (list = []));
-                list.push({ pos: w.position || 0, text: w.text || "" });
-                if ((w.position || 0) === 1) hasStart.add(w.verse_key);
-            } else if (w.type === "end" && hasStart.has(w.verse_key)) {
-                completeVk.add(w.verse_key);
+            if (w.type === "end") {
+                if (hasStart.has(w.verse_key)) completeVk.add(w.verse_key);
+                continue;
             }
+            const dom = domCount.get(w.verse_key) || 0;
+            domCount.set(w.verse_key, dom + 1);
+            if (w.type !== "word") continue;
+            let list = byVk.get(w.verse_key);
+            if (!list) byVk.set(w.verse_key, (list = []));
+            list.push({ pos: w.position || 0, text: w.text || "", dom });
+            if ((w.position || 0) === 1) hasStart.add(w.verse_key);
         }
     }
     for (const list of byVk.values()) list.sort((a, b) => a.pos - b.pos);
@@ -383,7 +396,7 @@ function decoratePage(pageEl, pageData) {
         if (!loc) return false;
         const spans = spansFor(vk);
         if (!spans.length) return false;
-        const end = Math.min(loc.start + loc.len, spans.length);
+        const end = Math.min(loc.start + loc.len, words.length);
         if (loc.start >= end) return false;
 
         const key = keyForPhrase(entry.w);
@@ -392,7 +405,7 @@ function decoratePage(pageEl, pageData) {
         // with its first claimant; this entry is "located" either way (no
         // neighbor retry / no audit noise for overlapping phrase entries).
         for (let i = loc.start; i < end; i++) {
-            const got = spans[i].dataset.gh;
+            const got = spans[words[i].dom]?.dataset.gh;
             if (got && got !== key) return true;
         }
 
@@ -400,7 +413,8 @@ function decoratePage(pageEl, pageData) {
         ENTRY_BY_REF.set(`${key}@${vk}`, { w: entry.w, m: entry.m, s, a });
         const settled = learnedSet().has(key);
         for (let i = loc.start; i < end; i++) {
-            const span = spans[i];
+            const span = spans[words[i].dom];
+            if (!span) continue;
             span.classList.add("gharib-word");
             if (settled) span.classList.add("gharib-word--settled");
             span.dataset.gh = key;
@@ -608,7 +622,14 @@ function openTipFor(span) {
     // settled words just show the meaning; nothing increments.
     if (learn(key)) settleKey(key);
 
-    tip.classList.remove("is-open"); // re-pop when switching words
+    // Re-pop when switching words: the pointerdown that dismissed the
+    // previous word's tip started the close transition only a moment
+    // ago — the tip is still at ~full scale, so a plain remove/add
+    // here would "animate" 1 → 1 (an instant teleport). Snap to the
+    // fully-closed state (scale .55, opacity 0) with transitions off
+    // for one frame, so the pop always grows out of the NEW word.
+    tip.style.transition = "none";
+    tip.classList.remove("is-open");
     tip.textContent = tipDisplayText(entry.m);
 
     // Measure (the closed state is laid out, just invisible), then place
@@ -644,7 +665,8 @@ function openTipFor(span) {
     tip.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
     tip.style.transformOrigin = `${ax.toFixed(1)}px ${above ? "100%" : "0%"}`;
 
-    void tip.offsetWidth; // commit position/origin before the pop
+    void tip.offsetWidth; // commit position/origin + snapped-closed state
+    tip.style.transition = ""; // back to the stylesheet transitions
     tip.classList.add("is-open");
     tip.setAttribute("aria-hidden", "false");
     _tipOpenState = true;
@@ -796,17 +818,31 @@ const LAMP_SVG = `
 
 /* ── Lantern explainer — press-and-hold shows a tiny card that
  * says what the feature does (same .gharib-tip card family,
- * arrow pointing at the lantern). Auto-hides after 5.5s, or on
- * any tap/scroll. The hold must never toggle the feature: the
- * click that follows a fired hold is swallowed. ── */
+ * arrow pointing at the lantern). The card is DOM-ANCHORED:
+ * appended INSIDE the lamp button and absolutely positioned
+ * below it (CSS .gharib-lamp > .gharib-tip--explain), so the
+ * browser keeps the arrow glued to the lantern in every state —
+ * page scrolled, fullscreen re-anchor, anything. No screen-
+ * coordinate math (the old fixed-position placement drifted off
+ * the lamp in the app once the page was scrolled). Auto-hides
+ * after 5.5s, or on any tap/scroll. The hold must never toggle
+ * the feature: the click that follows a fired hold is swallowed,
+ * and taps on the card itself don't reach the toggle. ── */
 
 let _explainEl = null;
 let _explainHideT = 0;
+let _explainLiftT = 0;
 let _lanternHoldFired = false;
 
 function hideLanternExplainer() {
     clearTimeout(_explainHideT);
     _explainEl?.classList.remove("is-open");
+    // Keep the lamp's stacking lift (gharib-lamp--explaining)
+    // through the close animation, then drop it.
+    clearTimeout(_explainLiftT);
+    _explainLiftT = setTimeout(() => {
+        _explainEl?.parentElement?.classList.remove("gharib-lamp--explaining");
+    }, 220);
 }
 
 function showLanternExplainer() {
@@ -814,28 +850,22 @@ function showLanternExplainer() {
     if (!root) return;
     if (!_explainEl) {
         const el = document.createElement("div");
-        el.className = "gharib-tip gharib-tip--explain";
+        // --below = card under the lamp, arrow on the top edge —
+        // always pointing UP at the lantern. Placement is pure CSS.
+        el.className = "gharib-tip gharib-tip--explain gharib-tip--below";
         el.setAttribute("dir", "rtl");
         el.setAttribute("role", "note");
         el.innerHTML = "<b>غريب القرآن</b>"
             + "مع كل لفظة قرآنية تفهمها: تتّسع حصيلتك، ويعمُق تدبّرك، وتُضاف نقطة إلى حسابك هنا";
-        document.body.appendChild(el);
+        root.appendChild(el);
         _explainEl = el;
     }
     const el = _explainEl;
+    // Lift the lamp's stacking context while the card is open
+    // (nuclear stacking fix — see .gharib-lamp--explaining CSS).
+    clearTimeout(_explainLiftT);
+    root.classList.add("gharib-lamp--explaining");
     el.classList.remove("is-open");
-    const r = root.getBoundingClientRect();
-    const tw = el.offsetWidth, th = el.offsetHeight;
-    const cx = r.left + r.width / 2;
-    const left = Math.min(Math.max(cx - tw / 2, 8), window.innerWidth - tw - 8);
-    const below = r.bottom + 10 + th <= window.innerHeight - 10;
-    const top = below ? r.bottom + 10 : r.top - th - 10;
-    el.style.left = `${left.toFixed(1)}px`;
-    el.style.top = `${top.toFixed(1)}px`;
-    el.classList.toggle("gharib-tip--below", below);
-    const ax = Math.min(Math.max(cx - left, 14), Math.max(tw - 14, 14));
-    el.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
-    el.style.transformOrigin = `${ax.toFixed(1)}px ${below ? "0%" : "100%"}`;
     void el.offsetWidth;
     el.classList.add("is-open");
     clearTimeout(_explainHideT);
@@ -881,6 +911,9 @@ function ensureWidget() {
     // other fullscreen-cluster buttons (background taps toggle chrome).
     root.addEventListener("click", (e) => {
         e.stopPropagation();
+        // The explainer card lives INSIDE the button — taps on it
+        // must never toggle the feature.
+        if (e.target?.closest?.(".gharib-tip--explain")) return;
         if (_lanternHoldFired) { _lanternHoldFired = false; return; }
         hideLanternExplainer();
         toggleGharibFeature();
@@ -888,7 +921,8 @@ function ensureWidget() {
 
     // Press-and-hold (~550ms) explains the feature instead of toggling.
     let holdT = 0;
-    root.addEventListener("pointerdown", () => {
+    root.addEventListener("pointerdown", (e) => {
+        if (e.target?.closest?.(".gharib-tip--explain")) return;
         _lanternHoldFired = false;
         clearTimeout(holdT);
         holdT = setTimeout(() => {
