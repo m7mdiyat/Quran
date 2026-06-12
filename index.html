@@ -3066,6 +3066,15 @@
      *    as its own group regardless of parent backdrop-filter quirks.
      * ============================================================ */
 
+    /* App only: the phone's physical buttons make in-app volume controls
+       redundant — hide the مستوى الصوت section in BOTH toolbars' dropdowns
+       (Mushaf #mushafVolDropdown + Tafsir #tafsirVolDropdown), keeping
+       only السرعة. html.m7-app is set in init() behind call-time isApp(),
+       so the website keeps its volume sliders. */
+    html.m7-app [data-volume-section] {
+      display: none !important;
+    }
+
     #tafsirVolDropdown,
     #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
       background-color: #ffffff !important;
@@ -4785,7 +4794,7 @@
                         </svg>
                       </button>
                       <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="tafsirVolDropdown">
-                        <div class="mushaf-settings__section">
+                        <div class="mushaf-settings__section" data-volume-section>
                           <div class="mushaf-settings__label">مستوى الصوت</div>
                           <div class="mushaf-toolbar__vol-row">
                             <button type="button" class="mushaf-toolbar__vol-btn" id="tafsirVolDown" aria-label="خفض"><svg

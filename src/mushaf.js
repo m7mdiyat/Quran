@@ -1100,7 +1100,7 @@ function buildShell() {
       <div class="mushaf-toolbar__btn-wrap" id="mushafPlayWrap">
         <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="mushafToolbarPlay" aria-label="تشغيل/إيقاف" data-playing="false">${ICONS.play}</button>
         <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="mushafVolDropdown">
-          <div class="mushaf-settings__section">
+          <div class="mushaf-settings__section" data-volume-section>
             <div class="mushaf-settings__label">مستوى الصوت</div>
             <div class="mushaf-toolbar__vol-row">
               <button type="button" class="mushaf-toolbar__vol-btn" id="mushafVolDown" aria-label="خفض"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19.5 12h-15"/></svg></button>
