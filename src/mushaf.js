@@ -19,6 +19,7 @@
 "use strict";
 
 import { surahAudio } from "./surahAudio.js";
+import { gharibTapTarget, gharibHoverTarget } from "./gharib.js";
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, subscribeRepeat } from "./repeat.js";
 import {
     panelPrepare, panelStageClosed, panelOpen, panelModeClose,
@@ -1563,7 +1564,10 @@ function renderPage(data, direction = "none") {
         try {
             PAGES_EL?.dispatchEvent(new CustomEvent("mushaf:page-rendered", {
                 bubbles: true,
-                detail: { page: data.page, el: newPage },
+                // `data` (the QCF4 page JSON) rides along for the gharib
+                // module — its per-word vocalized `text` fields are what
+                // the word matcher runs against (src/gharib.js).
+                detail: { page: data.page, el: newPage, data },
             }));
         } catch { }
     };
@@ -1755,6 +1759,9 @@ function wireAyahInteractions(pageEl) {
     pageEl.addEventListener("mouseover", (e) => {
         const ayah = e.target.closest(".mushaf-ayah");
         if (!ayah || isAyahDimmed(ayah)) return;
+        // Glowing gharib words own their own interaction — the hover
+        // menu must never pop (or stay) over one.
+        if (gharibHoverTarget(e.target)) { scheduleMenuHide(); return; }
         // Don't reopen the menu while the quick-view card is showing.
         if (MUKHTASAR_EL?.classList.contains("mushaf-mukhtasar--open")) return;
         scheduleMenuShow(ayah);
@@ -1779,6 +1786,9 @@ function wireAyahInteractions(pageEl) {
                 if (sId) transitionToTargetSurah(sId);
                 return;
             }
+            // Gharib word tap → meaning tooltip instead of audio toggle
+            // (desktop path; the touch path is in touchend below).
+            if (gharibTapTarget(e.target)) return;
             toggleAudioForAyah(ayah.dataset.verseKey);
             return;
         }
@@ -1858,6 +1868,11 @@ function wireAyahInteractions(pageEl) {
             return;
         }
         hapticLight();   // light tic when a target ayah is tapped
+        // Gharib word tap → meaning tooltip instead of audio toggle. Checked
+        // HERE (not in a capture listener) so the long-press bookkeeping
+        // above stays intact: a long-press on a gharib word still opens
+        // the ayah menu and never reaches this line.
+        if (gharibTapTarget(e.target)) return;
         toggleAudioForAyah(ayah.dataset.verseKey);
     });
 }

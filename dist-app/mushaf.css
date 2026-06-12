@@ -3051,6 +3051,13 @@ html.is-app .mushaf-fs__font-btn {
     right: calc(12px + env(safe-area-inset-right, 0px));
 }
 
+/* The gharib lantern — fourth circle in the row (see its base
+ * fullscreen rule near the end of the gharib block). */
+html.is-app .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(120px + env(safe-area-inset-right, 0px));
+}
+
 html.is-app .mushaf-fs__settings-panel {
     top: calc(52px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
     right: calc(84px + env(safe-area-inset-right, 0px));
@@ -3104,3 +3111,691 @@ html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
     paint-order: stroke;
 }
 /* ═══════ END TEST block ═══════ */
+/* ═══════════════════════════════════════════════════════════
+   غريب القرآن — edgeless glyph glow + meaning tooltip
+   (src/gharib.js)
+
+   NO container shapes: no boxes, pills, borders, rings or
+   outlines. The gold light comes off the Arabic letterforms
+   themselves. Each tagged span re-renders its own glyph
+   (content: attr(data-ghc)) in two stacked pseudo layers:
+
+     ::before — transparent text whose layered gold TEXT-SHADOW
+       is the halo: it follows the glyph contours exactly and
+       fades into nothing (em-sized → survives autoFit/zoom
+       with no re-measure).
+     ::after — a gold gradient painted THROUGH the glyphs
+       (background-clip: text): the letters themselves turn
+       briefly molten.
+
+   Both layers animate OPACITY ONLY (pre-painted, compositor-
+   friendly) on shared keyframes with NO per-word delay: every
+   gharib word on the page breathes and holds in the same phase,
+   one synchronized gold pulse. Every glow opacity is
+   multiplied by two registered, TRANSITIONED custom props:
+     --gh-on  global lantern toggle (1 → 0 fades the whole
+              feature out smoothly while keyframes keep running)
+     --gw-x   per-word settle (gold breathes out on learn)
+   ═══════════════════════════════════════════════════════════ */
+
+@property --gh-on { syntax: "<number>"; initial-value: 1; inherits: true; }
+@property --gw-x { syntax: "<number>"; initial-value: 1; inherits: true; }
+
+.gharib-word {
+    position: relative;
+    isolation: isolate;       /* keeps the z:-1 halo above the page bg, behind the ink */
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    --gw-x: 1;
+    transition: --gh-on 0.65s ease, --gw-x 0.8s ease, text-shadow 0.8s ease;
+}
+
+body.gharib-off .gharib-word {
+    --gh-on: 0;
+    cursor: default;
+}
+
+.gharib-word::before,
+.gharib-word::after {
+    content: attr(data-ghc);
+    position: absolute;
+    inset: 0;
+    white-space: pre;
+    pointer-events: none;
+    color: transparent;
+    will-change: opacity;
+}
+
+/* Halo — layered gold shadows hugging the letter shapes,
+   bright at the stroke, dissolving outward to nothing.
+   Saturated amber (not pale gold) so it reads on the light
+   theme's near-white page. */
+.gharib-word::before {
+    z-index: -1;
+    /* NOT fully transparent: WebKit (the phone WebView) skips the
+       entire text paint — text-shadow included — when the fill
+       alpha is 0, which erased the halo on devices while desktop
+       Chrome drew it. A 1/255-alpha fill is invisible but forces
+       the shadow pass everywhere. */
+    color: rgba(228, 168, 52, 0.01);
+    text-shadow:
+        0 0 0.07em rgba(255, 190, 58, 0.92),
+        0 0 0.20em rgba(246, 168, 38, 0.62),
+        0 0 0.45em rgba(230, 152, 26, 0.40),
+        0 0 0.85em rgba(218, 142, 22, 0.18);
+    opacity: 0;
+    animation: gw-halo 4.6s ease-in-out infinite;
+}
+
+body.dark .gharib-word::before {
+    text-shadow:
+        0 0 0.07em rgba(255, 214, 120, 0.85),
+        0 0 0.20em rgba(255, 198, 88, 0.55),
+        0 0 0.42em rgba(255, 193, 77, 0.32),
+        0 0 0.80em rgba(255, 193, 77, 0.15);
+}
+
+/* Phone (Capacitor app): WKWebView refuses to paint text-shadow
+   on this duplicated layer even with a non-zero fill (the
+   1/255-alpha workaround fixed desktop but not the device — the
+   halo simply never rendered there). So on the phone the halo
+   does not use text-shadow AT ALL: paint a FULL-alpha gold glyph
+   copy (it sits exactly behind the real ink at z:-1, so only its
+   edges can show) and build the glow with filter: blur() +
+   drop-shadow(). Filters run on the rendered alpha silhouette in
+   the compositor — there is no text-paint fast path for WebKit
+   to skip, so this cannot silently disappear. blur() bleeds the
+   gold copy past the glyph contours (tight bright core), the two
+   drop-shadows bloom that result outward (wide soft falloff).
+   Light theme = deep saturated amber against the white page;
+   dark theme = bright pale gold. */
+html.is-app .gharib-word::before {
+    color: #f0a428;
+    text-shadow: none;
+    filter:
+        blur(0.05em)
+        drop-shadow(0 0 0.16em rgba(248, 168, 32, 0.95))
+        drop-shadow(0 0 0.42em rgba(230, 148, 20, 0.60));
+}
+
+html.is-app body.dark .gharib-word::before {
+    color: #ffd57a;
+    text-shadow: none;
+    filter:
+        blur(0.05em)
+        drop-shadow(0 0 0.16em rgba(255, 212, 112, 0.95))
+        drop-shadow(0 0 0.42em rgba(255, 193, 77, 0.55));
+}
+
+/* Molten ink — gold gradient clipped to the glyphs, riding just
+   behind the halo crest. Peak kept moderate so the real ink
+   underneath always reads. */
+.gharib-word::after {
+    z-index: 1;
+    background: linear-gradient(115deg, #d8a23a 0%, #f6d188 38%, #cf9526 68%, #eebe64 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    opacity: 0;
+    animation: gw-ink 4.6s ease-in-out infinite;
+    animation-delay: -0.35s; /* ink crest rides just ahead of the halo crest */
+}
+
+body.dark .gharib-word::after {
+    background: linear-gradient(115deg, #e8b455 0%, #ffe3a3 38%, #dfa83e 68%, #f7cf82 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+/* The breathing wave. var()/calc() in keyframes re-resolve per
+   frame, so the transitioned --gh-on/--gw-x multipliers fade a
+   LIVE animation smoothly — no snap, either direction.
+   Duty cycle is glow-heavy by request: a long luminous plateau
+   (~16%–74% of the cycle) with a brief, shallow settle at the
+   loop point — the gold spends most of its time lit. */
+@keyframes gw-halo {
+    0%, 100% { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.35); }
+    16%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 1); }
+    74%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 1); }
+}
+
+@keyframes gw-ink {
+    0%, 100% { opacity: 0; }
+    20%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.5); }
+    68%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.5); }
+    92%      { opacity: 0; }
+}
+
+/* Settled (learned): a quiet static grey halo off the glyphs —
+   same edgeless treatment, no motion. --settling is the live
+   handover (gold breathes out via --gw-x while the grey fades
+   in via the span's text-shadow transition); --settled is the
+   decoration-time state: no glow layers at all. */
+.gharib-word--settling,
+.gharib-word--settled {
+    --gw-x: 0;
+    text-shadow: 0 0 0.40em rgba(120, 124, 130, 0.40);
+}
+
+body.dark .gharib-word--settling,
+body.dark .gharib-word--settled {
+    text-shadow: 0 0 0.40em rgba(165, 172, 182, 0.30);
+}
+
+.gharib-word--settled::before,
+.gharib-word--settled::after {
+    content: none;
+}
+
+/* The settled grey dims out with the lantern toggle too. */
+body.gharib-off .gharib-word--settling,
+body.gharib-off .gharib-word--settled {
+    text-shadow: 0 0 0.40em rgba(120, 124, 130, 0);
+}
+
+body.dark.gharib-off .gharib-word--settling,
+body.dark.gharib-off .gharib-word--settled {
+    text-shadow: 0 0 0.40em rgba(165, 172, 182, 0);
+}
+
+/* After the toggle's fade-out settles (src/gharib.js adds this
+   750ms later), drop the glow layers entirely — no invisible
+   animations keep running while the feature is off. */
+body.gharib-off-done .gharib-word::before,
+body.gharib-off-done .gharib-word::after {
+    content: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* Static gold halo instead of the wave; toggle/settle are
+       instant (the prop transitions are off with everything else). */
+    .gharib-word {
+        transition: none;
+    }
+    .gharib-word::before {
+        animation: none;
+        opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.6);
+        will-change: auto;
+    }
+    .gharib-word::after {
+        display: none;
+    }
+}
+
+/* ── Meaning tooltip ────────────────────────────────────────
+   Grows OUT of the tapped word — src/gharib.js sets position
+   and transform-origin at the word's anchor. Meaning text only.
+   Pop easing = the ported Transitions.dev spring family (the
+   badge/digit curve). */
+
+.gharib-tip {
+    position: fixed;
+    z-index: 2100;            /* above fullscreen mushaf (2000) */
+    max-width: min(320px, calc(100vw - 32px));
+    padding: 0.5rem 0.85rem;
+    border-radius: 0.85rem;
+    background: #fffdf8;
+    border: 1px solid rgba(176, 138, 60, 0.25);
+    box-shadow:
+        0 10px 30px rgba(31, 27, 16, 0.16),
+        0 2px 8px rgba(31, 27, 16, 0.08);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.9;
+    color: #4b463d;
+    text-align: right;
+    opacity: 0;
+    transform: scale(0.55);
+    visibility: hidden;
+    pointer-events: none;
+    will-change: transform, opacity;
+    transition:
+        transform 170ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 150ms ease,
+        visibility 0s linear 170ms;
+}
+
+.gharib-tip.is-open {
+    opacity: 1;
+    transform: scale(1);
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+        transform 340ms cubic-bezier(0.34, 1.36, 0.64, 1),
+        opacity 200ms ease,
+        visibility 0s;
+}
+
+body.dark .gharib-tip {
+    background: #232933;
+    border-color: rgba(240, 192, 105, 0.18);
+    color: #d1d5db;
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.5),
+        0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Anchor arrow — a rotated square sharing the card's fill and
+   border, pointing at the tapped word (x set via --tip-ax from
+   src/gharib.js). Default: tip above the word, arrow on the
+   bottom edge; --below flips it to the top edge. */
+.gharib-tip::after {
+    content: "";
+    position: absolute;
+    left: var(--tip-ax, 50%);
+    bottom: -6px;
+    width: 11px;
+    height: 11px;
+    margin-left: -5.5px;
+    transform: rotate(45deg);
+    background: #fffdf8;
+    border-right: 1px solid rgba(176, 138, 60, 0.25);
+    border-bottom: 1px solid rgba(176, 138, 60, 0.25);
+}
+
+.gharib-tip--below::after {
+    bottom: auto;
+    top: -6px;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 1px solid rgba(176, 138, 60, 0.25);
+    border-top: 1px solid rgba(176, 138, 60, 0.25);
+}
+
+body.dark .gharib-tip::after {
+    background: #232933;
+    border-color: rgba(240, 192, 105, 0.18);
+}
+
+/* Long-press lantern explainer — same card family, smaller. */
+.gharib-tip--explain {
+    max-width: min(280px, calc(100vw - 24px));
+    font-size: 0.88rem;
+    line-height: 1.8;
+}
+
+.gharib-tip--explain b {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #a87718;
+    margin-bottom: 2px;
+}
+
+body.dark .gharib-tip--explain b {
+    color: #f0c069;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gharib-tip,
+    .gharib-tip.is-open {
+        transition: none;
+    }
+}
+
+/* ── Illumination counter widget (فانوس + badge + ring) ─────
+   A real <button>: tapping the lantern toggles the whole gharib
+   feature (see the gharib-off rules above). Lives in the
+   toolbar spacer zone; in fullscreen it is re-anchored as the
+   fourth floating circle (rules at the end of this block). The
+   segmented ring leaves an 80° notch at 1–2 o'clock where the
+   count badge docks (geometry in src/gharib.js buildSegments)
+   — without it the last dash always hid UNDER the badge. */
+
+.gharib-lamp {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 2px;
+    color: #6b7280;
+    /* Button chrome reset (it toggles the feature now). */
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    font: inherit;
+    /* Long-press shows the explainer — no iOS callout/selection. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.dark .gharib-lamp {
+    color: #9ca3af;
+}
+
+.gharib-lamp__icon {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    z-index: 1;
+    transition: opacity 0.5s ease;
+}
+
+/* The FLAME is the focal point: filled warm gold with a soft
+   static bloom — it is the نور. Unlit grey when toggled off. */
+.gharib-lamp__flame {
+    fill: #e3a338;
+    stroke: none;
+    filter: drop-shadow(0 0 2.5px rgba(232, 169, 60, 0.55));
+    transition: fill 0.5s ease, opacity 0.5s ease;
+}
+
+body.dark .gharib-lamp__flame {
+    fill: #f0c069;
+    filter: drop-shadow(0 0 3px rgba(240, 192, 105, 0.6));
+}
+
+/* Toggled OFF: flame unlit, ring + badge dimmed. The lantern
+   stays fully visible — it is the way back on. */
+.gharib-lamp--off .gharib-lamp__flame {
+    fill: #a7adb6;
+    filter: none;
+    opacity: 0.65;
+}
+
+body.dark .gharib-lamp--off .gharib-lamp__flame {
+    fill: #6b7280;
+    filter: none;
+}
+
+.gharib-lamp--off .gharib-lamp__ring,
+.gharib-lamp--off .gharib-badge {
+    opacity: 0.35;
+}
+
+.gharib-lamp--off .gharib-lamp__icon {
+    opacity: 0.8;
+}
+
+.gharib-lamp__ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.5s ease; /* dims with the lantern toggle */
+}
+
+/* Dash segments: one per gharib-carrying ayah on the page. */
+.gharib-seg__track {
+    fill: none;
+    stroke: rgba(130, 134, 142, 0.30);
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+body.dark .gharib-seg__track {
+    stroke: rgba(170, 178, 190, 0.24);
+}
+
+.gharib-seg__fill {
+    fill: none;
+    stroke: #d39a2d;
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.dark .gharib-seg__fill {
+    stroke: #f0c069;
+}
+
+.gharib-seg__fill.is-filled {
+    stroke-dashoffset: 0;
+}
+
+/* Completion: the dashes connect into one continuous ring. */
+.gharib-lamp__full {
+    fill: none;
+    stroke: #d39a2d;
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    opacity: 0;
+}
+
+body.dark .gharib-lamp__full {
+    stroke: #f0c069;
+}
+
+.gharib-lamp.is-complete .gharib-lamp__segs {
+    opacity: 0;
+    transition: opacity 0.45s ease 0.35s;
+}
+
+.gharib-lamp.is-complete .gharib-lamp__full {
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transition:
+        stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.2s ease;
+}
+
+/* Pages with nothing to discover: quiet, settled grey ring. */
+.gharib-lamp.is-empty .gharib-lamp__full {
+    stroke: rgba(130, 134, 142, 0.30);
+}
+
+body.dark .gharib-lamp.is-empty .gharib-lamp__full {
+    stroke: rgba(170, 178, 190, 0.24);
+}
+
+/* State changes that must render with NO motion (page nav,
+   already-complete pages, reduced motion). */
+.gharib-lamp.no-anim .gharib-lamp__segs,
+.gharib-lamp.no-anim .gharib-lamp__full,
+.gharib-lamp.no-anim .gharib-seg__fill {
+    transition: none !important;
+}
+
+/* Soft illumination pulse radiating from the widget when the
+   last segment connects (one-shot, transform/opacity only). */
+.gharib-lamp__bloom {
+    position: absolute;
+    inset: -9px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(240, 192, 105, 0.55), rgba(240, 192, 105, 0) 70%);
+    opacity: 0;
+    transform: scale(0.5);
+    pointer-events: none;
+}
+
+.gharib-lamp.is-celebrating .gharib-lamp__bloom {
+    animation: gharib-bloom 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+}
+
+@keyframes gharib-bloom {
+    0%   { opacity: 0; transform: scale(0.5); }
+    35%  { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0; transform: scale(1.65); }
+}
+
+.gharib-lamp.is-celebrating .gharib-lamp__icon {
+    animation: gharib-lamp-glow 1.3s ease 0.45s;
+}
+
+@keyframes gharib-lamp-glow {
+    30% { color: #d39a2d; }
+}
+
+body.dark .gharib-lamp.is-celebrating .gharib-lamp__icon {
+    animation-name: gharib-lamp-glow-dark;
+}
+
+@keyframes gharib-lamp-glow-dark {
+    30% { color: #f0c069; }
+}
+
+/* ── Count badge — Transitions.dev "Notification badge" port
+   (timings/easings verbatim from the repo skill). ── */
+
+.gharib-badge {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    pointer-events: none;
+    will-change: transform;
+    z-index: 2;
+    transition: opacity 0.5s ease; /* dims with the lantern toggle */
+}
+
+.gharib-badge[data-open="true"] {
+    animation: gharib-badge-slide-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes gharib-badge-slide-in {
+    from { transform: translate(-8.2px, 12.4px); }
+    to   { transform: translate(0, 0); }
+}
+
+.gharib-badge__dot {
+    display: block;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4.5px;
+    border-radius: 9px;
+    background: linear-gradient(160deg, #e0ad45, #c08a1e);
+    color: #fff;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(150, 110, 30, 0.35);
+    transform-origin: center;
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+    transition:
+        transform 500ms cubic-bezier(0.34, 1.36, 0.64, 1),
+        opacity   400ms cubic-bezier(0.34, 1.36, 0.64, 1),
+        filter    500ms cubic-bezier(0.34, 1.36, 0.64, 1);
+    will-change: transform, opacity, filter;
+}
+
+body.dark .gharib-badge__dot {
+    background: linear-gradient(160deg, #f0c069, #d39a2d);
+    color: #1f2228;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.gharib-badge[data-open="false"] .gharib-badge__dot {
+    transform: scale(0);
+    opacity: 0;
+    filter: blur(2px);
+    transition:
+        transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity   180ms cubic-bezier(0.4, 0, 0.2, 1),
+        filter    180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Count digits — Transitions.dev "Number pop-in" port. ── */
+
+.gharib-digits {
+    display: inline-flex;
+    align-items: baseline;
+    direction: ltr; /* digit order is LTR even in Arabic-Indic */
+}
+
+.gharib-digit {
+    display: inline-block;
+    will-change: transform, opacity, filter;
+}
+
+.gharib-digits.is-animating .gharib-digit {
+    animation: gharib-digit-pop-in 500ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+.gharib-digits.is-animating .gharib-digit[data-stagger="1"] {
+    animation-delay: 70ms;
+}
+
+.gharib-digits.is-animating .gharib-digit[data-stagger="2"] {
+    animation-delay: 140ms;
+}
+
+@keyframes gharib-digit-pop-in {
+    0% {
+        transform: translate(0, 8px);
+        opacity: 0;
+        filter: blur(2px);
+    }
+    100% {
+        transform: translate(0, 0);
+        opacity: 1;
+        filter: blur(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gharib-badge,
+    .gharib-badge__dot,
+    .gharib-digits .gharib-digit,
+    .gharib-lamp__bloom,
+    .gharib-lamp.is-celebrating .gharib-lamp__icon {
+        animation: none !important;
+        transition: none !important;
+    }
+    .gharib-lamp.is-complete .gharib-lamp__segs,
+    .gharib-lamp.is-complete .gharib-lamp__full,
+    .gharib-seg__fill {
+        transition: none !important;
+    }
+}
+
+/* Compact phones: the toolbar is tight — shrink the widget a
+   touch so it never crowds the surah selector. */
+@media (max-width: 480px) {
+    .gharib-lamp {
+        width: 36px;
+        height: 36px;
+        margin: 0;
+    }
+    .gharib-lamp__icon {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+/* ── Fullscreen: the lantern joins the floating cluster ──────
+   It stays a toolbar CHILD — exempted from the children-hide
+   rule (the ID ties its specificity; this block sits later in
+   the file, so it wins) and re-anchored as the fourth circle in
+   the top-right row: font(12) → play(48) → settings(84) →
+   lantern(120). Because it never leaves the toolbar, the
+   distraction-free chrome fade + pointer lockout apply to it
+   automatically, and it disappears with fullscreen itself.
+   Badge, ring and the toggle are the very same element. */
+.mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
+    display: flex !important;
+    position: fixed;
+    top: 12px;
+    right: 120px;
+    left: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+}
+
+body.dark .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
+    background: rgba(45, 51, 60, 0.86);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.mushaf-root--fullscreen #gharibLamp .gharib-lamp__icon {
+    width: 17px;
+    height: 17px;
+}
