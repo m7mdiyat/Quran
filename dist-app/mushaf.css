@@ -675,7 +675,7 @@ body.dark .mushaf-ayah-menu {
  * @keyframes on pseudo-elements has a history of silently freezing in
  * some engines. The orbit (individual `rotate` property, so it composes
  * with the transform scale-breathe) is the dominant motion: the glow
- * makes a full lap of the button every 4s, the wide halo every 6.5s,
+ * makes a full lap of the button every 7s, the wide halo every 11s,
  * with breathing and the 10s hue cycle desynced on top. */
 
 /* 1px stroke ring (gradient padding-box masked down to the 1px rim).
@@ -719,7 +719,7 @@ body.dark .mushaf-ayah-menu {
     z-index: -1;
     filter: blur(6px) hue-rotate(0deg);
     opacity: 0.42;
-    animation: beam-orbit 4s linear infinite,
+    animation: beam-orbit 7s linear infinite,
         beam-hue-core 10s linear infinite,
         beam-breathe-core 2.8s ease-in-out infinite;
 }
@@ -737,7 +737,7 @@ body.dark .mushaf-ayah-menu {
     z-index: -1;
     filter: blur(15px) hue-rotate(0deg);
     opacity: 0.36;
-    animation: beam-orbit 6.5s linear infinite,
+    animation: beam-orbit 11s linear infinite,
         beam-hue-bloom 10s linear infinite,
         beam-breathe-bloom 4.5s ease-in-out infinite;
 }
@@ -747,7 +747,7 @@ body.dark .mushaf-ayah-menu {
    the dark variants swap the whole animation. */
 body.dark .mushaf-ayah-menu__btn--mukhtasar::before {
     filter: blur(3px) hue-rotate(0deg);
-    animation: beam-orbit 4s linear infinite,
+    animation: beam-orbit 7s linear infinite,
         beam-hue-core-dark 10s linear infinite,
         beam-breathe-core 2.8s ease-in-out infinite;
 }
@@ -755,7 +755,7 @@ body.dark .mushaf-ayah-menu__btn--mukhtasar::before {
 body.dark .mushaf-ayah-menu__btn--mukhtasar .beam-bloom {
     filter: blur(22.5px) hue-rotate(0deg);
     opacity: 0.4;
-    animation: beam-orbit 6.5s linear infinite,
+    animation: beam-orbit 11s linear infinite,
         beam-hue-bloom-dark 10s linear infinite,
         beam-breathe-bloom 4.5s ease-in-out infinite;
 }

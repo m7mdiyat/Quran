@@ -2574,7 +2574,7 @@
       }
 
       body.dark .tafsir-actions .tafsir-dd__chevron {
-        color: #60a5fa;
+        color: #cbd5e1;
       }
     }
 
@@ -2615,9 +2615,11 @@
     }
 
     body.dark .tafsir-dd__trigger {
-      background: rgba(30, 41, 59, 0.9);
-      border-color: rgba(255, 255, 255, 0.1);
-      color: #e2e8f0;
+      /* The Mushaf dark grey family (var(--card) / var(--line)) instead of
+         the old slate-blue rgba(30,41,59). */
+      background: rgba(40, 46, 54, 0.92);
+      border-color: rgba(148, 163, 184, 0.22);
+      color: #e5e7eb;
     }
 
     .tafsir-dd__chevron {
@@ -2656,8 +2658,8 @@
     }
 
     body.dark .tafsir-dd__menu {
-      background: #1e293b;
-      border-color: rgba(255, 255, 255, 0.12);
+      background: #282e36;
+      border-color: rgba(148, 163, 184, 0.22);
       box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
     }
 
@@ -2701,8 +2703,10 @@
     }
 
     body.dark .tafsir-dd__option[aria-selected="true"] {
-      background: rgba(96, 165, 250, 0.18);
-      color: #93c5fd;
+      /* Grey selection (the Mushaf chips' --accent-soft family) instead of
+         the old blue rgba(96,165,250)/#93c5fd. */
+      background: rgba(148, 163, 184, 0.2);
+      color: #e5e7eb;
     }
 
     /* Desktop: slightly smaller dropdown, aligned with the مختصر button,
@@ -3078,7 +3082,11 @@
     body.dark #tafsirVolDropdown,
     html.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown],
     body.dark #tafsirSettingsWrap > [data-tafsir-settings-dropdown] {
-      background-color: #1e293b !important;
+      /* Solid equivalent of the Mushaf toolbar dropdown's dark var(--card)
+         rgba(40,46,54,.92) — the old #1e293b slate-BLUE visibly diverged
+         from the Mushaf panel grey. Solid (not rgba) on purpose: this is
+         the nuclear no-bleed-through fix. */
+      background-color: #282e36 !important;
     }
 
     /* Closed state via visibility — no opacity fade that could ever

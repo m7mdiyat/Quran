@@ -352,6 +352,14 @@ function applyFontLevel() {
     } else {
         _rootEl.setAttribute("data-fs-zoom", String(_fontLevel));
     }
+    // A level switch must never inherit the previous level's scroll
+    // offset: leaving zoom drops the root's overflow back from `auto`,
+    // and a non-auto overflow PRESERVES scrollTop/scrollLeft — so after
+    // zoom → scroll down → back to normal, the autoFit page rendered
+    // displaced/off-center until the next navigation. Origin is the
+    // canonical position at every level (level 0 fits the viewport).
+    _rootEl.scrollTop = 0;
+    _rootEl.scrollLeft = 0;
 }
 
 function cycleFontLevel() {
@@ -369,6 +377,10 @@ function cycleFontLevel() {
 function resetFontOnActivePage() {
     if (!_rootEl) return;
     _rootEl.removeAttribute("data-fs-zoom");
+    // Same stale-scroll guard as applyFontLevel — fullscreen close must
+    // hand the root back at origin.
+    _rootEl.scrollTop = 0;
+    _rootEl.scrollLeft = 0;
 }
 
 /* ----------------------------- localStorage ----------------------------- */

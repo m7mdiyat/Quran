@@ -1909,13 +1909,18 @@ document.querySelectorAll('[data-tafsir-settings-wrap]').forEach(wrap => {
   const dd = wrap.querySelector('[data-tafsir-settings-dropdown]');
   if (!btn || !dd) return;
   let hideT = null;
-  wrap.addEventListener('mouseenter', () => {
+  // Mouse-only hover: a touch tap synthesizes mouseenter (open) and then
+  // fires click (toggle → shut) — the gear never opened from a single tap
+  // on phones. Same fix as the Mushaf toolbar's wireToolbar.
+  wrap.addEventListener('pointerenter', (e) => {
+    if (e.pointerType !== 'mouse') return;
     clearTimeout(hideT);
     dd.classList.add('mushaf-toolbar__dropdown--open');
     _closeTafsirVolDropdown();
     syncTafsirSettingsUI();
   });
-  wrap.addEventListener('mouseleave', () => {
+  wrap.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'mouse') return;
     clearTimeout(hideT);
     hideT = setTimeout(() => dd.classList.remove('mushaf-toolbar__dropdown--open'), 350);
   });

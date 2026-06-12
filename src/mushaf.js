@@ -2749,12 +2749,30 @@ function wireToolbar() {
     const volDD = document.getElementById("mushafVolDropdown");
     const playBtn = document.getElementById("mushafToolbarPlay");
 
-    // --- Settings dropdown hover ---
+    // --- Settings dropdown: hover (mouse only) + click toggle ---
+    // Hover must be FILTERED to mouse pointers: a touch tap synthesizes
+    // mouseenter (opened the panel) and then fires click (toggled it shut)
+    // — net effect, the gear never opened from a single tap on phones.
     if (settingsWrap && settingsDD) {
         let hideT = null;
-        settingsWrap.addEventListener("mouseenter", () => { clearTimeout(hideT); settingsDD.classList.add("mushaf-toolbar__dropdown--open"); syncSettingsUI(); });
-        settingsWrap.addEventListener("mouseleave", () => { clearTimeout(hideT); hideT = setTimeout(() => settingsDD.classList.remove("mushaf-toolbar__dropdown--open"), 350); });
+        settingsWrap.addEventListener("pointerenter", (e) => {
+            if (e.pointerType !== "mouse") return;
+            clearTimeout(hideT);
+            settingsDD.classList.add("mushaf-toolbar__dropdown--open");
+            syncSettingsUI();
+        });
+        settingsWrap.addEventListener("pointerleave", (e) => {
+            if (e.pointerType !== "mouse") return;
+            clearTimeout(hideT);
+            hideT = setTimeout(() => settingsDD.classList.remove("mushaf-toolbar__dropdown--open"), 350);
+        });
         settingsBtn?.addEventListener("click", (e) => { e.stopPropagation(); settingsDD.classList.toggle("mushaf-toolbar__dropdown--open"); syncSettingsUI(); });
+        // Touch has no mouseleave — a tap anywhere outside closes the panel.
+        document.addEventListener("click", (e) => {
+            if (!settingsDD.classList.contains("mushaf-toolbar__dropdown--open")) return;
+            if (settingsWrap.contains(e.target)) return;
+            settingsDD.classList.remove("mushaf-toolbar__dropdown--open");
+        });
     }
 
     // --- Volume dropdown: shows on mouse hover while audio is playing ---
@@ -3280,7 +3298,6 @@ function positionMukhtasarCard() {
 
     const rect = anchor.getBoundingClientRect();
     const cardW = MUKHTASAR_EL.offsetWidth;
-    const cardH = MUKHTASAR_EL.offsetHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const anchorX = MUKHTASAR_POINT ? MUKHTASAR_POINT.x : rect.left + rect.width / 2;
@@ -3289,22 +3306,34 @@ function positionMukhtasarCard() {
     if (left < 10) left = 10;
     if (left + cardW > vw - 10) left = Math.max(10, vw - cardW - 10);
 
-    // Decide below/above ONCE per open, using the card's potential grown
-    // height: below the ayah by default, above ONLY when it genuinely
-    // won't fit below but fits above.
+    // Decide below/above ONCE per open, by available space. The card must
+    // ALWAYS hug the pressed ayah: when the loaded card outgrows the
+    // chosen side, the scrollable body is CAPPED to fit — never slide the
+    // card away from the ayah. (The old viewport clamp did exactly that:
+    // on phones, an ayah mid-screen picked "above", the loaded card
+    // overflowed, and the clamp parked it at the top of the screen.)
+    const spaceBelow = vh - rect.bottom - 20;
+    const spaceAbove = rect.top - 20;
     if (!MUKHTASAR_SIDE) {
-        const estH = Math.max(cardH, MUKHTASAR_EST_H);
-        const fitsBelow = rect.bottom + 10 + estH <= vh - 10;
-        const fitsAbove = rect.top - 10 - estH >= 10;
-        MUKHTASAR_SIDE = fitsBelow || !fitsAbove ? "below" : "above";
+        MUKHTASAR_SIDE = spaceBelow >= MUKHTASAR_EST_H ? "below"
+            : spaceAbove >= MUKHTASAR_EST_H ? "above"
+                : spaceBelow >= spaceAbove ? "below" : "above";
     }
-    let top;
-    if (MUKHTASAR_SIDE === "below") {
-        top = rect.bottom + 10;
-        if (top + cardH > vh - 10) top = Math.max(10, vh - cardH - 10);
-    } else {
-        top = Math.max(10, rect.top - cardH - 10);
+    const space = MUKHTASAR_SIDE === "below" ? spaceBelow : spaceAbove;
+    let cardH = MUKHTASAR_EL.offsetHeight;
+    if (MUKHTASAR_BODY_EL) {
+        MUKHTASAR_BODY_EL.style.maxHeight = ""; // re-measure at natural size
+        cardH = MUKHTASAR_EL.offsetHeight;
+        if (cardH > space) {
+            const chrome = cardH - MUKHTASAR_BODY_EL.offsetHeight;
+            MUKHTASAR_BODY_EL.style.maxHeight =
+                `${Math.max(80, space - chrome)}px`;
+            cardH = MUKHTASAR_EL.offsetHeight;
+        }
     }
+    const top = MUKHTASAR_SIDE === "below"
+        ? rect.bottom + 10
+        : Math.max(10, rect.top - cardH - 10);
     MUKHTASAR_EL.style.left = `${left}px`;
     MUKHTASAR_EL.style.top = `${top}px`;
     // The open/close scale runs from the .t-modal default transform-origin
