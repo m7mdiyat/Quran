@@ -41,6 +41,7 @@ import { surahAudio } from "./surahAudio.js";
 
 /* Pulse-outside glow driver for the مختصر التفاسير button */
 import { initMukhtasarPulse } from "./pulse-beam.js";
+import { initGharib } from "./gharib.js";
 
 /* Transitions.dev animation pack: panel reveal for the ayah panel, the
  * ayah→ayah page slide, the مسح input dissolve, the selector number swap,
@@ -5682,6 +5683,10 @@ async function init() {
       deactivateSearchBeam();
     },
   });
+
+  // غريب القرآن — glowing word discovery in the Mushaf (src/gharib.js).
+  // Listens for mushaf:page-rendered; data loads lazily on the first page.
+  initGharib({ surahMeta: SURAH_META, isApp });
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
   // resolve it now that meta is available. The mushaf panel opens INLINE

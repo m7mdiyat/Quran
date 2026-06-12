@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
   <title id="title">محمديات</title>
-  <desc id="desc">مصحف مفتوح تحت نجمة مضيئة على خلفية زرقاء متدرّجة</desc>
+  <desc id="desc">مصحف مفتوح على خلفية زرقاء متدرّجة</desc>
 
   <defs>
     <!-- The site's primary-action blue (#2644cd) family, lit top-right
@@ -23,22 +23,19 @@
   <!-- Tile -->
   <rect x="6" y="6" width="116" height="116" rx="30" fill="url(#bg)"/>
 
-  <!-- Sparkle above the spine (the same four-point star motif the app's
-       مختصر التفاسير button carries) -->
-  <path d="M64 18l3.2 8.6 8.6 3.2-8.6 3.2-3.2 8.6-3.2-8.6-8.6-3.2 8.6-3.2z"
-        fill="#ffffff" opacity="0.97"/>
-  <circle cx="86" cy="24" r="2.6" fill="#ffffff" opacity="0.75"/>
-  <circle cx="42" cy="24" r="2.6" fill="#ffffff" opacity="0.75"/>
+  <!-- Open mushaf: two symmetric pages meeting at the spine.
+       Scaled 1.25× about its own centre (64, 69.75) and re-centred
+       on the tile (64, 64). -->
+  <g transform="translate(64 64) scale(1.25) translate(-64 -69.75)">
+    <path d="M64 56C57 49.5 47 47.5 33 49.5v36c14-2 24 0 31 6.5z" fill="url(#pageL)"/>
+    <path d="M64 56c7-6.5 17-8.5 31-6.5v36c-14-2-24 0-31 6.5z" fill="url(#pageR)"/>
+    <!-- Spine seam -->
+    <path d="M64 56v36" stroke="#2644cd" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>
 
-  <!-- Open mushaf: two symmetric pages meeting at the spine -->
-  <path d="M64 56C57 49.5 47 47.5 33 49.5v36c14-2 24 0 31 6.5z" fill="url(#pageL)"/>
-  <path d="M64 56c7-6.5 17-8.5 31-6.5v36c-14-2-24 0-31 6.5z" fill="url(#pageR)"/>
-  <!-- Spine seam -->
-  <path d="M64 56v36" stroke="#2644cd" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>
-
-  <!-- Ayah lines (fade out gracefully at favicon sizes) -->
-  <path d="M41 61.5h14M41 70h14M41 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
-        stroke-width="3.6" stroke-linecap="round"/>
-  <path d="M73 61.5h14M73 70h14M77 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
-        stroke-width="3.6" stroke-linecap="round"/>
+    <!-- Ayah lines (fade out gracefully at favicon sizes) -->
+    <path d="M41 61.5h14M41 70h14M41 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
+          stroke-width="3.6" stroke-linecap="round"/>
+    <path d="M73 61.5h14M73 70h14M77 78.5h10" stroke="#2644cd" stroke-opacity="0.5"
+          stroke-width="3.6" stroke-linecap="round"/>
+  </g>
 </svg>
