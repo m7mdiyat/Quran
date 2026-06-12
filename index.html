@@ -3069,9 +3069,10 @@
     /* App only: the phone's physical buttons make in-app volume controls
        redundant — hide the مستوى الصوت section in BOTH toolbars' dropdowns
        (Mushaf #mushafVolDropdown + Tafsir #tafsirVolDropdown), keeping
-       only السرعة. html.m7-app is set in init() behind call-time isApp(),
-       so the website keeps its volume sliders. */
-    html.m7-app [data-volume-section] {
+       only السرعة. html.is-app is the canonical app marker (set before
+       first paint by the early inline script), so the website keeps its
+       volume sliders. */
+    html.is-app [data-volume-section] {
       display: none !important;
     }
 

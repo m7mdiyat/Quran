@@ -4717,9 +4717,14 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   // to the existing stop-on-switch behavior.
   if (!skipAudioStop && surahAudio.isActive() &&
       surahAudio.getSurah() === surahNo &&
-      surahAudio.getReciter() === CURRENT_RECITER) {
+      surahAudio.getReciter() === CURRENT_RECITER &&
+      surahAudio.isPlaying()) {
     surahAudio.play({ surah: surahNo, ayah: ayahNo, reciter: CURRENT_RECITER }).catch(() => { });
   } else if (!skipAudioStop) {
+    // Anything not actively playing stops here. Notably a PAUSED engine:
+    // the engine's fast path auto-resumes on play(), so routing a paused
+    // engine through the seek branch made every verse switch un-pause
+    // the recitation ("switching verses plays audio automatically").
     stopAudio();
   }
   const prevAyah = CURRENT;
@@ -5468,10 +5473,6 @@ async function init() {
   // (web ~63px; app adds the safe-area inset) and keep it fresh across
   // resizes / status-bar var changes. rAF defer keeps the layout read out
   // of the ResizeObserver delivery (Chrome RO loop-limit).
-  // App marker class for app-only CSS (e.g. hiding the in-app volume
-  // controls — physical buttons cover volume on the phone). Call-time
-  // isApp() per the app-only convention; never set on the website.
-  if (isApp()) document.documentElement.classList.add("m7-app");
   const headerEl = document.querySelector("header.site-header");
   if (headerEl) {
     const syncHeaderHeight = () => {

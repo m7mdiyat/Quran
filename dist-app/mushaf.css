@@ -2789,6 +2789,14 @@ body.dark .mushaf-fs__settings-panel {
     box-shadow: 0 18px 38px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
+/* Breathing room between the panel's sections — the wrapped reciter
+ * chips otherwise sat flush against the next section's label
+ * (طريقة التشغيل). The toolbar dropdown spaces its sections in markup;
+ * this panel builds them bare, so the gap lives here. */
+.mushaf-fs__settings-panel .mushaf-settings__section + .mushaf-settings__section {
+    margin-top: 14px;
+}
+
 /* Floating page-number — just the digit, small + muted. */
 .mushaf-fs__page-num {
     position: fixed;
