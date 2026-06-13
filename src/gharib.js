@@ -889,45 +889,83 @@ const LAMP_SVG = `
 
 let _explainEl = null;
 let _explainHideT = 0;
-let _explainLiftT = 0;
+let _explainCloseT = 0;   // Transitions.dev modal: is-closing → removed after --modal-close-dur
 let _lanternHoldFired = false;
+
+/* Desktop web only (mouse + fine pointer, not the app): the lantern
+ * explainer is hover-driven there — shown on pointer-enter, hidden on
+ * leave. Touch and the app keep the press-and-hold path. */
+function canHoverWeb() {
+    try {
+        return !DEPS?.isApp?.()
+            && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    } catch { return false; }
+}
+
+/* The card lives on <body>, NOT inside the lamp. The lamp sits in the
+ * backdrop-filtered .mushaf-root.glass; appending a child to it / lifting
+ * its z-index on hover repainted the filter and jittered the lamp ("jump"
+ * on hover). A body-level fixed card touches nothing in the glass. */
+function ensureExplainer() {
+    if (_explainEl) return _explainEl;
+    const el = document.createElement("div");
+    // --below = arrow on the top edge, pointing UP at the lantern.
+    el.className = "gharib-tip gharib-tip--explain gharib-tip--below";
+    el.setAttribute("dir", "rtl");
+    el.setAttribute("role", "note");
+    el.innerHTML = "<b>غريب القرآن</b>"
+        + "مع كل لفظة قرآنية تفهمها: تتّسع حصيلتك، ويعمُق تدبّرك، وتُضاف نقطة إلى حسابك هنا";
+    document.body.appendChild(el);
+    _explainEl = el;
+    return el;
+}
+
+/* Anchor the fixed card centred under the lamp, arrow pointing up at the
+ * lamp's centre, clamped to the viewport. Re-run on every open (the lamp
+ * may have moved); the card is dismissed on scroll, so it can't drift. */
+function positionExplainer(el) {
+    const root = _widget?.root;
+    if (!root) return;
+    const lamp = root.getBoundingClientRect();
+    const GAP = 10, MARGIN = 8;
+    const cw = el.offsetWidth;
+    const cx = lamp.left + lamp.width / 2;
+    const maxL = Math.max(window.innerWidth - MARGIN - cw, MARGIN);
+    const left = Math.min(Math.max(cx - cw / 2, MARGIN), maxL);
+    el.style.left = `${left.toFixed(1)}px`;
+    el.style.top = `${(lamp.bottom + GAP).toFixed(1)}px`;
+    const ax = Math.min(Math.max(cx - left, 14), Math.max(cw - 14, 14));
+    el.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
+}
 
 function hideLanternExplainer() {
     clearTimeout(_explainHideT);
-    _explainEl?.classList.remove("is-open");
-    // Keep the lamp's stacking lift (gharib-lamp--explaining)
-    // through the close animation, then drop it.
-    clearTimeout(_explainLiftT);
-    _explainLiftT = setTimeout(() => {
-        _explainEl?.parentElement?.classList.remove("gharib-lamp--explaining");
-    }, 220);
+    const el = _explainEl;
+    if (!el || !el.classList.contains("is-open")) return;
+    // Transitions.dev modal close: swap is-open → is-closing, then drop
+    // is-closing after --modal-close-dur (150ms) back to the base closed
+    // state (identical scale+opacity, so removing it never flickers).
+    el.classList.remove("is-open");
+    el.classList.add("is-closing");
+    clearTimeout(_explainCloseT);
+    _explainCloseT = setTimeout(() => el.classList.remove("is-closing"), 150);
 }
 
-function showLanternExplainer() {
-    const root = _widget?.root;
-    if (!root) return;
-    if (!_explainEl) {
-        const el = document.createElement("div");
-        // --below = card under the lamp, arrow on the top edge —
-        // always pointing UP at the lantern. Placement is pure CSS.
-        el.className = "gharib-tip gharib-tip--explain gharib-tip--below";
-        el.setAttribute("dir", "rtl");
-        el.setAttribute("role", "note");
-        el.innerHTML = "<b>غريب القرآن</b>"
-            + "مع كل لفظة قرآنية تفهمها: تتّسع حصيلتك، ويعمُق تدبّرك، وتُضاف نقطة إلى حسابك هنا";
-        root.appendChild(el);
-        _explainEl = el;
-    }
-    const el = _explainEl;
-    // Lift the lamp's stacking context while the card is open
-    // (nuclear stacking fix — see .gharib-lamp--explaining CSS).
-    clearTimeout(_explainLiftT);
-    root.classList.add("gharib-lamp--explaining");
-    el.classList.remove("is-open");
-    void el.offsetWidth;
+function showLanternExplainer(autoHide = true) {
+    if (!_widget?.root) return;
+    const el = ensureExplainer();
+    clearTimeout(_explainCloseT);
+    // Transitions.dev modal: base/closing → is-open. Anchor first so the
+    // grow happens from the placed spot; no reflow, so a re-hover mid-close
+    // eases from the current frame instead of snapping.
+    el.classList.remove("is-closing");
+    positionExplainer(el);
     el.classList.add("is-open");
     clearTimeout(_explainHideT);
-    _explainHideT = setTimeout(hideLanternExplainer, 5500);
+    // Web hover keeps the card up until the pointer leaves the lantern
+    // (mouseleave hides it); the press-and-hold path (touch/app) still
+    // auto-hides after 5.5s.
+    if (autoHide) _explainHideT = setTimeout(hideLanternExplainer, 5500);
 }
 
 /* Reflect the toggle on the lantern: flame lit/unlit, ring +
@@ -935,10 +973,10 @@ function showLanternExplainer() {
 function syncLanternState() {
     if (!_widget) return;
     _widget.root.classList.toggle("gharib-lamp--off", _featureOff);
+    // No `title` — it surfaced a native browser tooltip on hover; the
+    // explainer card already conveys the feature, and aria-pressed below
+    // keeps the toggle state for screen readers.
     _widget.root.setAttribute("aria-pressed", String(!_featureOff));
-    _widget.root.setAttribute("title", _featureOff
-        ? "غريب القرآن — إظهار الكلمات"
-        : "غريب القرآن — إخفاء الكلمات");
 }
 
 function ensureWidget() {
@@ -994,6 +1032,17 @@ function ensureWidget() {
     root.addEventListener("pointercancel", cancelHold);
     root.addEventListener("pointerleave", cancelHold);
     root.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // Desktop web: hovering the lantern shows the explainer; moving the
+    // pointer off it hides the card. No auto-hide while hovering. Gated
+    // to mouse/non-app so touch and the app are untouched (they keep the
+    // press-and-hold path above).
+    root.addEventListener("mouseenter", () => {
+        if (canHoverWeb()) showLanternExplainer(false);
+    });
+    root.addEventListener("mouseleave", () => {
+        if (canHoverWeb()) hideLanternExplainer();
+    });
 
     _widget = {
         root,
