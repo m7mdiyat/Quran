@@ -1,4 +1,4 @@
-import{j as b,k as l,l as m,m as _,n as y,o as M,p as k}from"./index-KqF0QFAN.js";let a=null,d=null,o=!1,s=!1;const w=()=>{try{return window.matchMedia("(prefers-reduced-motion: reduce)").matches}catch{return!1}},L=`
+import{j as b,k as l,l as m,m as _,n as y,o as M,p as k}from"./index-D_acSDzk.js";let a=null,d=null,o=!1,s=!1;const w=()=>{try{return window.matchMedia("(prefers-reduced-motion: reduce)").matches}catch{return!1}},L=`
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M10.7 3.2a1.55 1.55 0 0 1 2.6 0"/>
     <path d="M9.1 6.6c.3-1.7 1.4-2.6 2.9-2.6s2.6.9 2.9 2.6"/>
@@ -16,7 +16,7 @@ import{j as b,k as l,l as m,m as _,n as y,o as M,p as k}from"./index-KqF0QFAN.js
         <div class="offline-sheet__head">
           <div class="offline-sheet__icon" aria-hidden="true">${L}</div>
           <h2 id="gharibSavedTitle" class="offline-sheet__title">غريب القرآن</h2>
-          <p class="offline-sheet__desc">ستجد حصيلتك من ألفاظ القرآن هنا</p>
+          <p class="offline-sheet__desc">ستجد في هذه القائمة حصيلتك من ألفاظ القرآن التي تعلمتها من خانة <span class="gharib-saved-tadabbur">تدبّر</span></p>
           <div class="gharib-saved-meta" data-gh-meta></div>
         </div>
         <div class="gharib-saved-list" data-gh-list></div>

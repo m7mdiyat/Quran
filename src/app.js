@@ -1626,10 +1626,11 @@ function playCurrentAyah() {
     if (AUDIO_PLAYER !== nextAudio) return;
     console.error("Audio error:", url, e);
     stopAudio();
-    showTafsirAudioOffline();
+    if (isOfflineAudioError(nextAudio.error)) showTafsirAudioOffline();
   });
   nextAudio.play().catch((err) => {
     if (AUDIO_PLAYER !== nextAudio) return; // superseded
+    if (!isOfflineAudioError(err)) return;  // pause/abort while online — not offline
     console.error("Audio play failed:", err);
     stopAudio();
     showTafsirAudioOffline();
@@ -1655,6 +1656,22 @@ function hideTafsirAudioOffline() {
   const el = document.getElementById("tafsirAudioMsg");
   if (el) el.hidden = true;
   clearTimeout(_tafsirAudioMsgTimer);
+}
+
+/* Distinguish a real connectivity failure from a spurious abort. A play()
+ * promise rejects with AbortError when a pause or a newer ayah interrupts it,
+ * and with NotAllowedError under the autoplay policy — neither means "offline",
+ * yet both used to flash the "no internet" banner while fully online (the bug
+ * users hit when pausing or rapidly switching ayahs). MediaError codes from the
+ * element's "error" event: ABORTED(1)/DECODE(3) aren't connectivity issues;
+ * NETWORK(2) and SRC_NOT_SUPPORTED(4) — what a failed fetch surfaces when truly
+ * offline — are. navigator.onLine is unreliable in the WebView, so we read the
+ * error, never the flag. */
+function isOfflineAudioError(err) {
+  const name = err && err.name;
+  if (name === "AbortError" || name === "NotAllowedError") return false;
+  if (err && typeof err.code === "number") return err.code === 2 || err.code === 4;
+  return true; // generic play() rejection / fetch TypeError — treat as offline
 }
 
 // Mobile audio button and volume controls
@@ -4398,7 +4415,10 @@ async function handleCompareTafsirs() {
     }
   }
 
-  if (typeof window.gtag === "function") {
+  // Analytics is website-only — never fire a GA event inside the app (gtag is
+  // already undefined there once index.html's web-only gate skips loading it;
+  // the isApp() check makes that explicit and bulletproof).
+  if (!isApp() && typeof window.gtag === "function") {
     window.gtag("event", "compare_tafsirs_click", {
       ayah: `${surahNo}:${ayahNo}`,
     });

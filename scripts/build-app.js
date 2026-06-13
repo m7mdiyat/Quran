@@ -86,6 +86,28 @@ for (const target of toRemove) {
   }
 }
 
+// Strip Google Analytics from the app bundle entirely. Analytics is website-
+// only and is already gated off at runtime by index.html's inApp check, but
+// for an airtight "no third-party data collection" posture we also physically
+// remove the GA block from the app's index.html — so the measurement id and
+// the gtag loader aren't even present in the shipped app bundle. (The website
+// build in dist/ is untouched; only the dist-app/ copy is cleaned.)
+const appIndex = path.join(DIST_APP, 'index.html');
+if (fs.existsSync(appIndex)) {
+  let html = fs.readFileSync(appIndex, 'utf8');
+  const before = html;
+  // Drop any inline <script> that references GA, plus the GA comment.
+  html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (m) =>
+    /googletagmanager\.com|G-GDBDK944QZ|gtag\(/.test(m) ? '' : m);
+  html = html.replace(/<!--[\s\S]*?(?:Google Analytics|gtag)[\s\S]*?-->/gi, '');
+  if (html !== before) {
+    fs.writeFileSync(appIndex, html);
+    console.log('  🧹 Stripped Google Analytics from dist-app/index.html');
+  } else {
+    console.log('  ⚠️  No Google Analytics block found in dist-app/index.html (already clean?)');
+  }
+}
+
 // Final size report
 const finalMB = getDirSizeMB(DIST_APP);
 console.log(`\n✅ Done!`);

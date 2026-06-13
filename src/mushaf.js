@@ -762,6 +762,22 @@ function hideMushafAudioOffline() {
     clearTimeout(_mushafAudioMsgTimer);
 }
 
+/* Distinguish a real connectivity failure from a spurious abort. A play()
+ * promise rejects with AbortError when a pause or a newer ayah interrupts it,
+ * and with NotAllowedError under the autoplay policy — neither means "offline",
+ * yet both used to flash the "no internet" banner while fully online (the bug
+ * users hit when pausing or rapidly switching ayahs). MediaError codes from the
+ * element's "error" event: ABORTED(1)/DECODE(3) aren't connectivity issues;
+ * NETWORK(2) and SRC_NOT_SUPPORTED(4) — what a failed fetch surfaces when truly
+ * offline — are. navigator.onLine is unreliable in the WebView, so we read the
+ * error, never the flag. */
+function isOfflineAudioError(err) {
+    const name = err && err.name;
+    if (name === "AbortError" || name === "NotAllowedError") return false;
+    if (err && typeof err.code === "number") return err.code === 2 || err.code === 4;
+    return true; // generic play() rejection / fetch TypeError — treat as offline
+}
+
 /* ============================================================
  * QCF4 offline download — user-initiated from the offline panel.
  *
@@ -2243,18 +2259,15 @@ function submitSurahDetail() {
     _selectorCommitted = true;
     closeSurahDropdown();
     DEPS?.onSelectorCommit?.();
-    // The selector is always visible in the search pill, so honour the
-    // active mode: Tafsir mode opens the ayah in the Tafsir panel, Mushaf
-    // mode navigates the Mushaf (surah view when the wheel is at 1).
-    if (!MUSHAF_MODE && DEPS?.openTafsirForAyah) {
-        DEPS.openTafsirForAyah(s, v, { scroll: true, animate: true });
-        return;
-    }
-    // Task 2: picking an ayah while ALREADY in Mushaf mode must not move
-    // the viewport at all — suppress applyTargetHighlight's scrollIntoView
-    // (the target-ayah flash still shows). Deep links / boot keep scrolling.
-    if (v === 1) openMushafAtSurah(s, { noScroll: true });
-    else openMushafAtAyah(s, v, { noScroll: true });
+    // The search-pill selector always opens the pick in the Mushaf (surah
+    // view when the wheel is at 1), regardless of the active mode — a pick
+    // here is a "go read this" action, so it lands in the Mushaf reader.
+    // Already in Mushaf? Don't move the viewport (the target flash is enough
+    // — Task 2); coming from the homepage, let the freshly-opened panel
+    // scroll into view.
+    const noScroll = MUSHAF_MODE;
+    if (v === 1) openMushafAtSurah(s, { noScroll });
+    else openMushafAtAyah(s, v, { noScroll });
 }
 
 /* ============================================================
@@ -3607,6 +3620,7 @@ function mushafEngineCallbacks() {
             setPlaybackPlayingState(false);
         },
         onError: (err) => {
+            if (!isOfflineAudioError(err)) return; // pause/switch abort, not offline
             console.error("Mushaf surah engine error:", err);
             stopMushafAudio();
             showMushafAudioOffline();
@@ -3637,6 +3651,7 @@ function startMushafSurahEngine(surahNo, ayahNo, verseKey, reciter) {
         speed: AUDIO_SPEED,
         callbacks: mushafEngineCallbacks(),
     }).catch((err) => {
+        if (!isOfflineAudioError(err)) return; // superseded / pause abort, not offline
         console.error("Mushaf surah engine play failed:", err);
         stopMushafAudio();
         showMushafAudioOffline();
@@ -3764,10 +3779,11 @@ function playMushafAyah(verseKey) {
     nextAudio.addEventListener("error", () => {
         if (AUDIO_PLAYER !== nextAudio) return;
         stopMushafAudio();
-        showMushafAudioOffline();
+        if (isOfflineAudioError(nextAudio.error)) showMushafAudioOffline();
     });
     nextAudio.play().catch((e) => {
         if (AUDIO_PLAYER !== nextAudio) return; // superseded by another ayah click
+        if (!isOfflineAudioError(e)) return;    // pause/abort while online — not offline
         console.error("Mushaf audio play failed", e);
         stopMushafAudio();
         showMushafAudioOffline();

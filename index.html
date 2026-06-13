@@ -4,13 +4,32 @@
 <head>
   <meta charset="utf-8" />
 
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GDBDK944QZ"></script>
+  <!-- Google Analytics (gtag.js) — WEBSITE ONLY. Skipped entirely inside the
+       Capacitor app via the same inApp check used for html.is-app (works at
+       head-time, before window.Capacitor exists: covers iOS capacitor://,
+       Android localhost, and window.Capacitor). In the app no analytics script
+       is fetched and no tracking request fires; the website (m7mdiyat.com)
+       loads and uses GA exactly as before. (scripts/build-app.js also strips
+       this block from the app bundle so the GA id isn't even present there.) -->
   <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag('js', new Date());
-    gtag('config', 'G-GDBDK944QZ');
+    (function () {
+      try {
+        var loc = window.location;
+        var inApp = (typeof window.Capacitor !== "undefined")
+          || (loc.protocol === "capacitor:")
+          || (loc.hostname === "localhost" && loc.port === ""
+              && navigator.userAgent.indexOf("Android") !== -1);
+        if (inApp) return; // app → no analytics, no third-party request
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { dataLayer.push(arguments); };
+        gtag('js', new Date());
+        gtag('config', 'G-GDBDK944QZ');
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=G-GDBDK944QZ';
+        document.head.appendChild(s);
+      } catch (e) { }
+    })();
   </script>
 
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -3840,6 +3859,11 @@
     #gharibSavedSheet .offline-sheet__icon svg { width: 58px; height: 58px; }
     #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #e3a338; stroke: none; }
     body.dark #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #f0c069; }
+
+    /* "التدبر" in the panel's description — picked out in the lantern's own
+       warm gold (same palette as the flame above). */
+    .gharib-saved-tadabbur { color: #e3a338; font-weight: 700; }
+    body.dark .gharib-saved-tadabbur { color: #f0c069; }
 
     /* Head meta row: count chip + reset-all (or the reset confirmation). */
     .gharib-saved-meta {

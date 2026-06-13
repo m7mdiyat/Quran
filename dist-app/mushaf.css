@@ -2251,7 +2251,10 @@ html.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"] {
 
 body.dark #searchPillActions .mushaf-surah-dropdown,
 html.dark #searchPillActions .mushaf-surah-dropdown {
-    background-color: #1e293b;
+    /* Opaque equivalent of the settings/menu surface (var(--card) ≈
+       rgb(40,46,54)) — a neutral grey, NOT the old slate-navy #1e293b. Stays
+       solid (no var/backdrop-filter) for the glass-compositing reason above. */
+    background-color: #282e36;
 }
 
 /* ============================================================
@@ -3477,71 +3480,65 @@ body.dark .gharib-tip::after {
 
 /* Long-press lantern explainer — same card family, smaller. */
 .gharib-tip--explain {
-    max-width: min(280px, calc(100vw - 24px));
-    font-size: 0.88rem;
-    line-height: 1.8;
+    max-width: min(240px, calc(100vw - 24px));
+    padding: 0.4rem 0.7rem;
+    font-size: 0.8rem;
+    line-height: 1.65;
 }
 
-/* DOM-anchored placement: the card is a child of the lamp button
-   (position: relative; fixed in fullscreen — both fine anchors),
-   so the browser keeps it glued below the lantern in every state:
-   page scrolled, fullscreen re-anchor, mid-animation. No screen-
-   coordinate math to go stale — the old fixed-position placement
-   drifted off the lamp in the app once the page was scrolled.
-   right: calc(50% - 26px) puts the card's right edge 26px right of
-   the lamp's CENTRE, and the arrow sits 26px in from that edge —
-   the arrow tip lands on the lamp's centre at any lamp size
-   (40px toolbar / 32px fullscreen circle). width: max-content is
-   required: an absolute child shrink-wraps to the 40px button
-   otherwise. */
-.gharib-lamp > .gharib-tip--explain {
-    position: absolute;
-    top: calc(100% + 10px);
-    right: calc(50% - 26px);
-    left: auto;
-    width: max-content;
-    cursor: default;
+/* The explainer lives on <body> (position:fixed + z-index:2100 from
+   the base .gharib-tip), NOT inside the lamp. The lamp sits in the
+   backdrop-filtered .mushaf-root.glass, and ANY change to a glass
+   descendant on hover (a child appearing, the old z-index lift) forces
+   the backdrop-filter to repaint, which jitters the glass contents —
+   the lamp "jumped". A body-level card touches nothing inside the glass,
+   and z-index:2100 already floats it above the page (same as the meaning
+   tip), so the lamp-lift cure is gone. src/gharib.js anchors it under
+   the lamp each time it opens (left/top/--tip-ax). */
+.gharib-tip.gharib-tip--explain {
     text-align: right;
-    --tip-ax: calc(100% - 26px);
-    transform-origin: calc(100% - 26px) 0;
-    /* Nuclear stacking fix — same cure as the Tafsir toolbar
-       dropdowns (index.html): inside the backdrop-filtered .glass,
-       sibling transient stacking contexts (.mushaf-page
-       will-change:transform, surah-header opacity/filter
-       transitions, animated gharib pseudos) composited this card
-       UNDER the page text despite z-index 2100. Own compositing
-       group + huge z on the card AND its wrap (the lamp, lifted
-       only while the card is open), and NO opacity fade —
-       visibility + scale only, so no mid-fade frame can ever
-       blend page content through the panel. */
-    z-index: 99999;
-    isolation: isolate;
-    opacity: 1 !important;
-    will-change: transform;
+    cursor: default;
+    /* ── Transitions.dev "Modal open / close" port — opacity + scale
+       0.96 with a distinct is-closing state (src/gharib.js swaps
+       is-open → is-closing on hover-out, then drops is-closing after
+       --modal-close-dur). ── */
+    --modal-open-dur: 250ms;
+    --modal-close-dur: 150ms;
+    --modal-scale: 0.96;
+    --modal-scale-close: 0.96;
+    --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: center;
+    transform: scale(var(--modal-scale));
+    opacity: 0;
+    visibility: visible;   /* opacity-gated (overrides .gharib-tip's hidden) */
+    pointer-events: none;
+    will-change: transform, opacity;
     transition:
-        transform 170ms cubic-bezier(0.4, 0, 0.2, 1),
-        visibility 0s linear 170ms;
+        transform var(--modal-open-dur) var(--modal-ease),
+        opacity   var(--modal-open-dur) var(--modal-ease);
 }
 
-.gharib-lamp > .gharib-tip--explain.is-open {
-    transition:
-        transform 340ms cubic-bezier(0.34, 1.36, 0.64, 1),
-        visibility 0s;
+.gharib-tip.gharib-tip--explain.is-open {
+    transform: scale(1);
+    opacity: 1;
+    pointer-events: auto;
 }
 
-/* The wrap's lift — applied by src/gharib.js while the explainer
-   is open (and through its close animation), so the lamp doesn't
-   permanently float above unrelated toolbar dropdowns. */
-.gharib-lamp.gharib-lamp--explaining {
-    z-index: 99999;
+.gharib-tip.gharib-tip--explain.is-closing {
+    transform: scale(var(--modal-scale-close));
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        transform var(--modal-close-dur) var(--modal-ease),
+        opacity   var(--modal-close-dur) var(--modal-ease);
 }
 
 .gharib-tip--explain b {
     display: block;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #a87718;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
 body.dark .gharib-tip--explain b {
@@ -3552,6 +3549,11 @@ body.dark .gharib-tip--explain b {
     .gharib-tip,
     .gharib-tip.is-open {
         transition: none;
+    }
+    .gharib-tip.gharib-tip--explain,
+    .gharib-tip.gharib-tip--explain.is-open,
+    .gharib-tip.gharib-tip--explain.is-closing {
+        transition: none !important;
     }
 }
 
@@ -3591,6 +3593,14 @@ body.dark .gharib-tip--explain b {
 
 body.dark .gharib-lamp {
     color: #9ca3af;
+}
+
+/* Opt out of the site-wide `button:hover { transform: translateY(-1px) }`
+   lift (index.html) — it made the lantern visibly hop 1px on hover and
+   drop back on leave. The lamp is a toggle with a docked badge/ring, not
+   a "lift" button. ID selector beats the global rule's specificity. */
+#gharibLamp:hover {
+    transform: none;
 }
 
 .gharib-lamp__icon {

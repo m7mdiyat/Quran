@@ -2251,7 +2251,10 @@ html.dark #searchPillActions .mushaf-surah-select[aria-expanded="true"] {
 
 body.dark #searchPillActions .mushaf-surah-dropdown,
 html.dark #searchPillActions .mushaf-surah-dropdown {
-    background-color: #1e293b;
+    /* Opaque equivalent of the settings/menu surface (var(--card) ≈
+       rgb(40,46,54)) — a neutral grey, NOT the old slate-navy #1e293b. Stays
+       solid (no var/backdrop-filter) for the glass-compositing reason above. */
+    background-color: #282e36;
 }
 
 /* ============================================================

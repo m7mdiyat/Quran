@@ -110,7 +110,7 @@ function buildSheet() {
         <div class="offline-sheet__head">
           <div class="offline-sheet__icon" aria-hidden="true">${LAMP_SVG}</div>
           <h2 id="gharibSavedTitle" class="offline-sheet__title">غريب القرآن</h2>
-          <p class="offline-sheet__desc">ستجد حصيلتك من ألفاظ القرآن هنا</p>
+          <p class="offline-sheet__desc">ستجد في هذه القائمة حصيلتك من ألفاظ القرآن التي تعلمتها من خانة <span class="gharib-saved-tadabbur">تدبّر</span></p>
           <div class="gharib-saved-meta" data-gh-meta></div>
         </div>
         <div class="gharib-saved-list" data-gh-list></div>
