@@ -3118,28 +3118,54 @@ html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
    NO container shapes: no boxes, pills, borders, rings or
    outlines. The gold light comes off the Arabic letterforms
    themselves. Each tagged span re-renders its own glyph
-   (content: attr(data-ghc)) in two stacked pseudo layers:
+   (content: attr(data-ghc)) in stacked pseudo layers:
 
-     ::before — transparent text whose layered gold TEXT-SHADOW
-       is the halo: it follows the glyph contours exactly and
-       fades into nothing (em-sized → survives autoFit/zoom
-       with no re-measure).
-     ::after — a gold gradient painted THROUGH the glyphs
-       (background-clip: text): the letters themselves turn
-       briefly molten.
+     ::before (every theme) — transparent text whose layered gold
+       TEXT-SHADOW is the halo: it hugs the glyph contours and
+       fades into nothing (em-sized → survives autoFit/zoom with
+       no re-measure). On the phone the same halo is built with
+       filter: blur()+drop-shadow() (WKWebView won't paint
+       text-shadow on the duplicated layer).
+     ::after (DARK THEME ONLY) — a gold gradient painted THROUGH
+       the glyphs (background-clip: text): the light dark-theme
+       ink turns molten gold, which reads beautifully there. It is
+       deliberately absent on the light theme, where gold-on-glyph
+       made the black page-ink unreadable — so on light the dark
+       ink always shows through and the gold only beams AROUND it.
 
-   Both layers animate OPACITY ONLY (pre-painted, compositor-
-   friendly) on shared keyframes with NO per-word delay: every
-   gharib word on the page breathes and holds in the same phase,
-   one synchronized gold pulse. Every glow opacity is
-   multiplied by two registered, TRANSITIONED custom props:
+   The breath animates a CUSTOM PROP (--gw-hb / --gw-ib), never
+   `opacity` directly — a direct opacity keyframe would composite
+   each pseudo onto its own layer and clip the overflowing halo to
+   a box (see the @property note below). With NO per-word delay
+   every gharib word breathes in the same phase. The halo breathes
+   0.6 → 1 and the molten ink 0.42 → 0.72, offset in phase so the
+   gold both breathes AND shifts shade — the dim point stays well
+   lit (high floor), never washing out toward zero. Each pseudo's static `opacity: calc(...)`
+   multiplies the breath by two more registered, TRANSITIONED
+   props:
      --gh-on  global lantern toggle (1 → 0 fades the whole
-              feature out smoothly while keyframes keep running)
-     --gw-x   per-word settle (gold breathes out on learn)
+              feature out smoothly while the keyframes keep running)
+     --gw-x   molten-ink presence (1 live gold word, 0 learned).
+   On learn, the ::before halo transitions gold → white (cool
+   silver on the light theme, where white would vanish) and the
+   dark-theme molten ink fades off (--gw-x → 0), so a learned word
+   keeps breathing, just no longer gold.
    ═══════════════════════════════════════════════════════════ */
 
 @property --gh-on { syntax: "<number>"; initial-value: 1; inherits: true; }
 @property --gw-x { syntax: "<number>"; initial-value: 1; inherits: true; }
+/* The breath is animated through these (NOT through `opacity`
+   directly): a keyframe animation on `opacity` would force each
+   glow pseudo onto its own compositing layer, whose bounds are
+   the glyph's inline-block box — and that layer CLIPS the wide
+   text-shadow / filter halo that spills past the box, leaving a
+   rectangular notch at word ends and tall letters. Animating a
+   custom prop instead keeps the work on the main thread, so the
+   pseudo is never promoted and the glow paints unclipped. Safe
+   non-zero initial values: if a renderer can't keyframe a custom
+   property, the glow stays lit (static) rather than vanishing. */
+@property --gw-hb { syntax: "<number>"; initial-value: 0.7; inherits: false; }
+@property --gw-ib { syntax: "<number>"; initial-value: 0.4; inherits: false; }
 
 .gharib-word {
     position: relative;
@@ -3147,7 +3173,7 @@ html.is-app .mushaf-ayah .mushaf-word:not(.mushaf-end) {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     --gw-x: 1;
-    transition: --gh-on 0.65s ease, --gw-x 0.8s ease, text-shadow 0.8s ease;
+    transition: --gh-on 0.65s ease, --gw-x 0.8s ease;
 }
 
 body.gharib-off .gharib-word {
@@ -3155,22 +3181,25 @@ body.gharib-off .gharib-word {
     cursor: default;
 }
 
-.gharib-word::before,
-.gharib-word::after {
+/* The halo (every theme): gold hugging the letters, behind them.
+   On the LIGHT theme this is the only layer — the dark ink shows
+   through unchanged and stays fully readable, gold beaming only
+   AROUND it. The dark theme adds an on-glyph molten layer below
+   (body.dark ::after), which reads well because the page ink is
+   light there. */
+.gharib-word::before {
     content: attr(data-ghc);
     position: absolute;
     inset: 0;
     white-space: pre;
     pointer-events: none;
     color: transparent;
-    will-change: opacity;
-}
-
-/* Halo — layered gold shadows hugging the letter shapes,
-   bright at the stroke, dissolving outward to nothing.
-   Saturated amber (not pale gold) so it reads on the light
-   theme's near-white page. */
-.gharib-word::before {
+    /* NO will-change: promoting this pseudo to its own compositing
+       layer clips the soft text-shadow halo to the layer's
+       rectangular bounds, leaving a faint hard notch at the letters
+       whose halo reaches the box edge. The opacity loop composites
+       fine without the hint; de-promoting lets the shadow bleed
+       freely in the page layer. */
     z-index: -1;
     /* NOT fully transparent: WebKit (the phone WebView) skips the
        entire text paint — text-shadow included — when the fill
@@ -3183,8 +3212,14 @@ body.gharib-off .gharib-word {
         0 0 0.20em rgba(246, 168, 38, 0.62),
         0 0 0.45em rgba(230, 152, 26, 0.40),
         0 0 0.85em rgba(218, 142, 22, 0.18);
-    opacity: 0;
-    animation: gw-halo 4.6s ease-in-out infinite;
+    /* Opacity is a static calc driven by the animated --gw-hb (see
+       the @property note above) — NOT keyframed directly, so the
+       pseudo isn't promoted and the halo isn't clipped to a box. */
+    opacity: calc(var(--gh-on, 1) * var(--gw-hb, 0.7));
+    animation: gw-halo 6.8s ease-in-out infinite;
+    /* Gold → white recolour when the word is learned. These
+       interpolate independently of the breath. */
+    transition: text-shadow 0.7s ease, filter 0.7s ease, color 0.7s ease;
 }
 
 body.dark .gharib-word::before {
@@ -3227,96 +3262,130 @@ html.is-app body.dark .gharib-word::before {
         drop-shadow(0 0 0.42em rgba(255, 193, 77, 0.55));
 }
 
-/* Molten ink — gold gradient clipped to the glyphs, riding just
-   behind the halo crest. Peak kept moderate so the real ink
-   underneath always reads. */
-.gharib-word::after {
-    z-index: 1;
-    background: linear-gradient(115deg, #d8a23a 0%, #f6d188 38%, #cf9526 68%, #eebe64 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    opacity: 0;
-    animation: gw-ink 4.6s ease-in-out infinite;
-    animation-delay: -0.35s; /* ink crest rides just ahead of the halo crest */
+/* The breathing wave. The keyframes drive --gw-hb (the halo
+   breath factor), NOT opacity — the pseudo reads it through a
+   static `opacity: calc(... * var(--gw-hb))`, so no compositor
+   layer is forced and the glow is never clipped to a box.
+   The halo breathes 0.6 → 1 — a clear but gentle swell whose dim
+   point stays well lit, so the gold beam never washes out and
+   merely brightens and softens around the (always dark, always
+   readable) letters. */
+@keyframes gw-halo {
+    0%, 100% { --gw-hb: 0.6; }
+    50%      { --gw-hb: 1; }
 }
 
+/* DARK THEME ONLY — molten ink: a gold gradient clipped THROUGH
+   the glyphs (background-clip: text). On the dark page the real
+   ink is light, so turning it gold reads beautifully and gives
+   the richer look the dark theme had before. (It is deliberately
+   absent on the light theme, where gold-on-glyph made the black
+   text unreadable.) Breathes wider than the halo and offset in
+   phase, so the gold shifts shade. --gw-x is the molten-ink
+   presence: 1 for a live gold word, 0 once learned (the sheen
+   fades off so only the recoloured white halo remains). */
 body.dark .gharib-word::after {
+    content: attr(data-ghc);
+    position: absolute;
+    inset: 0;
+    white-space: pre;
+    pointer-events: none;
+    color: transparent;
+    z-index: 1;
     background: linear-gradient(115deg, #e8b455 0%, #ffe3a3 38%, #dfa83e 68%, #f7cf82 100%);
     -webkit-background-clip: text;
     background-clip: text;
-}
-
-/* The breathing wave. var()/calc() in keyframes re-resolve per
-   frame, so the transitioned --gh-on/--gw-x multipliers fade a
-   LIVE animation smoothly — no snap, either direction.
-   Duty cycle is glow-heavy by request: a long luminous plateau
-   (~16%–74% of the cycle) with a brief, shallow settle at the
-   loop point — the gold spends most of its time lit. */
-@keyframes gw-halo {
-    0%, 100% { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.35); }
-    16%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 1); }
-    74%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 1); }
+    /* Custom-prop-driven opacity (see the @property note) — keeps
+       this layer off the compositor, which also keeps
+       background-clip: text from leaking the gradient as a box. */
+    opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * var(--gw-ib, 0.4));
+    animation: gw-ink 6.8s ease-in-out infinite;
+    animation-delay: -2.7s; /* offset ~40% of the period from the halo */
 }
 
 @keyframes gw-ink {
-    0%, 100% { opacity: 0; }
-    20%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.5); }
-    68%      { opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.5); }
-    92%      { opacity: 0; }
+    0%, 100% { --gw-ib: 0.42; }
+    50%      { --gw-ib: 0.72; }
 }
 
-/* Settled (learned): a quiet static grey halo off the glyphs —
-   same edgeless treatment, no motion. --settling is the live
-   handover (gold breathes out via --gw-x while the grey fades
-   in via the span's text-shadow transition); --settled is the
-   decoration-time state: no glow layers at all. */
+/* Learned: the halo keeps breathing but recolours gold → WHITE,
+   signalling "this used to beam gold", and (dark theme) the
+   molten on-glyph sheen fades off via --gw-x → 0 so the glyph
+   returns to its normal light ink. --settling is the live
+   handover (the ::before colour transition + the --gw-x ink
+   fade); --settled is the same look rendered straight on later
+   pages. The halo multiplies only by --gh-on, so it keeps
+   glowing and the lantern toggle still fades it.
+
+   When learned the word still breathes, but no longer gold. On
+   the DARK theme it beams near-white. On the LIGHT theme a white
+   glow is invisible against the white page, so it instead gets a
+   subtle, clean BLACK halo — a soft dark bloom around the ink
+   that reads clearly on white and marks the word as done. */
 .gharib-word--settling,
 .gharib-word--settled {
     --gw-x: 0;
-    text-shadow: 0 0 0.40em rgba(120, 124, 130, 0.40);
 }
 
-body.dark .gharib-word--settling,
-body.dark .gharib-word--settled {
-    text-shadow: 0 0 0.40em rgba(165, 172, 182, 0.30);
+/* Light theme: subtle black halo. */
+.gharib-word--settling::before,
+.gharib-word--settled::before {
+    text-shadow:
+        0 0 0.07em rgba(16, 20, 28, 0.42),
+        0 0 0.18em rgba(16, 20, 28, 0.24),
+        0 0 0.40em rgba(16, 20, 28, 0.12);
 }
 
-.gharib-word--settled::before,
-.gharib-word--settled::after {
-    content: none;
+body.dark .gharib-word--settling::before,
+body.dark .gharib-word--settled::before {
+    text-shadow:
+        0 0 0.07em rgba(248, 250, 255, 0.92),
+        0 0 0.20em rgba(238, 242, 250, 0.60),
+        0 0 0.45em rgba(230, 236, 248, 0.34),
+        0 0 0.85em rgba(225, 232, 245, 0.16);
 }
 
-/* The settled grey dims out with the lantern toggle too. */
-body.gharib-off .gharib-word--settling,
-body.gharib-off .gharib-word--settled {
-    text-shadow: 0 0 0.40em rgba(120, 124, 130, 0);
+/* Phone halo (filter path), light theme: subtle black halo. */
+html.is-app .gharib-word--settling::before,
+html.is-app .gharib-word--settled::before {
+    color: #10141c;
+    filter:
+        blur(0.05em)
+        drop-shadow(0 0 0.14em rgba(16, 20, 28, 0.5))
+        drop-shadow(0 0 0.34em rgba(16, 20, 28, 0.26));
 }
 
-body.dark.gharib-off .gharib-word--settling,
-body.dark.gharib-off .gharib-word--settled {
-    text-shadow: 0 0 0.40em rgba(165, 172, 182, 0);
+html.is-app body.dark .gharib-word--settling::before,
+html.is-app body.dark .gharib-word--settled::before {
+    color: #f4f7ff;
+    filter:
+        blur(0.05em)
+        drop-shadow(0 0 0.16em rgba(244, 248, 255, 0.95))
+        drop-shadow(0 0 0.42em rgba(230, 238, 250, 0.55));
 }
 
 /* After the toggle's fade-out settles (src/gharib.js adds this
    750ms later), drop the glow layers entirely — no invisible
-   animations keep running while the feature is off. */
+   animation keeps running while the feature is off. The ::after
+   only exists on the dark theme; listing it here is harmless on
+   light. */
 body.gharib-off-done .gharib-word::before,
 body.gharib-off-done .gharib-word::after {
     content: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    /* Static gold halo instead of the wave; toggle/settle are
-       instant (the prop transitions are off with everything else). */
+    /* Static halo instead of the wave (gold for live words, the
+       recoloured silver/white for learned ones — the colour rules
+       above still apply). The dark-theme molten ink is dropped. */
     .gharib-word {
         transition: none;
     }
     .gharib-word::before {
         animation: none;
-        opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * 0.6);
-        will-change: auto;
+        opacity: calc(var(--gh-on, 1) * 0.72);
     }
-    .gharib-word::after {
+    body.dark .gharib-word::after {
         display: none;
     }
 }

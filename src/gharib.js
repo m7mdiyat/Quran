@@ -5,8 +5,8 @@
  * (غريب القرآن, ~6,100 entries from a classical gharib source)
  * glow gold on the rendered page; tapping one pops a compact
  * meaning tooltip out of the word, marks it learned (persisted),
- * and settles the glow to a quiet grey everywhere that word
- * appears. A lantern (فانوس) widget in the Mushaf toolbar counts
+ * and recolours the breathing glow to white everywhere that word
+ * appears (so a learned word still beams, just no longer gold). A lantern (فانوس) widget in the Mushaf toolbar counts
  * all-time learned words and renders a per-page segmented
  * progress ring (one segment per gharib WORD on the page).
  *
@@ -481,10 +481,10 @@ function decoratePage(pageEl, pageData) {
     if (_onDecorateHook) { try { _onDecorateHook(PAGE_GHARIB); } catch { } }
 }
 
-/* Settle every occurrence of a key (gold breathes out, the
- * quiet grey halo fades in — pure CSS: --settling drives the
- * registered --gw-x multiplier + the span's text-shadow
- * transition). Future pages render straight to --settled. */
+/* Settle every occurrence of a key — pure CSS: --settling
+ * transitions the ::before halo gold → white (and fades the
+ * dark-theme molten ink off via --gw-x), so the beam keeps
+ * breathing in white. Future pages render straight to --settled. */
 function settleKey(key) {
     document.querySelectorAll(`.gharib-word[data-gh="${CSS.escape(key)}"]`)
         .forEach((el) => el.classList.add("gharib-word--settling"));
