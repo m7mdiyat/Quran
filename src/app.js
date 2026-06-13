@@ -5543,6 +5543,10 @@ async function init() {
     import("./offline-panel.js")
       .then((m) => m.initOfflinePanel())
       .catch((e) => console.error("offline-panel init failed", e));
+    // Lock the page behind any open header sheet (offline/feedback/notes/غريب).
+    import("./sheet-scroll-lock.js")
+      .then((m) => m.initSheetScrollLock())
+      .catch((e) => console.error("sheet-scroll-lock init failed", e));
     import("./feedback-panel.js")
       .then((m) => m.initFeedbackPanel())
       .catch((e) => console.error("feedback-panel init failed", e));
@@ -5565,6 +5569,10 @@ async function init() {
         getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
       }))
       .catch((e) => console.error("notes init failed", e));
+    // غريب القرآن — saved-words collection + lantern header button.
+    import("./gharib-saved-panel.js")
+      .then((m) => m.initGharibSavedPanel())
+      .catch((e) => console.error("gharib-saved-panel init failed", e));
   }
 
   // Lock search until core files load

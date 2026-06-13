@@ -241,6 +241,13 @@ function entriesFor(s, a) {
     return _index?.get(`${s}:${a}`) || [];
 }
 
+/* Ensure the gharib dataset is loaded (resolves to the index Map, or
+ * null on failure). The saved-words panel awaits this before reverse-
+ * mapping learned keys back to their word/meaning. */
+export function ensureGharibData() {
+    return loadData();
+}
+
 /* ============================================================
  * Dev audit — entries that could not be located are collected
  * and reported once per page-render burst as a console.table.
@@ -322,6 +329,44 @@ function learn(key) {
 
 export function gharibLearnedCount() {
     return learnedSet().size;
+}
+
+/* key → representative { w, m, s, a }, built once over the whole
+ * dataset (earliest mushaf occurrence wins). The learned store keeps
+ * only normalized keys; this is how the saved-words panel recovers
+ * each word's vocalized text + meaning + a place to jump to. */
+let _repByKey = null;
+function repByKey() {
+    if (_repByKey) return _repByKey;
+    if (!_index) return new Map(); // not loaded — caller ensureGharibData() first
+    const all = [];
+    for (const list of _index.values()) for (const e of list) all.push(e);
+    all.sort((x, y) => (x.s - y.s) || (x.a - y.a));
+    const rep = new Map();
+    for (const e of all) {
+        const key = keyForPhrase(e.w);
+        if (key && !rep.has(key)) rep.set(key, { w: e.w, m: e.m, s: e.s, a: e.a });
+    }
+    _repByKey = rep;
+    return rep;
+}
+
+/* Every learned word as { key, w, m, s, a }, newest-first (reverse
+ * learning order — the Set preserves insertion order across saves).
+ * Needs ensureGharibData() resolved for w/m/s/a; a key with no dataset
+ * match (≈impossible once loaded) degrades to the bare key so nothing
+ * the user revealed silently disappears from their collection. */
+export function gharibSavedWords() {
+    const keys = [...learnedSet()];
+    if (!keys.length) return [];
+    const rep = repByKey();
+    const out = [];
+    for (let i = keys.length - 1; i >= 0; i--) {
+        const k = keys[i];
+        const r = rep.get(k);
+        out.push(r ? { key: k, ...r } : { key: k, w: k, m: "", s: 0, a: 0 });
+    }
+    return out;
 }
 
 /* ============================================================
@@ -591,6 +636,13 @@ function tipDisplayText(s) {
     return out.join("");
 }
 
+/* The same tashkeel-reduced readability treatment the meaning tooltip
+ * uses — exported for the saved-words panel so its meanings read
+ * identically to the in-mushaf tip. */
+export function gharibTipText(s) {
+    return tipDisplayText(s);
+}
+
 function ensureTip() {
     if (_tipEl) return _tipEl;
     const el = document.createElement("div");
@@ -611,7 +663,7 @@ function ensureTip() {
     return el;
 }
 
-function openTipFor(span) {
+function openTipFor(span, point) {
     const key = span.dataset.gh, vk = span.dataset.ghRef;
     const entry = ENTRY_BY_REF.get(`${key}@${vk}`);
     if (!entry) return;
@@ -632,30 +684,34 @@ function openTipFor(span) {
     tip.classList.remove("is-open");
     tip.textContent = tipDisplayText(entry.m);
 
-    // Measure (the closed state is laid out, just invisible), then place
-    // hugging the INK BAND: the span's line box is far taller than the
-    // visible glyphs (line-height + QCF4 metrics), so anchoring to the
-    // box edges floated the tip well away from the word — especially low
-    // on the page in the app. Above the ink by default, flipped below
-    // near the top (status-bar aware), clamped inside the page card.
-    const wr = span.getBoundingClientRect();
-    const fsz = parseFloat(getComputedStyle(span).fontSize) || 24;
-    const cyMid = wr.top + wr.height / 2;
-    const inkTop = cyMid - fsz * 0.62;
-    const inkBottom = cyMid + fsz * 0.52;
+    // Measure (the closed state is laid out, just invisible), then place from
+    // the ACTUAL TAP POINT — not the word's box. A .mushaf-word's
+    // getBoundingClientRect is the QCF4 LINE box (far taller than the visible
+    // glyph and not centred on it; a Range rect inherits the font's tall
+    // ascent/descent the same way), so anchoring to any box edge floated the
+    // card well above the ink — worst on the phone and in fullscreen. The tap
+    // point is by definition ON the glyph the user pressed, so the card always
+    // lands at the word. Vertical comes from the tap; the horizontal centre +
+    // page clamp come from the box (its WIDTH is accurate). A fixed tip shares
+    // the viewport coordinate space of the tap's client coords in every mode
+    // (the body position:fixed scroll-lock doesn't reparent a fixed child).
+    const box = span.getBoundingClientRect();
+    const tapY = (point && Number.isFinite(point.y)) ? point.y : box.top + box.height / 2;
     const pageEl = span.closest(".mushaf-page");
     const pr = pageEl?.getBoundingClientRect()
         || { left: 0, right: window.innerWidth };
     const tw = tip.offsetWidth, th = tip.offsetHeight;
-    const cx = wr.left + wr.width / 2;
+    const cx = box.left + box.width / 2;
     const minL = Math.max(pr.left + TIP_MARGIN, 8);
     const maxL = Math.min(pr.right - TIP_MARGIN, window.innerWidth - 8) - tw;
     const left = Math.min(Math.max(cx - tw / 2, minL), Math.max(maxL, minL));
     // Never tuck under the app's status bar / notch.
     const safeTop = 10 + (parseFloat(getComputedStyle(document.documentElement)
         .getPropertyValue("--m7-statusbar-height")) || 0);
-    const above = inkTop - th - TIP_GAP >= safeTop;
-    let top = above ? inkTop - th - TIP_GAP : inkBottom + TIP_GAP;
+    // Clearance from the tap so the card sits just off the pressed glyph.
+    const GAP = TIP_GAP + 6;
+    const above = tapY - th - GAP >= safeTop;
+    let top = above ? tapY - th - GAP : tapY + GAP;
     top = Math.min(Math.max(top, safeTop), window.innerHeight - th - 10);
     tip.style.left = `${left.toFixed(1)}px`;
     tip.style.top = `${top.toFixed(1)}px`;
@@ -695,11 +751,13 @@ export function gharibHoverTarget(target) {
 }
 
 /* Called by mushaf.js inside its click/touchend handlers BEFORE
- * the audio toggle. Returns true when the tap was on a located
- * gharib word (tooltip opened, audio untouched) OR when this
- * tap just dismissed an open tooltip (consumed — dismissing
- * must never double as an audio toggle). */
-export function gharibTapTarget(target) {
+ * the audio toggle. `point` is the tap's client {x, y} — used to
+ * anchor the tooltip to the exact pressed spot (the only point
+ * guaranteed to sit on the visible glyph). Returns true when the
+ * tap was on a located gharib word (tooltip opened, audio
+ * untouched) OR when this tap just dismissed an open tooltip
+ * (consumed — dismissing must never double as an audio toggle). */
+export function gharibTapTarget(target, point) {
     if (_featureOff) return false; // lantern off: plain Quran text
     if (Date.now() < _tipSuppressUntil) {
         _tipSuppressUntil = 0;
@@ -707,7 +765,7 @@ export function gharibTapTarget(target) {
     }
     const el = target?.closest?.(".gharib-word");
     if (!el || !el.dataset.gh || !el.dataset.ghRef) return false;
-    openTipFor(el);
+    openTipFor(el, point);
     return true;
 }
 
@@ -1098,3 +1156,52 @@ _onDecorateHook = () => {
     setCount(gharibLearnedCount(), false);
     updateRing(false);
 };
+
+/* ============================================================
+ * Forget a learned word — the saved-words panel's "remove".
+ * The saved collection IS the learned set (one source of truth),
+ * so removing a word un-reveals it everywhere: drop the key, walk
+ * back every on-screen occurrence's glow to gold (undiscovered),
+ * and refresh the lantern count + ring. Fully reversible — tapping
+ * the word again in the Mushaf re-learns it. Returns true if the
+ * set actually changed.
+ * ============================================================ */
+export function gharibForget(key) {
+    const set = learnedSet();
+    if (!set.has(key)) return false;
+    set.delete(key);
+    saveStore();
+    // Revert any on-screen occurrence: drop the settled/settling
+    // classes so the gold breathing glow returns. data-gh/-ghc stay,
+    // so the span behaves as a fresh undiscovered word again.
+    document.querySelectorAll(`.gharib-word[data-gh="${CSS.escape(key)}"]`)
+        .forEach((el) => el.classList.remove("gharib-word--settled", "gharib-word--settling"));
+    // Refresh the lantern if it's been built (best-effort — the store
+    // is the source of truth; the next page decorate re-derives both
+    // the count and the ring from the set regardless).
+    if (_widget) {
+        setCount(gharibLearnedCount(), false);
+        _ring = null;        // force a structural ring rebuild from the new set
+        updateRing(false);
+    }
+    return true;
+}
+
+/* Forget EVERY learned word — the saved-words panel's "reset all".
+ * Empties the set, walks back every on-screen glow to gold, and
+ * darkens the lantern to zero. Returns true if anything was cleared.
+ * (The on/off toggle is untouched — only the learned words are.) */
+export function gharibForgetAll() {
+    const set = learnedSet();
+    if (!set.size) return false;
+    set.clear();
+    saveStore();
+    document.querySelectorAll(".gharib-word--settled, .gharib-word--settling")
+        .forEach((el) => el.classList.remove("gharib-word--settled", "gharib-word--settling"));
+    if (_widget) {
+        setCount(0, false);
+        _ring = null;        // structural ring rebuild from the now-empty set
+        updateRing(false);
+    }
+    return true;
+}

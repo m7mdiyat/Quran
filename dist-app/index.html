@@ -3303,6 +3303,30 @@
     .offline-menu-btn svg,
     .feedback-menu-btn svg { width: 18px; height: 18px; }
 
+    /* غريب القرآن button — the lantern body follows currentColor (so it
+       matches the slate/invert states of its cluster siblings), but the
+       flame stays a warm, independent gold in every state: the one always-
+       lit نور in the header, tying it to the in-Mushaf feature. */
+    .gharib-saved-btn__flame { fill: #e3a338; stroke: none; }
+    body.dark .gharib-saved-btn .gharib-saved-btn__flame { fill: #f0c069; }
+
+    /* Slight, clean flame flicker — the flame breathes from its base like a
+       real fire (scale only → compositor-friendly). Calm pace; covers both
+       the top-bar button and the panel's head logo (same class). */
+    .gharib-saved-btn__flame {
+      transform-box: fill-box;
+      transform-origin: bottom center;
+      animation: gharib-flame-flicker 2.6s ease-in-out infinite;
+    }
+    @keyframes gharib-flame-flicker {
+      0%, 100% { transform: scaleY(1)    scaleX(1);    opacity: 1; }
+      40%      { transform: scaleY(1.08) scaleX(0.94); opacity: .9; }
+      70%      { transform: scaleY(0.96) scaleX(1.03); opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .gharib-saved-btn__flame { animation: none; }
+    }
+
     /* Backdrop + centered card */
     .offline-sheet {
       position: fixed;
@@ -3317,6 +3341,19 @@
     }
 
     .offline-sheet--open { display: flex; }
+
+    /* Lock the page behind ANY open header sheet so it can't be panned while a
+       section is open (offline/feedback/notes/غريب all toggle this class). The
+       position:fixed lock is the one iOS WKWebView honours — matches
+       body.mushaf-fs-open; sheet-scroll-lock.js pins/restores the scroll
+       offset so the page never jumps. */
+    body.offline-sheet-open {
+      position: fixed;
+      left: 0;
+      right: 0;
+      width: 100%;
+      overflow: hidden;
+    }
 
     .offline-sheet__backdrop {
       position: absolute;
@@ -3782,6 +3819,221 @@
       font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 8px;
     }
     body.dark .notes-list__hint { color: #64748b; }
+
+    /* ====================================================================
+     * غريب القرآن — saved-words panel (APP ONLY). A lantern-gold variant of
+     * the shared .offline-sheet shell: warm head icon, a count chip echoing
+     * the lantern badge, and rows where each revealed word glows softly in
+     * gold (static — calm). Removing a row forgets the word (gharibForget).
+     * ==================================================================== */
+
+    /* Head logo → the bare lantern itself (no square box), warm gold body +
+       lit flame. It IS the غريب emblem, so it stands alone as the header mark. */
+    #gharibSavedSheet .offline-sheet__icon {
+      background: none;
+      width: auto;
+      height: auto;
+      margin-bottom: 8px;
+      color: #c4a052;
+    }
+    body.dark #gharibSavedSheet .offline-sheet__icon { color: #d9b266; }
+    #gharibSavedSheet .offline-sheet__icon svg { width: 58px; height: 58px; }
+    #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #e3a338; stroke: none; }
+    body.dark #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #f0c069; }
+
+    /* Head meta row: count chip + reset-all (or the reset confirmation). */
+    .gharib-saved-meta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 11px;
+    }
+    .gharib-saved-meta:empty { display: none; }
+
+    /* Count chip — echoes the lantern's gold badge. */
+    .gharib-saved-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 11px 3px 9px;
+      border-radius: 999px;
+      background: linear-gradient(160deg, rgba(227, 163, 56, .14), rgba(192, 138, 30, .1));
+      border: 1px solid rgba(176, 138, 60, .22);
+      color: #a87718;
+      font-size: 12.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .gharib-saved-count svg { width: 13px; height: 13px; }
+    body.dark .gharib-saved-count {
+      background: linear-gradient(160deg, rgba(240, 192, 105, .14), rgba(211, 154, 45, .08));
+      border-color: rgba(240, 192, 105, .2);
+      color: #f0c069;
+    }
+
+    /* Reset-all — quiet neutral pill that warms to red on hover/press. */
+    .gharib-saved-reset {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 11px 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, .1);
+      background: rgba(15, 23, 42, .03);
+      color: #94a3b8;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .gharib-saved-reset svg { width: 13px; height: 13px; }
+    @media (hover: hover) {
+      .gharib-saved-reset:hover {
+        background: rgba(239, 68, 68, .1);
+        border-color: rgba(239, 68, 68, .25);
+        color: #dc2626;
+      }
+    }
+    body.dark .gharib-saved-reset {
+      border-color: rgba(148, 163, 184, .18);
+      background: rgba(148, 163, 184, .08);
+      color: #94a3b8;
+    }
+    @media (hover: hover) {
+      body.dark .gharib-saved-reset:hover {
+        background: rgba(239, 68, 68, .2);
+        border-color: rgba(239, 68, 68, .35);
+        color: #fca5a5;
+      }
+    }
+
+    /* Reset confirmation (replaces the count + reset in the meta row). */
+    .gharib-saved-confirm {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+    }
+    .gharib-saved-confirm__text { font-size: 12.5px; font-weight: 700; color: #b91c1c; }
+    body.dark .gharib-saved-confirm__text { color: #fca5a5; }
+    .gharib-saved-confirm__actions { display: flex; gap: 8px; }
+    .gharib-saved-confirm__actions .offline-btn { min-width: 92px; }
+
+    /* Scrollable list of revealed words. */
+    .gharib-saved-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      max-height: 58vh;
+      overflow-y: auto;
+      padding-inline-end: 2px;
+      margin-top: 2px;
+    }
+
+    .gharib-saved-row {
+      position: relative;
+      display: flex;
+      flex: 0 0 auto;        /* never shrink in the scrolling column */
+      align-items: center;
+      gap: 8px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      background: rgba(255, 251, 242, .75);
+      border: 1px solid rgba(176, 138, 60, .16);
+      overflow: hidden;
+      transition: max-height .3s cubic-bezier(.4, 0, .2, 1),
+                  opacity .26s ease, padding .3s ease, margin .3s ease;
+    }
+    body.dark .gharib-saved-row {
+      background: rgba(240, 192, 105, .045);
+      border-color: rgba(240, 192, 105, .13);
+    }
+
+    /* word ‹ meaning — one horizontal gloss line (wraps only if very long). */
+    .gharib-saved-row__gloss {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .gharib-saved-row__word {
+      flex: 0 1 auto;
+      font-family: "MeQuran", "Amiri", serif;
+      font-size: 20px;
+      line-height: 1.5;
+      color: #9a6f12;
+      text-shadow: 0 0 13px rgba(227, 163, 56, .25);
+    }
+    body.dark .gharib-saved-row__word {
+      color: #f0c069;
+      text-shadow: 0 0 15px rgba(240, 192, 105, .3);
+    }
+
+    .gharib-saved-row__sep {
+      flex: 0 0 auto;
+      font-size: 15px;
+      color: #c2a358;
+      opacity: .85;
+    }
+    body.dark .gharib-saved-row__sep { color: #caa75f; }
+
+    .gharib-saved-row__meaning {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 14.5px;
+      line-height: 1.6;
+      font-weight: 500;
+      color: #5c5345;
+      word-break: break-word;
+    }
+    body.dark .gharib-saved-row__meaning { color: #c9bfa9; }
+
+    /* Remove (forget) — quiet by default, warms to red on hover. */
+    .gharib-saved-row__remove {
+      flex: 0 0 auto;
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: #b0a48c;
+      cursor: pointer;
+      transition: background .15s ease, color .15s ease;
+    }
+    .gharib-saved-row__remove svg { width: 16px; height: 16px; }
+    @media (hover: hover) {
+      .gharib-saved-row__remove:hover { background: rgba(239, 68, 68, .12); color: #dc2626; }
+      body.dark .gharib-saved-row__remove:hover { background: rgba(239, 68, 68, .2); color: #fca5a5; }
+    }
+    body.dark .gharib-saved-row__remove { color: #8b8472; }
+
+    /* Collapse-out on removal (swallows its own gap). */
+    .gharib-saved-row--removing {
+      max-height: 0 !important;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-top: -9px;
+      border-width: 0;
+      pointer-events: none;
+    }
+
+    /* Loading state (brief, while the dataset resolves on first open). */
+    .gharib-saved-loading { text-align: center; padding: 32px 14px; color: #b08a3c; font-size: 13px; font-weight: 600; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .gharib-saved-row { transition: background .18s ease, border-color .18s ease; }
+    }
 
     /* --- First-launch offline tooltip (neutral grey, not blue) --- */
     .m7-tip {
@@ -4583,7 +4835,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-CDqjdGnV.js"></script>
+  <script type="module" crossorigin src="/assets/index-KqF0QFAN.js"></script>
 </head>
 
 <body>
@@ -4633,6 +4885,20 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/>
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
+          </svg>
+        </button>
+        <!-- غريب القرآن saved-words collection (app only). The lantern echoes
+             the in-Mushaf فانوس; its flame stays warmly lit in every state. -->
+        <button id="gharibSavedBtn" type="button" class="offline-menu-btn gharib-saved-btn"
+          style="display:none;" aria-label="كلمات غريب القرآن المحفوظة">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10.7 3.2a1.55 1.55 0 0 1 2.6 0"/>
+            <path d="M9.1 6.6c.3-1.7 1.4-2.6 2.9-2.6s2.6.9 2.9 2.6"/>
+            <path d="M8.3 6.6h7.4"/>
+            <path d="M9.2 6.6l-.5 7.2a1.3 1.3 0 0 0 1.3 1.4h4a1.3 1.3 0 0 0 1.3-1.4l-.5-7.2"/>
+            <path class="gharib-saved-btn__flame" d="M12.4 7.4c-1.4 1.7-2.4 2.9-2.4 4.4a2 2 0 0 0 4 0c0-1-.4-1.9-1-2.9.2.7.1 1.2-.2 1.6.5-1.2.3-2.3-.4-3.1z"/>
+            <path d="M10.4 15.2l-.6 2.9M13.6 15.2l.6 2.9"/>
+            <path d="M9.6 18.1h4.8"/>
           </svg>
         </button>
       </div>

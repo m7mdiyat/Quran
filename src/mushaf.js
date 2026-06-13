@@ -1787,8 +1787,9 @@ function wireAyahInteractions(pageEl) {
                 return;
             }
             // Gharib word tap → meaning tooltip instead of audio toggle
-            // (desktop path; the touch path is in touchend below).
-            if (gharibTapTarget(e.target)) return;
+            // (desktop path; the touch path is in touchend below). Pass the
+            // click point so the tooltip anchors to the pressed glyph.
+            if (gharibTapTarget(e.target, { x: e.clientX, y: e.clientY })) return;
             toggleAudioForAyah(ayah.dataset.verseKey);
             return;
         }
@@ -1871,8 +1872,9 @@ function wireAyahInteractions(pageEl) {
         // Gharib word tap → meaning tooltip instead of audio toggle. Checked
         // HERE (not in a capture listener) so the long-press bookkeeping
         // above stays intact: a long-press on a gharib word still opens
-        // the ayah menu and never reaches this line.
-        if (gharibTapTarget(e.target)) return;
+        // the ayah menu and never reaches this line. The press point anchors
+        // the tooltip to the exact pressed glyph.
+        if (gharibTapTarget(e.target, { x: start.x, y: start.y })) return;
         toggleAudioForAyah(ayah.dataset.verseKey);
     });
 }
