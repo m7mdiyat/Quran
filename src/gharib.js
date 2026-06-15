@@ -523,6 +523,10 @@ function decoratePage(pageEl, pageData) {
         console.log(`[gharib] page ${PAGE_GHARIB.page}: json ayahs ${jsonAyahs} | located ayahs ${PAGE_GHARIB.ayahs.length} | ring segments (words) ${PAGE_GHARIB.keys.length}`);
     }
 
+    // Park the tooltip in this root now (idempotent) so the first tap isn't the
+    // first re-parent — its relayout settles before any tap.
+    hostTipInRoot(pageEl.closest(".mushaf-root"));
+
     if (_onDecorateHook) { try { _onDecorateHook(PAGE_GHARIB); } catch { } }
 }
 
@@ -663,11 +667,39 @@ function ensureTip() {
     return el;
 }
 
+/* Park the meaning tooltip INSIDE the given Mushaf root as an absolutely-
+ * positioned child (idempotent). Called eagerly on each page render so the
+ * FIRST tap isn't also the first re-parent: the re-parent's relayout settles
+ * well before any tap, so the first placement reads stable geometry exactly
+ * like every later one (kills the "first tap lands off, second is fine" bug). */
+function hostTipInRoot(root) {
+    if (!root) return;
+    const tip = ensureTip();
+    if (tip.parentElement !== root) root.appendChild(tip);
+    tip.classList.add("gharib-tip--anchored");
+}
+
 function openTipFor(span, point) {
     const key = span.dataset.gh, vk = span.dataset.ghRef;
     const entry = ENTRY_BY_REF.get(`${key}@${vk}`);
     if (!entry) return;
     const tip = ensureTip();
+
+    // Host the tip INSIDE the Mushaf root (a positioned ancestor the word
+    // shares) as an absolutely-positioned child — NOT a position:fixed child of
+    // <body>. On iOS WKWebView a fixed element on a scrolled document anchors
+    // to the document at an unstable offset, so the card sometimes opened in
+    // the wrong place until you tapped again / restarted. Living in the same
+    // scroll/coordinate frame as the word, it's glued to it on every tap — the
+    // first one included. Fixed-on-body fallback only if opened outside a root.
+    const root = span.closest(".mushaf-root");
+    if (root) {
+        if (tip.parentElement !== root) root.appendChild(tip);
+        tip.classList.add("gharib-tip--anchored");
+    } else if (tip.parentElement !== document.body) {
+        document.body.appendChild(tip);
+        tip.classList.remove("gharib-tip--anchored");
+    }
 
     // First-ever tap: persist + settle + counter/ring — immediately, as
     // one visible choreography (the tip hides nothing). Re-taps and
@@ -684,19 +716,43 @@ function openTipFor(span, point) {
     tip.classList.remove("is-open");
     tip.textContent = tipDisplayText(entry.m);
 
-    // Measure (the closed state is laid out, just invisible), then place from
-    // the ACTUAL TAP POINT — not the word's box. A .mushaf-word's
-    // getBoundingClientRect is the QCF4 LINE box (far taller than the visible
-    // glyph and not centred on it; a Range rect inherits the font's tall
-    // ascent/descent the same way), so anchoring to any box edge floated the
-    // card well above the ink — worst on the phone and in fullscreen. The tap
-    // point is by definition ON the glyph the user pressed, so the card always
-    // lands at the word. Vertical comes from the tap; the horizontal centre +
-    // page clamp come from the box (its WIDTH is accurate). A fixed tip shares
-    // the viewport coordinate space of the tap's client coords in every mode
-    // (the body position:fixed scroll-lock doesn't reparent a fixed child).
-    const box = span.getBoundingClientRect();
-    const tapY = (point && Number.isFinite(point.y)) ? point.y : box.top + box.height / 2;
+    // Placement is a closure so it can run twice: once now, then again on the
+    // next frame. The very first open in a session can read stale root scroll/
+    // layout (the tip was just parented into the root), landing the card a line
+    // off until the next tap — the rAF re-read below corrects it while the open
+    // animation is still scaling in, so the nudge is invisible; an already-
+    // correct placement re-applies identical values (a no-op).
+    const place = () => {
+    // Anchor to the WORD ITSELF (its getBoundingClientRect), never the tap
+    // point — so the card lands in the same place wherever on the glyph you
+    // press. Everything here is computed in VIEWPORT coords, then converted to
+    // the host root's space at the end. A .mushaf-word's box is the full QCF4
+    // LINE box (line-height 1.85 — far taller than the visible glyph, which
+    // sits centred within it), so anchoring to box.top floats the card well
+    // above the ink. Model the visible ink as a band around the box's vertical
+    // centre, sized from the font em (≈ glyph height) so it needs no re-measure
+    // on zoom. Horizontal centre + page clamp come from the box (WIDTH is
+    // accurate). `point` is unused (kept for call-site compatibility).
+    // A gharib occurrence can be a multi-word PHRASE — several .mushaf-word
+    // spans the glow renders as one glowing unit. Anchor to the UNION box of
+    // every span of THIS occurrence (same key + verse-ref) on the tapped span's
+    // visual line, not the tapped span alone — so the card sits centred above
+    // the whole word/phrase identically no matter which part you press. (A
+    // phrase that wraps a line break anchors above the chunk you tapped.)
+    const tappedRect = span.getBoundingClientRect();
+    let uL = tappedRect.left, uR = tappedRect.right, uT = tappedRect.top, uB = tappedRect.bottom;
+    const ayahEl = span.closest(".mushaf-ayah");
+    if (ayahEl && key && vk) {
+        ayahEl.querySelectorAll(
+            `.gharib-word[data-gh="${CSS.escape(key)}"][data-gh-ref="${CSS.escape(vk)}"]`
+        ).forEach((el) => {
+            const r = el.getBoundingClientRect();
+            if (Math.abs(r.top - tappedRect.top) > tappedRect.height * 0.5) return; // other line
+            uL = Math.min(uL, r.left); uR = Math.max(uR, r.right);
+            uT = Math.min(uT, r.top); uB = Math.max(uB, r.bottom);
+        });
+    }
+    const box = { left: uL, right: uR, top: uT, bottom: uB, width: uR - uL, height: uB - uT };
     const pageEl = span.closest(".mushaf-page");
     const pr = pageEl?.getBoundingClientRect()
         || { left: 0, right: window.innerWidth };
@@ -708,18 +764,40 @@ function openTipFor(span, point) {
     // Never tuck under the app's status bar / notch.
     const safeTop = 10 + (parseFloat(getComputedStyle(document.documentElement)
         .getPropertyValue("--m7-statusbar-height")) || 0);
-    // Clearance from the tap so the card sits just off the pressed glyph.
-    const GAP = TIP_GAP + 6;
-    const above = tapY - th - GAP >= safeTop;
-    let top = above ? tapY - th - GAP : tapY + GAP;
+    // Visible-ink band: box centre ± ~half the glyph height (from the em, so
+    // it scales with zoom), clamped to never exceed the line box.
+    const cy = box.top + box.height / 2;
+    const em = parseFloat(getComputedStyle(span).fontSize) || (box.height / 1.85);
+    const halfInk = Math.min(em * 0.62, box.height / 2);
+    const inkTop = cy - halfInk, inkBottom = cy + halfInk;
+    // Above the word by default; flip below ONLY when there's no room above.
+    const above = inkTop - th - TIP_GAP >= safeTop;
+    let top = above ? inkTop - th - TIP_GAP : inkBottom + TIP_GAP;
     top = Math.min(Math.max(top, safeTop), window.innerHeight - th - 10);
-    tip.style.left = `${left.toFixed(1)}px`;
-    tip.style.top = `${top.toFixed(1)}px`;
+    // Convert the viewport coords into the host root's content space (offset by
+    // the root's box position and its own scroll). For the fixed-on-body
+    // fallback, origin stays 0 → plain viewport coords. Anchoring in the SAME
+    // space as the word means there is no drift to chase: the tip lands on the
+    // word the first time and every time.
+    let originX = 0, originY = 0;
+    if (root) {
+        const rRect = root.getBoundingClientRect();
+        // An absolute child is laid out from the parent's PADDING box, so add
+        // the border widths (clientLeft/Top) and subtract scroll — the exact
+        // frame the tip lives in. (.mushaf-root carries .glass's border.)
+        originX = rRect.left + root.clientLeft - root.scrollLeft;
+        originY = rRect.top + root.clientTop - root.scrollTop;
+    }
+    tip.style.left = `${(left - originX).toFixed(1)}px`;
+    tip.style.top = `${(top - originY).toFixed(1)}px`;
     tip.classList.toggle("gharib-tip--below", !above);
-    // The anchor arrow AND the growth origin both point at the word.
+    // The anchor arrow AND the growth origin both point at the word — measured
+    // from the DESIRED viewport coords (where the tip now actually renders).
     const ax = Math.min(Math.max(cx - left, 14), Math.max(tw - 14, 14));
     tip.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
     tip.style.transformOrigin = `${ax.toFixed(1)}px ${above ? "100%" : "0%"}`;
+    };
+    place();
 
     void tip.offsetWidth; // commit position/origin + snapped-closed state
     tip.style.transition = ""; // back to the stylesheet transitions
@@ -727,6 +805,11 @@ function openTipFor(span, point) {
     tip.setAttribute("aria-hidden", "false");
     _tipOpenState = true;
     _tipKey = key;
+    // Re-place after layout/scroll settle (see the closure note above) — only
+    // while this very tip is still open for the same word.
+    requestAnimationFrame(() => {
+        if (_tipOpenState && _tipKey === key) place();
+    });
 }
 
 function closeTip() {

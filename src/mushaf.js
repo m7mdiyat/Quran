@@ -197,6 +197,7 @@ let LAST_VIEWED_AYAH = null;      // {s, a} — drives toggle restore in both di
 
 let ROOT_EL = null;
 let PAGES_EL = null;
+let PAGES_ANIM_TIMER = 0;        // clears .mushaf-pages--animating after a page cross-fade
 let ACTIVE_PAGE_EL = null;
 let AYAH_MENU_EL = null;
 let AYAH_MENU_VERSE = null;
@@ -1557,6 +1558,14 @@ function renderPage(data, direction = "none") {
     PAGES_EL.appendChild(newPage);
 
     if (direction !== "none" && old) {
+        // Clip the cross-fading (absolute) pages to the container ONLY while
+        // animating; the static reading state keeps overflow:visible so gharib
+        // glows bleed past the page edge unclipped (see .mushaf-pages CSS).
+        // A shared, debounced timer survives rapid swipes (resets each swap).
+        PAGES_EL.classList.add("mushaf-pages--animating");
+        clearTimeout(PAGES_ANIM_TIMER);
+        PAGES_ANIM_TIMER = setTimeout(
+            () => PAGES_EL?.classList.remove("mushaf-pages--animating"), 320);
         // New page fades in from 0% → 100% opacity
         newPage.classList.add("mushaf-page--fade-in");
         // Old page fades out and is removed when animation ends
@@ -1565,7 +1574,10 @@ function renderPage(data, direction = "none") {
         // Safety fallback in case animationend doesn't fire
         setTimeout(() => { if (old.parentNode) old.remove(); }, 300);
     } else {
-        // No animation needed (initial load or direct navigation)
+        // No animation needed (initial load or direct navigation) — make sure
+        // the static state isn't left clipped by a prior transition.
+        clearTimeout(PAGES_ANIM_TIMER);
+        PAGES_EL.classList.remove("mushaf-pages--animating");
         if (old) old.remove();
     }
 
@@ -3403,6 +3415,7 @@ function wireMukhtasarDrag() {
     let curLeft = 0, curTop = 0;      // last clamped position (committed on release)
     let moved = false;
     let raf = 0;
+    let cachedW = 0, cachedVW = 0, cachedVH = 0; // card + viewport, read once at grab
 
     header.addEventListener("pointerdown", (e) => {
         if (e.target.closest(".mushaf-mukhtasar__close")) return;
@@ -3431,6 +3444,11 @@ function wireMukhtasarDrag() {
         curLeft = baseLeft;
         curTop = baseTop;
         moved = false;
+        // Cache the card + viewport size ONCE here — neither changes during a
+        // drag, so applyDrag stays layout-read-free (compositor-only) per frame.
+        cachedW = MUKHTASAR_EL.offsetWidth;
+        cachedVW = window.innerWidth;
+        cachedVH = window.innerHeight;
 
         MUKHTASAR_EL.classList.add("mushaf-mukhtasar--dragging");
         try { header.setPointerCapture(e.pointerId); } catch { }
@@ -3444,10 +3462,7 @@ function wireMukhtasarDrag() {
         raf = 0;
         if (!dragging) return;
 
-        const cardW = MUKHTASAR_EL.offsetWidth;
-        const cardH = MUKHTASAR_EL.offsetHeight;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const cardW = cachedW, vw = cachedVW, vh = cachedVH; // cached at grab
 
         let left = baseLeft + (lastMoveX - startX);
         let top = baseTop + (lastMoveY - startY);

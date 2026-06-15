@@ -296,6 +296,10 @@ function selectorReflect(s, a) {
 function selectorReflectCommit() {
   // اذهب pressed — the reflected text becomes the bar's real state.
   SELECTOR_REFLECT = null;
+  // A manual selector pick supersedes any in-progress typed search: the bar
+  // pill now shows the chosen ayah (via the reflection lock above), so tear
+  // down the stale autocomplete dropdown left over from the abandoned typing.
+  clearTypedSearchResults();
 }
 
 function selectorReflectAbandon() {
@@ -3275,6 +3279,20 @@ function toggleResultsList() {
   }
 }
 
+/* Issue 4: wipe the typed-search autocomplete dropdown + its cached results.
+ * Used when a manual surah-selector pick takes over from in-progress typing —
+ * the search bar pill is owned separately (by the selector reflection), so
+ * this only tears down the result list, mirroring resetToHome's results
+ * handling without the rest of the homepage teardown. */
+function clearTypedSearchResults() {
+  LAST_RESULTS = [];
+  if (!results) return;
+  results.innerHTML = "";
+  results.classList.add("is-empty", "collapsed");
+  resultsShell?.classList.add("is-empty", "collapsed");
+  results.style.maxHeight = "0";
+}
+
 // Build a regex pattern that matches Arabic text with optional diacritics between letters
 // Also handles letter variations (أ/إ/آ/ا, ى/ي, ة/ه, ؤ/و, ئ/ي)
 function buildDiacriticsAwarePattern(term) {
@@ -3389,14 +3407,11 @@ function renderResults(items, query) {
     `;
 
     card.onclick = () => {
-      if (isMushafMode()) {
-        // Task 2: picking an ayah while in Mushaf mode must not move the
-        // viewport — suppress the target scrollIntoView.
-        openMushafAtAyah(it.s, it.a, { noScroll: true });
-        collapseResultsToChip(it);
-        return;
-      }
-      setPrimaryAyah(it.s, it.a, { scroll: false });
+      // A search-result pick is a "go read this" action → always open the
+      // Mushaf reader (matches the surah-selector اذهب). Already in Mushaf:
+      // don't move the viewport (Task 2); coming from the homepage/Tafsir,
+      // let the freshly-opened panel scroll into view.
+      openMushafAtAyah(it.s, it.a, { noScroll: isMushafMode() });
       collapseResultsToChip(it);
     };
 
