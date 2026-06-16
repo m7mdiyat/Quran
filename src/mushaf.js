@@ -1007,7 +1007,29 @@ const FONT_LOAD_PROMISES = new Map();
 function loadFontAndWait(fontFamily) {
     if (!fontFamily) return Promise.resolve();
     unsealAppFonts();
-    if (LOADED_FONTS.has(fontFamily)) return Promise.resolve();
+    if (LOADED_FONTS.has(fontFamily)) {
+        // QCF4_Hafs_01 is seeded into LOADED_FONTS because it has a static
+        // @font-face in mushaf.css — but a browser fetches a static @font-face
+        // LAZILY, only when a glyph first paints with it. On most surah-start
+        // pages the bismillah is the SOLE glyph using Hafs_01 (verses use the
+        // page's own QCF4_Hafs_NN font), so the 946 KB file isn't requested
+        // until paint time. Returning resolved here let the bismillah paint
+        // first; under font-display:block its U+F8D6 glyph then renders with a
+        // system fallback until the real font lands — a narrow tofu box on
+        // macOS, but a WIDE, stretched glyph on Windows (the reported "broken
+        // basmala"). document.fonts.load() forces the fetch and resolves only
+        // when the face is actually usable (instant once loaded), so the
+        // callers that await this — preloadMushafData() and goToPage()'s
+        // Promise.all — genuinely wait for it before rendering the page.
+        // QBSML stays a plain no-op: its surah-header glyph is never painted
+        // (renderPage skips header lines), so it must not trigger a 616 KB
+        // fetch. In the app, unsealAppFonts() above has already removed both
+        // predeclared fonts from LOADED_FONTS, so this branch is web-only.
+        if (!isApp() && document.fonts && fontFamily === "QCF4_Hafs_01") {
+            return document.fonts.load(`1em "${fontFamily}"`).then(() => {}, () => {});
+        }
+        return Promise.resolve();
+    }
     if (FONT_LOAD_PROMISES.has(fontFamily)) return FONT_LOAD_PROMISES.get(fontFamily);
 
     ensureFontDeclared(fontFamily);
