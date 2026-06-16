@@ -775,6 +775,10 @@ function hideMushafAudioOffline() {
 function isOfflineAudioError(err) {
     const name = err && err.name;
     if (name === "AbortError" || name === "NotAllowedError") return false;
+    // A fetch that got an HTTP RESPONSE (e.g. a missing timings file → 404, or
+    // a 5xx) proves the network is up — a data/server problem, NOT offline. So
+    // never flash "no internet" for it.
+    if (err && typeof err.httpStatus === "number") return false;
     if (err && typeof err.code === "number") return err.code === 2 || err.code === 4;
     return true; // generic play() rejection / fetch TypeError — treat as offline
 }

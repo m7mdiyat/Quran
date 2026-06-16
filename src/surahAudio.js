@@ -78,7 +78,14 @@ async function loadTimings(reciter, surah) {
   const key = `${reciter}:${surah}`;
   if (_timingsCache.has(key)) return _timingsCache.get(key);
   const res = await fetch(timingsUrl(reciter, surah));
-  if (!res.ok) throw new Error(`surahAudio: timings HTTP ${res.status}`);
+  if (!res.ok) {
+    // A real HTTP response (e.g. 404 for a missing timings file) means the
+    // server WAS reachable — tag the status so the UI doesn't misreport a
+    // missing/broken file as "no internet".
+    const e = new Error(`surahAudio: timings HTTP ${res.status}`);
+    e.httpStatus = res.status;
+    throw e;
+  }
   const raw = await res.json();
   const normalized = normalizeTimings(raw);
   _timingsCache.set(key, normalized);
