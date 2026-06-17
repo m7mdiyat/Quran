@@ -5612,6 +5612,14 @@ async function init() {
     import("./gharib-saved-panel.js")
       .then((m) => m.initGharibSavedPanel())
       .catch((e) => console.error("gharib-saved-panel init failed", e));
+  } else {
+    // Website only: smart app-download banner. Mobile visitors (iOS/Android)
+    // get a dismissible bottom banner linking to the correct store; desktop and
+    // the installed app get nothing (the module re-checks isApp() before it
+    // ever reveals — see src/app-banner.js).
+    import("./app-banner.js")
+      .then((m) => m.initAppBanner())
+      .catch((e) => console.error("app-banner init failed", e));
   }
 
   // Lock search until core files load

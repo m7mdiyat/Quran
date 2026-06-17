@@ -3346,6 +3346,148 @@
       .gharib-saved-btn__flame { animation: none; }
     }
 
+    /* ====================================================================
+     * App-download banner — WEBSITE ONLY (built/injected by src/app-banner.js,
+     * which app.js imports only in the `else` of isApp(); it never renders in
+     * the installed app). Slim dismissible bar that slides up from the bottom
+     * on mobile web. RTL: app icon + text lead (right edge), CTA then × trail
+     * (left edge). Hidden in Mushaf fullscreen so it can't overlap that mode's
+     * bottom page-nav. These rules live only here (the inline block is the sole
+     * home for app-component CSS — styles.css is Tailwind, mushaf.css is Mushaf).
+     * ==================================================================== */
+    .m7-app-banner {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 950;
+      transform: translateY(110%);
+      opacity: 0;
+      transition: transform .42s cubic-bezier(.22, 1, .36, 1), opacity .42s ease;
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 10px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      background: rgba(247, 251, 255, .82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -8px 28px rgba(15, 23, 42, .12);
+      will-change: transform, opacity;
+    }
+
+    .m7-app-banner--in {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .m7-app-banner__inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 64rem; /* matches the header's max-w-5xl container */
+      margin: 0 auto;
+      padding: 10px 14px;
+    }
+
+    .m7-app-banner__icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .18);
+    }
+    .m7-app-banner__icon img { width: 100%; height: 100%; display: block; }
+
+    .m7-app-banner__text {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+    .m7-app-banner__title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .m7-app-banner__sub {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .m7-app-banner__cta {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      color: #fff;
+      background: linear-gradient(135deg, #1d8fff, #1976d2);
+      box-shadow: 0 4px 10px rgba(29, 143, 255, .28);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .m7-app-banner__cta svg { width: 15px; height: 15px; }
+    @media (hover: hover) {
+      .m7-app-banner__cta:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(29, 143, 255, .34);
+      }
+    }
+
+    .m7-app-banner__close {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease;
+    }
+    .m7-app-banner__close svg { width: 16px; height: 16px; }
+    @media (hover: hover) {
+      .m7-app-banner__close:hover {
+        background: rgba(15, 23, 42, .06);
+        color: var(--text);
+      }
+    }
+
+    /* Dark theme — match the app's dark header surface. */
+    body.dark .m7-app-banner {
+      background: rgba(24, 28, 34, .92);
+      border-top-color: rgba(148, 163, 184, .22);
+      box-shadow: 0 -8px 28px rgba(0, 0, 0, .4);
+    }
+    body.dark .m7-app-banner__close:hover {
+      background: rgba(148, 163, 184, .16);
+    }
+
+    /* Immersive Mushaf fullscreen sets html.mushaf-fs-open — hide the banner
+       there so it never overlaps that mode's bottom page-nav controls. */
+    html.mushaf-fs-open .m7-app-banner { display: none; }
+
+    /* Reduced motion: appear in place, no slide. */
+    @media (prefers-reduced-motion: reduce) {
+      .m7-app-banner { transition: none; }
+    }
+
     /* Backdrop + centered card */
     .offline-sheet {
       position: fixed;
