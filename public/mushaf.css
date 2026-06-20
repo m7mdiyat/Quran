@@ -3247,7 +3247,7 @@ body.gharib-off .gharib-word {
        the @property note above) — NOT keyframed directly, so the
        pseudo isn't promoted and the halo isn't clipped to a box. */
     opacity: calc(var(--gh-on, 1) * var(--gw-hb, 0.7));
-    animation: gw-halo 6.8s ease-in-out infinite;
+    animation: gw-halo 4.5s ease-in-out 1 forwards;
     /* Gold → white recolour when the word is learned. These
        interpolate independently of the breath. */
     transition: text-shadow 0.7s ease, filter 0.7s ease, color 0.7s ease;
@@ -3302,8 +3302,14 @@ html.is-app body.dark .gharib-word::before {
    merely brightens and softens around the (always dark, always
    readable) letters. */
 @keyframes gw-halo {
-    0%, 100% { --gw-hb: 0.6; }
-    50%      { --gw-hb: 1; }
+    /* One non-reversing bloom: quick ease-in-out rise to peak at 25%,
+       then a long ease-out settle to a LIT rest (0.8 — not the old 0.6
+       floor), held static by `forwards`. Monotonic up then down, so the
+       gold never dims-then-brightens: one rise, one slow fall to a lit
+       rest. */
+    0%   { --gw-hb: 0.6; animation-timing-function: ease-in-out; }
+    25%  { --gw-hb: 1;   animation-timing-function: ease-out; }
+    100% { --gw-hb: 0.8; }
 }
 
 /* DARK THEME ONLY — molten ink: a gold gradient clipped THROUGH
@@ -3337,13 +3343,19 @@ body.dark .gharib-word::after {
        this layer off the compositor, which also keeps
        background-clip: text from leaking the gradient as a box. */
     opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * var(--gw-ib, 0.4));
-    animation: gw-ink 6.8s ease-in-out infinite;
-    animation-delay: -2.7s; /* offset ~40% of the period from the halo */
+    animation: gw-ink 4.5s ease-in-out 1 forwards;
+    /* No phase offset now: the old -1.19s lead desynced two SYMMETRIC
+       breaths for a continuous shade-shift. Under the asymmetric one-shot
+       bloom that lead would start the ink PAST its 25% peak (no bloom), so
+       the molten ink now blooms/settles in lockstep with the halo. */
 }
 
 @keyframes gw-ink {
-    0%, 100% { --gw-ib: 0.42; }
-    50%      { --gw-ib: 0.72; }
+    /* Same one-shot bloom shape as gw-halo: quick rise to peak at 25%,
+       long ease-out settle to a lit rest (0.57), held by `forwards`. */
+    0%   { --gw-ib: 0.42; animation-timing-function: ease-in-out; }
+    25%  { --gw-ib: 0.72; animation-timing-function: ease-out; }
+    100% { --gw-ib: 0.57; }
 }
 
 /* Learned: the halo keeps breathing but recolours gold → WHITE,
@@ -3400,6 +3412,34 @@ html.is-app body.dark .gharib-word--settled::before {
         blur(0.05em)
         drop-shadow(0 0 0.16em rgba(244, 248, 255, 0.95))
         drop-shadow(0 0 0.42em rgba(230, 238, 250, 0.55));
+}
+
+/* Tap-to-settle. When a word is learned mid-breath, src/gharib.js
+   settleKey() adds --settling (gharib.js:707, fires on the FIRST tap
+   only). Stop the one-shot breath right there and EASE the halo opacity
+   to its calm rest value over ~0.5s — instead of snapping, or running on
+   to the end of the cycle. The recolor transitions (text-shadow / filter
+   / color, 0.7s) are re-listed verbatim so the gold→white/black handover
+   is byte-for-byte unchanged; --gw-hb is the only addition. Once it lands
+   the pseudo is fully static: no animation, no further repaint. The
+   transition firing as the animation is removed is the same mechanism the
+   file already uses for --gh-on / --gw-x (registered @property custom
+   props interpolate); if an engine ever skips it, the word still ends
+   correctly static at 0.6, just without the ease. */
+.gharib-word--settling::before {
+    animation: none;
+    --gw-hb: 0.8; /* the LIT rest — same value the natural one-shot bloom settles to */
+    transition:
+        text-shadow 0.7s ease,
+        filter 0.7s ease,
+        color 0.7s ease,
+        --gw-hb 0.5s ease-out;
+}
+/* The dark-theme molten ink also stops here; it fades out on its own via
+   --gw-x → 0 (the 0.8s ease on .gharib-word), so no opacity ease is
+   needed — just end the loop so nothing keeps repainting. */
+.gharib-word--settling::after {
+    animation: none;
 }
 
 /* After the toggle's fade-out settles (src/gharib.js adds this
