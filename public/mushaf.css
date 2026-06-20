@@ -3308,7 +3308,7 @@ html.is-app body.dark .gharib-word::before {
        gold never dims-then-brightens: one rise, one slow fall to a lit
        rest. */
     0%   { --gw-hb: 0.6; animation-timing-function: ease-in-out; }
-    25%  { --gw-hb: 1;   animation-timing-function: ease-out; }
+    25%  { --gw-hb: 0.85; animation-timing-function: ease-out; }
     100% { --gw-hb: 0.8; }
 }
 
@@ -3354,7 +3354,7 @@ body.dark .gharib-word::after {
     /* Same one-shot bloom shape as gw-halo: quick rise to peak at 25%,
        long ease-out settle to a lit rest (0.57), held by `forwards`. */
     0%   { --gw-ib: 0.42; animation-timing-function: ease-in-out; }
-    25%  { --gw-ib: 0.72; animation-timing-function: ease-out; }
+    25%  { --gw-ib: 0.62; animation-timing-function: ease-out; }
     100% { --gw-ib: 0.57; }
 }
 
