@@ -6,3 +6,6 @@ ayoub
 
 # Timing-pipeline scratch audio (large MP3s; masters live in GCS)
 _timing_analysis/
+
+# macOS folder metadata
+.DS_Store
