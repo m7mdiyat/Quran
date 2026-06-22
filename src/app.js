@@ -743,8 +743,12 @@ function setTafsirCache(cacheKey, text) {
  * (isApp() === false) never touches any of this — it keeps using the live API.
  * =========================================================================== */
 const TAFSIR_GCS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data";
-const TAFSIR_CACHE_NAME = "tafsir-v1";
-const TAFSIR_READY_FLAG = "tafsir_ready_v1";
+// Bump BOTH together whenever the offline tafsir asset SET changes so existing
+// app users stop trusting the old cache and re-download the corrected files.
+// Stale versions are reclaimed by purgeStaleTafsirCaches().
+//   v1→v2 (2026-06-22): 304 truncated مختصر التفاسير entries corrected.
+const TAFSIR_CACHE_NAME = "tafsir-v2";
+const TAFSIR_READY_FLAG = "tafsir_ready_v2";
 // 7 tafsir books + the pre-generated مختصر التفاسير summaries. en.sahih.json and
 // quran.json are intentionally excluded: both are bundled with the app and
 // already parsed into EN_MAP / QURAN at startup, so they work offline already.
@@ -777,6 +781,19 @@ let _tafsirCachePromise = null;
 function tafsirAssetCache() {
   if (!_tafsirCachePromise) _tafsirCachePromise = caches.open(TAFSIR_CACHE_NAME);
   return _tafsirCachePromise;
+}
+
+/* One-time migration after a TAFSIR_CACHE_NAME bump: delete superseded cache
+ * versions + their ready flags so the device reclaims the space — the old cache
+ * holds the previous (truncated-مختصر) set, ~134 MB, and would otherwise sit
+ * orphaned forever. Idempotent (deleting a missing cache/flag is a no-op); the
+ * app re-downloads the corrected set into the new cache on demand. */
+const STALE_TAFSIR_CACHE_NAMES = ["tafsir-v1"];
+const STALE_TAFSIR_READY_FLAGS = ["tafsir_ready_v1"];
+async function purgeStaleTafsirCaches() {
+  if (!isApp() || typeof caches === "undefined") return;
+  for (const flag of STALE_TAFSIR_READY_FLAGS) { try { localStorage.removeItem(flag); } catch { } }
+  for (const name of STALE_TAFSIR_CACHE_NAMES) { try { await caches.delete(name); } catch { } }
 }
 
 /* Cache-first fetch for tafsir assets — on the website a plain fetch(); in the
@@ -5582,6 +5599,8 @@ async function init() {
     import("./offline-panel.js")
       .then((m) => m.initOfflinePanel())
       .catch((e) => console.error("offline-panel init failed", e));
+    // Reclaim the superseded tafsir cache (v1) now that the asset set is v2.
+    purgeStaleTafsirCaches();
     // Lock the page behind any open header sheet (offline/feedback/notes/غريب).
     import("./sheet-scroll-lock.js")
       .then((m) => m.initSheetScrollLock())
