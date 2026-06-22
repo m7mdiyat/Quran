@@ -5654,6 +5654,13 @@ async function init() {
     // single-source invariant without clobbering the engine.
     stopTafsirPerAyahAudio: () => stopTafsirPerAyahAudio(),
     tafsirSectionEl: tafsirSection,
+    // The "سؤال الذكاء الاصطناعي - قريبًا" teaser is a separate <section> that
+    // lives OUTSIDE #tafsirSection, so Mushaf mode (which only hides
+    // #tafsirSection) leaves it visible. On a cold load — before the QCF page
+    // has painted — it sits high in the viewport and the fixed, translucent
+    // مختصر quick-view card opens over it, bleeding its text through (the
+    // overlapping "قريباً" smear). Hand Mushaf the section so it can hide it too.
+    aiSectionEl: aiPanel?.closest("section") || null,
     hasCurrentAyah: () => CURRENT != null,
     getCurrentAyah: () => CURRENT ? { s: CURRENT.s, a: CURRENT.a } : null,
     getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",

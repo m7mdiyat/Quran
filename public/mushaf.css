@@ -423,6 +423,16 @@ body.dark .mushaf-download {
        (distorted). A viewport-relative clamp keeps it compact and
        proportional like the printed Mushaf on any device. */
     font-size: clamp(18px, 4vw, 28px);
+    /* The bismillah is a single ornamental glyph dominated by a long, thin,
+       near-horizontal stroke. On Windows/Chrome at browser zoom >100%, the
+       effective size is fractional and DirectWrite's hinting grid-fits that
+       hairline off the device-pixel rows, breaking it into torn/jagged
+       segments (macOS CoreText renders it as a soft continuous line, so Mac is
+       unaffected, and it's clean at exactly 100%). geometricPrecision tells
+       Blink to skip hinting-driven grid-snapping and rasterize the outline at
+       sub-pixel precision with smooth AA, like Mac — visually identical at
+       100% on Mac/phone (at most imperceptibly softer), robust under zoom. */
+    text-rendering: geometricPrecision;
 }
 
 .mushaf-ayah {

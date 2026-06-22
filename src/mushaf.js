@@ -176,11 +176,19 @@ const ICONS = {
 /* Data caches */
 const PAGE_CACHE = new Map();
 const PAGE_INFLIGHT = new Map();
-// These two have a static @font-face in mushaf.css (same-origin src) and are
-// treated as already-loaded on the website. In the app that src isn't bundled,
-// so they must be loaded from GCS like every other font — see unsealAppFonts().
+// These two have a static @font-face in mushaf.css (same-origin src), so on the
+// website their CSS *declaration* already exists. But a declared @font-face is
+// fetched LAZILY by the browser, so "declared" is NOT "loaded" — conflating the
+// two is exactly what painted PUA glyphs against the serif fallback (tofu) on a
+// fast page-turn. So we track them separately:
+//   DECLARED_FONTS — an @font-face rule exists (web only; static or injected).
+//   LOADED_FONTS   — the bytes are genuinely in and the face is paint-ready.
+// LOADED_FONTS starts EMPTY and is filled only on a real load success
+// (loadFontAndWait). In the app the static src isn't bundled, so unsealAppFonts()
+// drops the declarations and every font is built from GCS/cache bytes instead.
 const PREDECLARED_FONTS = ["QCF4_QBSML", "QCF4_Hafs_01"];
-const LOADED_FONTS = new Set(PREDECLARED_FONTS);
+const DECLARED_FONTS = new Set(PREDECLARED_FONTS); // web: @font-face rule present
+const LOADED_FONTS = new Set();                    // genuinely loaded & paint-ready
 let VERSES_LOOKUP = null;
 let FONT_MAP = null;
 let CHAPTERS = null;
@@ -657,6 +665,12 @@ function openPanel() {
     const wrapper = ROOT_EL.parentElement;
     if (wrapper) wrapper.classList.add("has-mushaf");
     if (DEPS?.tafsirSectionEl) DEPS.tafsirSectionEl.classList.add("hidden");
+    // Also hide the AI "قريباً" teaser (a sibling <section> outside
+    // #tafsirSection) so it can't bleed through the fixed, translucent مختصر
+    // quick-view card on a cold load. Inline display — not the .hidden class —
+    // so we don't clobber the class state renderSurahView manages; closePanel
+    // clears it back to that state.
+    if (DEPS?.aiSectionEl) DEPS.aiSectionEl.style.display = "none";
     requestAnimationFrame(() => requestAnimationFrame(() => {
         if (PANEL_OPEN) panelOpen(ROOT_EL);
     }));
@@ -695,6 +709,9 @@ function closePanel({ keepAudio = false } = {}) {
         panelStageClosed(DEPS.tafsirSectionEl);
         DEPS.tafsirSectionEl.classList.remove("hidden");
     }
+    // Restore the AI teaser to its class-driven visibility (shown on the
+    // landing/Tafsir view; stays hidden if renderSurahView had hidden it).
+    if (DEPS?.aiSectionEl) DEPS.aiSectionEl.style.display = "";
     // keepAudio: setAppMode hands the live engine over to Tafsir without
     // stopping audio. The default closePanel still tears audio down so the
     // panel-close case (toggle off, etc.) behaves as before.
@@ -971,7 +988,7 @@ let _appFontsUnsealed = false;
 function unsealAppFonts() {
     if (_appFontsUnsealed || !isApp()) return;
     _appFontsUnsealed = true;
-    for (const f of PREDECLARED_FONTS) LOADED_FONTS.delete(f);
+    for (const f of PREDECLARED_FONTS) DECLARED_FONTS.delete(f);
     for (const sheet of document.styleSheets) {
         let rules;
         try { rules = sheet.cssRules; } catch { continue; } // skip cross-origin sheets
@@ -988,87 +1005,100 @@ function unsealAppFonts() {
 }
 
 function ensureFontDeclared(fontFamily) {
-    if (LOADED_FONTS.has(fontFamily)) return;
+    if (DECLARED_FONTS.has(fontFamily)) return;
     // In the app, fonts are loaded from the cache as ArrayBuffers and added
     // to document.fonts (see loadFontAndWait) — a CSS @font-face rule would
     // bypass the cache and fail offline, so skip it.
     if (isApp()) return;
+    // Mark declared up front, but do NOT touch LOADED_FONTS: the rule exists,
+    // the bytes don't yet. loadFontAndWait() is what waits for the bytes.
+    DECLARED_FONTS.add(fontFamily);
     const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
     const css = `@font-face { font-family: "${fontFamily}"; src: url("${getQCF4Base()}/fonts/qcf4/${fileName}") format("woff2"); font-display: block; }`;
     const style = document.createElement("style");
     style.dataset.qcf4Font = fontFamily;
     style.textContent = css;
     document.head.appendChild(style);
-    LOADED_FONTS.add(fontFamily);
 }
 
 const FONT_LOAD_PROMISES = new Map();
 
+/* Resolve ONLY when `fontFamily` is genuinely painted-ready. This is the gate
+ * goToPage() awaits before renderPage(); resolving early paints the page's PUA
+ * glyphs against the serif fallback → tofu boxes. The old code trusted a
+ * "declared" flag and special-cased a single font (Hafs_01) to actually wait —
+ * the other 46 verse fonts could resolve before their bytes arrived on a fast
+ * page-turn. Now ALL fonts wait the same way:
+ *
+ *   Web — ensure the @font-face exists, then wait for the BYTES via the Font
+ *         Loading API. document.fonts.load() forces the lazy fetch and resolves
+ *         only when the face is usable (instant once truly loaded).
+ *   App — there is no @font-face; fetch the woff2 (cache-first) and build a
+ *         FontFace from the bytes. A non-ok response or decode error REJECTS.
+ *
+ * A failed/partial load is never memoised as success: its in-flight promise is
+ * dropped from FONT_LOAD_PROMISES and the rejection propagates, so the caller
+ * keeps the loader up and retries on the next attempt instead of rendering
+ * fallback glyphs that stick until a full reload (the app's tofu mode). */
 function loadFontAndWait(fontFamily) {
     if (!fontFamily) return Promise.resolve();
     unsealAppFonts();
-    if (LOADED_FONTS.has(fontFamily)) {
-        // QCF4_Hafs_01 is seeded into LOADED_FONTS because it has a static
-        // @font-face in mushaf.css — but a browser fetches a static @font-face
-        // LAZILY, only when a glyph first paints with it. On most surah-start
-        // pages the bismillah is the SOLE glyph using Hafs_01 (verses use the
-        // page's own QCF4_Hafs_NN font), so the 946 KB file isn't requested
-        // until paint time. Returning resolved here let the bismillah paint
-        // first; under font-display:block its U+F8D6 glyph then renders with a
-        // system fallback until the real font lands — a narrow tofu box on
-        // macOS, but a WIDE, stretched glyph on Windows (the reported "broken
-        // basmala"). document.fonts.load() forces the fetch and resolves only
-        // when the face is actually usable (instant once loaded), so the
-        // callers that await this — preloadMushafData() and goToPage()'s
-        // Promise.all — genuinely wait for it before rendering the page.
-        // QBSML stays a plain no-op: its surah-header glyph is never painted
-        // (renderPage skips header lines), so it must not trigger a 616 KB
-        // fetch. In the app, unsealAppFonts() above has already removed both
-        // predeclared fonts from LOADED_FONTS, so this branch is web-only.
-        if (!isApp() && document.fonts && fontFamily === "QCF4_Hafs_01") {
-            return document.fonts.load(`1em "${fontFamily}"`).then(() => {}, () => {});
-        }
-        return Promise.resolve();
-    }
+    // The QCF4 surah-header glyph (QBSML) is never painted — renderPage skips
+    // surah_header lines — so it must never trigger its ~600 KB fetch/build.
+    if (fontFamily === "QCF4_QBSML") return Promise.resolve();
+    if (LOADED_FONTS.has(fontFamily)) return Promise.resolve();
     if (FONT_LOAD_PROMISES.has(fontFamily)) return FONT_LOAD_PROMISES.get(fontFamily);
 
-    ensureFontDeclared(fontFamily);
-
     if (typeof FontFace === "undefined" || !document.fonts) {
-        return Promise.resolve();
-    }
-
-    let loaded = false;
-    for (const ff of document.fonts) {
-        if (ff.family === fontFamily && ff.status === "loaded") {
-            loaded = true;
-            break;
-        }
-    }
-
-    if (loaded) {
+        // No Font Loading API (very old engines): best-effort declare and assume
+        // the browser paints it. Legacy fallback only.
+        ensureFontDeclared(fontFamily);
         LOADED_FONTS.add(fontFamily);
         return Promise.resolve();
     }
 
-    const fileName = fontFamily === "QCF4_QBSML" ? "QCF4_QBSML.woff2" : `${fontFamily}_W.woff2`;
-    const url = `${getQCF4Base()}/fonts/qcf4/${fileName}`;
+    let work;
+    if (isApp()) {
+        const url = `${getQCF4Base()}/fonts/qcf4/${fontFamily}_W.woff2`;
+        work = qcf4Fetch(url)
+            .then((r) => { if (!r.ok) throw new Error(`woff2 HTTP ${r.status}`); return r.arrayBuffer(); })
+            .then((buf) => new FontFace(fontFamily, buf).load())
+            .then((face) => { document.fonts.add(face); LOADED_FONTS.add(fontFamily); });
+    } else {
+        ensureFontDeclared(fontFamily);
+        work = document.fonts.load(`1em "${fontFamily}"`).then((faces) => {
+            // load() resolves with [] if nothing matched (declaration raced) —
+            // treat that as a failure so it retries rather than painting tofu.
+            if (!faces || faces.length === 0) throw new Error(`no @font-face matched ${fontFamily}`);
+            LOADED_FONTS.add(fontFamily);
+        });
+    }
 
-    // App: load the woff2 bytes through the cache, then build the FontFace from
-    // the ArrayBuffer. Website: keep the original url()-sourced FontFace.
-    const facePromise = isApp()
-        ? qcf4Fetch(url).then((r) => r.arrayBuffer()).then((buf) => new FontFace(fontFamily, buf).load())
-        : new FontFace(fontFamily, `url("${url}") format("woff2")`).load();
-
-    const p = facePromise.then((f) => {
-        try { document.fonts.add(f); } catch { }
-        LOADED_FONTS.add(fontFamily);
-    }).catch((e) => {
+    const p = work.catch((e) => {
+        FONT_LOAD_PROMISES.delete(fontFamily); // forget the failure → next turn retries
         console.error(`Font load failed for ${fontFamily}:`, e);
+        throw e;                               // don't let goToPage's gate proceed to renderPage
     });
-
     FONT_LOAD_PROMISES.set(fontFamily, p);
     return p;
+}
+
+/* Await every font a page needs, retrying transient failures with backoff while
+ * the loader stays up (the app streams woff2 from GCS — a blip must never fall
+ * through to a tofu paint). Already-loaded fonts resolve instantly, so the
+ * common cached case is not slowed. Returns true once all are genuinely loaded,
+ * false if they still can't be after `attempts` tries. */
+async function loadPageFontsWithRetry(fonts, attempts = 3) {
+    if (!fonts.length) return true;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            await Promise.all(fonts.map(loadFontAndWait));
+            return true;
+        } catch {
+            if (i < attempts - 1) await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+        }
+    }
+    return false;
 }
 
 function preloadFont(fontFamily) {
@@ -1395,11 +1425,15 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
             }
         }
         
-        const fontPromises = [];
-        for (const font of neededFonts) {
-            fontPromises.push(loadFontAndWait(font));
+        // Genuinely wait for every page font's BYTES before painting. Transient
+        // failures retry with backoff (loader stays up); a persistent failure
+        // leaves the current page in place rather than rendering tofu boxes.
+        const fontsReady = await loadPageFontsWithRetry([...neededFonts]);
+        if (!fontsReady) {
+            hideMushafLoader();
+            console.error(`Mushaf: fonts for page ${p} failed to load; skipping render to avoid tofu.`);
+            return;
         }
-        await Promise.all(fontPromises);
 
         hideMushafLoader();
 
@@ -1494,7 +1528,7 @@ function renderPage(data, direction = "none") {
     ensureFontDeclared(data.font);
     for (const line of data.lines) {
         for (const w of line.words) {
-            if (w.font && !LOADED_FONTS.has(w.font)) ensureFontDeclared(w.font);
+            if (w.font && !DECLARED_FONTS.has(w.font)) ensureFontDeclared(w.font);
         }
     }
 
