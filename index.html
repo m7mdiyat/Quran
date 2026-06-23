@@ -3292,7 +3292,7 @@
      * theme color" highlight. Gating hover to @media (hover: hover) ensures
      * only true pointer devices (mouse, trackpad) get hover effects; touch
      * never sticks. Same pattern as .theme-toggle:hover above.
-     * Covers all three header buttons — #notesMenuBtn reuses .offline-menu-btn. */
+     * The remaining header button (#settingsMenuBtn) reuses .offline-menu-btn. */
     @media (hover: hover) {
       .offline-menu-btn:hover,
       .feedback-menu-btn:hover {
@@ -3492,7 +3492,10 @@
     .offline-sheet {
       position: fixed;
       inset: 0;
-      z-index: 1000;
+      /* Above the Mushaf fullscreen overlay (1000) + its re-anchored floating
+         lantern/circles (1001) and the gharib tip (2100), so a sheet opened by
+         a lantern tap INSIDE fullscreen paints over everything. */
+      z-index: 2200;
       display: none;
       align-items: center;
       justify-content: center;
@@ -3806,6 +3809,83 @@
 
     .offline-btn--danger-text { color: #b91c1c; }
     body.dark .offline-btn--danger-text { color: #fecaca; }
+
+    /* ---------- Settings hub (app-only) — link rows + toggles inside the
+       .offline-sheet shell. Rows echo .offline-row; the switch uses the site's
+       slate track / blue accent so it reads as native chrome. ---------- */
+    .settings-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      text-align: right;
+      background: rgba(255, 255, 255, .7);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--text, #0b1326);
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    body.dark .settings-row {
+      background: rgba(255, 255, 255, .04);
+      border-color: rgba(148, 163, 184, .14);
+      color: #e2e8f0;
+    }
+    @media (hover: hover) {
+      .settings-row--link:hover { background: rgba(15, 23, 42, .05); }
+      body.dark .settings-row--link:hover { background: rgba(148, 163, 184, .1); }
+    }
+
+    .settings-row__icon {
+      flex: 0 0 auto;
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, rgba(29, 143, 255, .15), rgba(29, 143, 255, .05));
+      color: #1d8fff;
+    }
+    .settings-row__icon svg { width: 20px; height: 20px; }
+
+    .settings-row__text { flex: 1 1 auto; min-width: 0; }
+    .settings-row__title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .settings-row__desc {
+      font-size: 12px; font-weight: 500; line-height: 1.5;
+      color: var(--muted, #64748b); margin-top: 2px;
+    }
+    .settings-row__chevron { flex: 0 0 auto; color: #94a3b8; display: inline-flex; }
+    .settings-row__chevron svg { width: 18px; height: 18px; display: block; }
+
+    /* Modern minimal switch (RTL: rests right when OFF, slides left when ON). */
+    .settings-switch {
+      flex: 0 0 auto;
+      position: relative;
+      width: 46px; height: 28px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .16);
+      transition: background .2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    body.dark .settings-switch { background: rgba(148, 163, 184, .28); }
+
+    .settings-switch__thumb {
+      position: absolute;
+      top: 3px; right: 3px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .3);
+      transition: transform .2s cubic-bezier(0.34, 1.36, 0.64, 1);
+    }
+
+    .settings-row--toggle[aria-checked="true"] .settings-switch { background: #1d8fff; }
+    .settings-row--toggle[aria-checked="true"] .settings-switch__thumb { transform: translateX(-18px); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .settings-switch, .settings-switch__thumb { transition: none; }
+    }
 
     /* ---------- Feedback section (app-only, inside offline sheet) ---------- */
     .feedback-section {
@@ -5028,42 +5108,15 @@
   <!-- Minimal top bar (frozen — position:fixed via CSS, Fix 5) -->
   <header class="site-header top-0 z-40 border-b border-black/5">
     <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
-      <!-- App-only action buttons (offline downloads + feedback). Empty wrapper
-           on the website — both buttons start display:none and are revealed by
-           their respective panel modules behind isApp(). -->
+      <!-- App-only settings hub (offline downloads + feedback + toggles live
+           inside its sheet). Empty wrapper on the website — the button starts
+           display:none and settings-panel.js reveals it behind isApp(). -->
       <div class="header-app-actions">
-        <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
-          style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
-          </svg>
-        </button>
-        <button id="feedbackMenuBtn" type="button" class="feedback-menu-btn"
-          style="display:none;" aria-label="إرسال ملاحظة">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/>
-          </svg>
-        </button>
-        <button id="notesMenuBtn" type="button" class="offline-menu-btn"
-          style="display:none;" aria-label="تدبرياتي">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
-          </svg>
-        </button>
-        <!-- غريب القرآن saved-words collection (app only). The lantern echoes
-             the in-Mushaf فانوس; its flame stays warmly lit in every state. -->
-        <button id="gharibSavedBtn" type="button" class="offline-menu-btn gharib-saved-btn"
-          style="display:none;" aria-label="كلمات غريب القرآن المحفوظة">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M10.7 3.2a1.55 1.55 0 0 1 2.6 0"/>
-            <path d="M9.1 6.6c.3-1.7 1.4-2.6 2.9-2.6s2.6.9 2.9 2.6"/>
-            <path d="M8.3 6.6h7.4"/>
-            <path d="M9.2 6.6l-.5 7.2a1.3 1.3 0 0 0 1.3 1.4h4a1.3 1.3 0 0 0 1.3-1.4l-.5-7.2"/>
-            <path class="gharib-saved-btn__flame" d="M12.4 7.4c-1.4 1.7-2.4 2.9-2.4 4.4a2 2 0 0 0 4 0c0-1-.4-1.9-1-2.9.2.7.1 1.2-.2 1.6.5-1.2.3-2.3-.4-3.1z"/>
-            <path d="M10.4 15.2l-.6 2.9M13.6 15.2l.6 2.9"/>
-            <path d="M9.6 18.1h4.8"/>
+        <button id="settingsMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="إعدادات">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
       </div>
