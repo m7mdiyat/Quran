@@ -162,7 +162,7 @@ function buildSheet() {
     wrap.id = "feedbackSheet";
     // Reuses .offline-sheet* styling verbatim — same visual treatment as the
     // offline panel, just different contents inside the card.
-    wrap.className = "offline-sheet";
+    wrap.className = "offline-sheet offline-sheet--smooth";
     wrap.setAttribute("aria-hidden", "true");
     wrap.innerHTML = `
       <div class="offline-sheet__backdrop" data-feedback-close></div>
@@ -196,6 +196,7 @@ function onKeyDown(e) {
 function openSheet() {
     buildSheet();
     SHEET_OPEN = true;
+    void SHEET_EL.offsetWidth; // commit the closed state so the first open transitions
     SHEET_EL.classList.add("offline-sheet--open");
     SHEET_EL.setAttribute("aria-hidden", "false");
     document.body.classList.add("offline-sheet-open");
@@ -220,9 +221,10 @@ function closeSheet() {
     if (back) back();
 }
 
-/* Header dismiss icon: a back chevron (RTL: right-pointing, matching the app's
-   nav convention) when opened from Settings, else the plain ✕. */
-const DISMISS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
+/* Header dismiss icon: a back chevron (RTL: LEFT-pointing — "back" reads
+   leftward here, toward the Settings hub it returns to) when opened from
+   Settings, else the plain ✕. */
+const DISMISS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>`;
 const DISMISS_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`;
 
 function applyDismissAffordance() {
