@@ -3571,82 +3571,10 @@ body.dark .gharib-tip::after {
     border-color: rgba(240, 192, 105, 0.18);
 }
 
-/* Long-press lantern explainer — same card family, smaller. */
-.gharib-tip--explain {
-    max-width: min(240px, calc(100vw - 24px));
-    padding: 0.4rem 0.7rem;
-    font-size: 0.8rem;
-    line-height: 1.65;
-}
-
-/* The explainer lives on <body> (position:fixed + z-index:2100 from
-   the base .gharib-tip), NOT inside the lamp. The lamp sits in the
-   backdrop-filtered .mushaf-root.glass, and ANY change to a glass
-   descendant on hover (a child appearing, the old z-index lift) forces
-   the backdrop-filter to repaint, which jitters the glass contents —
-   the lamp "jumped". A body-level card touches nothing inside the glass,
-   and z-index:2100 already floats it above the page (same as the meaning
-   tip), so the lamp-lift cure is gone. src/gharib.js anchors it under
-   the lamp each time it opens (left/top/--tip-ax). */
-.gharib-tip.gharib-tip--explain {
-    text-align: right;
-    cursor: default;
-    /* ── Transitions.dev "Modal open / close" port — opacity + scale
-       0.96 with a distinct is-closing state (src/gharib.js swaps
-       is-open → is-closing on hover-out, then drops is-closing after
-       --modal-close-dur). ── */
-    --modal-open-dur: 250ms;
-    --modal-close-dur: 150ms;
-    --modal-scale: 0.96;
-    --modal-scale-close: 0.96;
-    --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
-    transform-origin: center;
-    transform: scale(var(--modal-scale));
-    opacity: 0;
-    visibility: visible;   /* opacity-gated (overrides .gharib-tip's hidden) */
-    pointer-events: none;
-    will-change: transform, opacity;
-    transition:
-        transform var(--modal-open-dur) var(--modal-ease),
-        opacity   var(--modal-open-dur) var(--modal-ease);
-}
-
-.gharib-tip.gharib-tip--explain.is-open {
-    transform: scale(1);
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.gharib-tip.gharib-tip--explain.is-closing {
-    transform: scale(var(--modal-scale-close));
-    opacity: 0;
-    pointer-events: none;
-    transition:
-        transform var(--modal-close-dur) var(--modal-ease),
-        opacity   var(--modal-close-dur) var(--modal-ease);
-}
-
-.gharib-tip--explain b {
-    display: block;
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #a87718;
-    margin-bottom: 1px;
-}
-
-body.dark .gharib-tip--explain b {
-    color: #f0c069;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .gharib-tip,
     .gharib-tip.is-open {
         transition: none;
-    }
-    .gharib-tip.gharib-tip--explain,
-    .gharib-tip.gharib-tip--explain.is-open,
-    .gharib-tip.gharib-tip--explain.is-closing {
-        transition: none !important;
     }
 }
 
@@ -4022,6 +3950,131 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
 }
 
 .mushaf-root--fullscreen #gharibLamp .gharib-lamp__icon {
+    width: 17px;
+    height: 17px;
+}
+
+/* ── Notes lantern-sibling (app only) — a circular twin of the gharib
+   lamp, sitting next to it in the toolbar. Same 40×40 transparent
+   button, 20px icon and grey body; a thin STATIC ring lends the
+   lantern's circular silhouette (no progress segments), and the count
+   badge is teal so it never reads as the lamp's gold metric. ── */
+.notes-lamp {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 2px;
+    color: #6b7280;
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    font: inherit;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.dark .notes-lamp { color: #9ca3af; }
+
+/* Opt out of the site-wide button:hover lift (same as #gharibLamp). */
+#mushafNotesLamp:hover { transform: none; }
+
+.notes-lamp__ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.notes-lamp__ring circle {
+    fill: none;
+    stroke: rgba(130, 134, 142, 0.30);
+    stroke-width: 2;
+}
+
+body.dark .notes-lamp__ring circle {
+    stroke: rgba(170, 178, 190, 0.24);
+}
+
+.notes-lamp__icon {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Count badge — same geometry + entrance as .gharib-badge, teal fill. */
+.notes-lamp__badge {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.notes-lamp__badge[data-open="true"] {
+    animation: gharib-badge-slide-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notes-lamp__badge[data-open="false"] {
+    display: none;
+}
+
+.notes-lamp__badge-dot {
+    display: block;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4.5px;
+    border-radius: 9px;
+    background: linear-gradient(160deg, #2dd4bf, #0d9488);
+    color: #fff;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(13, 148, 136, 0.35);
+}
+
+body.dark .notes-lamp__badge-dot {
+    background: linear-gradient(160deg, #5eead4, #14b8a6);
+    color: #06302b;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Fullscreen: the notes lamp joins the floating cluster as the
+   FIFTH circle — font(12) → play(48) → settings(84) → lantern(120)
+   → notes(156). Exempted from the toolbar children-hide rule (ID
+   specificity + later in the file) and re-anchored to match. ── */
+.mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    display: flex !important;
+    position: fixed;
+    top: 12px;
+    right: 156px;
+    left: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+}
+
+body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    background: rgba(45, 51, 60, 0.86);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.mushaf-root--fullscreen #mushafNotesLamp .notes-lamp__icon {
     width: 17px;
     height: 17px;
 }
