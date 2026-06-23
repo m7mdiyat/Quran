@@ -4145,11 +4145,17 @@
        focused, well under the default 440px sheet. */
     #gharibSavedSheet .offline-sheet__card {
       width: min(300px, 90vw);
-      max-height: min(70vh, 460px);
+      max-height: min(76vh, 520px);
       padding: 18px 18px 14px;
       border-radius: 20px;
+      /* Fixed header + internally-scrolling list: a flex column that never
+         scrolls itself (overrides the base .offline-sheet__card overflow:auto)
+         — the head stays put and only the word list scrolls, in its own region. */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
-    #gharibSavedSheet .offline-sheet__head { margin-bottom: 12px; }
+    #gharibSavedSheet .offline-sheet__head { margin-bottom: 12px; flex-shrink: 0; }
     #gharibSavedSheet .offline-sheet__title { font-size: 16px; }
 
     /* Head logo → the bare lantern itself (no square box), warm gold body +
@@ -4258,11 +4264,21 @@
       display: flex;
       flex-direction: column;
       gap: 9px;
-      max-height: 40vh;
+      /* Fill the card's remaining height and scroll INTERNALLY — the card no
+         longer scrolls. min-height:0 lets this flex child shrink below its
+         content so the overflow is contained here, not on the whole panel. */
+      flex: 0 1 auto;
+      min-height: 0;
       overflow-y: auto;
+      overscroll-behavior: contain;
       padding-inline-end: 2px;
       margin-top: 2px;
     }
+    /* Clean, thin scrollbar confined to the list (matches .results-list). */
+    .gharib-saved-list::-webkit-scrollbar { width: 6px; }
+    .gharib-saved-list::-webkit-scrollbar-track { background: transparent; }
+    .gharib-saved-list::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
+    .gharib-saved-list::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
 
     .gharib-saved-row {
       position: relative;
