@@ -1,10 +1,10 @@
 /*
- * غريب القرآن — saved words collection. APP ONLY.
+ * غريب القرآن — learned-words collection. WEB + APP.
  *
- * A header lantern button (#gharibSavedBtn, next to the notes button) opens a
- * glass sheet listing every gharib word the user has revealed in the Mushaf —
- * the learned set — each with its meaning, a tap-to-jump to where it appears,
- * and a remove action.
+ * Opened by a TAP on the in-Mushaf lantern (#gharibLamp), which dispatches the
+ * "gharib:open-saved" event (src/gharib.js). The glass sheet lists every gharib
+ * word the user has revealed in the Mushaf — the learned set — each with its
+ * meaning and a remove action.
  *
  * The saved collection IS the learned set (one source of truth): removing a
  * word calls gharibForget(), which un-reveals it everywhere (the in-Mushaf
@@ -13,14 +13,14 @@
  * normalized keys, so gharibSavedWords() reverse-maps each key back to its
  * vocalized word + meaning + location from the gharib dataset.
  *
- * Reuses the .offline-sheet* shell (visual parity with the offline / feedback /
- * notes panels) over a lantern-gold .gharib-saved* row treatment. Dynamic-
- * imported from app.js init() behind isApp(); the website never loads it.
+ * Reuses the .offline-sheet* shell (visual parity with the settings / offline /
+ * feedback / notes panels) over a lantern-gold .gharib-saved* row treatment.
+ * Dynamic-imported from app.js init() on BOTH web and app — the learned set in
+ * localStorage m7_gharib exists on the website too.
  */
 
 "use strict";
 
-import { isApp } from "./app.js";
 import {
     ensureGharibData,
     gharibSavedWords,
@@ -31,8 +31,8 @@ import {
 } from "./gharib.js";
 
 let SHEET_EL = null;
-let BTN_EL = null;
 let SHEET_OPEN = false;
+let _inited = false;
 let _confirmingReset = false; // reset-all two-step confirm state
 
 const REDUCED_MOTION = () => {
@@ -110,7 +110,7 @@ function buildSheet() {
         <div class="offline-sheet__head">
           <div class="offline-sheet__icon" aria-hidden="true">${LAMP_SVG}</div>
           <h2 id="gharibSavedTitle" class="offline-sheet__title">غريب القرآن</h2>
-          <p class="offline-sheet__desc">ستجد في هذه القائمة حصيلتك من ألفاظ القرآن التي تعلمتها من خانة <span class="gharib-saved-tadabbur">تدبّر</span></p>
+          <p class="offline-sheet__desc">كلماتٌ قد تخفى معانيها، تُضيء لك في وضع <span class="gharib-saved-tadabbur">التدبّر</span> لتتعلّمها — وكل لفظة تفهمها تُضاف إلى حصيلتك في هذه القائمة.</p>
           <div class="gharib-saved-meta" data-gh-meta></div>
         </div>
         <div class="gharib-saved-list" data-gh-list></div>
@@ -275,11 +275,13 @@ function closeSheet() {
 /* ----------------------------- Init ----------------------------- */
 
 export function initGharibSavedPanel() {
-    if (!isApp()) return; // defensive — the import is already gated in app.js
-    BTN_EL = document.getElementById("gharibSavedBtn");
-    if (!BTN_EL) return;
-    BTN_EL.style.display = ""; // reveal (was display:none by default)
-    BTN_EL.addEventListener("click", () => {
+    // Web + app: the Mushaf lamp tap (src/gharib.js) dispatches
+    // "gharib:open-saved"; the old top-bar #gharibSavedBtn is gone. The
+    // learned set (localStorage m7_gharib) exists on the website too, so the
+    // collection opens there as well. Idempotent.
+    if (_inited) return;
+    _inited = true;
+    document.addEventListener("gharib:open-saved", () => {
         if (SHEET_OPEN) closeSheet(); else openSheet();
     });
 }
