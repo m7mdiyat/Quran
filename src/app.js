@@ -5605,6 +5605,11 @@ async function init() {
         toggleDark: () => toggleDarkMode(),
       }))
       .catch((e) => console.error("settings-panel init failed", e));
+    // First-launch guided tour (homepage) + one-time lantern hint on first
+    // تدبّر page — app only; replaces the old single offline coachmark.
+    import("./tour.js")
+      .then((m) => { m.initTour(); m.initLanternHint(); })
+      .catch((e) => console.error("tour init failed", e));
     // Reclaim the superseded tafsir cache (v1) now that the asset set is v2.
     purgeStaleTafsirCaches();
     // Resume (silent restore on next launch) + auto-flush on hide.
