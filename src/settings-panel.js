@@ -17,7 +17,7 @@
 "use strict";
 
 import { isApp } from "./app.js";
-import { openOfflinePanel, initOfflinePanel } from "./offline-panel.js";
+import { openOfflinePanel } from "./offline-panel.js";
 import { openFeedbackPanel } from "./feedback-panel.js";
 
 let SHEET_EL = null;
@@ -159,6 +159,4 @@ export function initSettingsPanel(deps) {
     BTN_EL.addEventListener("click", () => {
         if (SHEET_OPEN) closeSheet(); else openSheet();
     });
-    // The offline first-launch coachmark now points at this Settings button.
-    initOfflinePanel();
 }
