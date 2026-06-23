@@ -4,8 +4,8 @@
  * On-device note-taking, no login, no backend. The user long-presses an ayah
  * in the Mushaf and picks "ملاحظة" → editor sheet → text saved under
  * "m7_notes" in localStorage as { "S:A": { text, created, updated } }. A
- * second header button ("ملاحظاتي") opens a list of all notes with jump /
- * edit / delete actions per row.
+ * circular toolbar button beside the gharib lantern ("ملاحظاتي") opens a list
+ * of all notes with jump / edit / delete actions per row.
  *
  * Two UI surfaces (both reuse the .offline-sheet* classes for visual parity
  * with the existing offline + feedback panels):
@@ -373,14 +373,70 @@ subscribeNotes(() => {
 export function initNotesPanel(deps) {
     if (!isApp()) return;
     _deps = deps || {};
-    // Reveal the header "ملاحظاتي" button.
-    const btn = document.getElementById("notesMenuBtn");
-    if (btn) {
-        btn.style.display = "";
-        btn.addEventListener("click", () => {
-            if (_listOpen) closeList(); else openNotesList();
-        });
+    // The list opener moved from the top bar into the Mushaf toolbar as a
+    // circular sibling of the gharib lamp (see ensureNotesLamp). The lamp is
+    // created lazily on the first page render (gharib.js), so we dock next to
+    // it on "mushaf:page-rendered", deferred one frame so it already exists.
+    document.addEventListener("mushaf:page-rendered", onPageRendered);
+    // Keep the badge fresh as notes are added / removed from anywhere.
+    subscribeNotes(updateNotesLampBadge);
+}
+
+/* ---- Toolbar lamp-sibling button (#mushafNotesLamp), app only ---- */
+
+let _notesLampEl = null;
+
+const NOTES_LAMP_ICON = `<svg class="notes-lamp__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`;
+
+function notesCount() {
+    try { return Object.keys(readAll()).length; } catch { return 0; }
+}
+
+function updateNotesLampBadge() {
+    if (!_notesLampEl) return;
+    const n = notesCount();
+    const badge = _notesLampEl.querySelector(".notes-lamp__badge");
+    const dot = _notesLampEl.querySelector(".notes-lamp__badge-dot");
+    if (!badge || !dot) return;
+    if (n > 0) {
+        dot.textContent = n.toLocaleString("ar-EG");
+        badge.setAttribute("data-open", "true");
+    } else {
+        badge.setAttribute("data-open", "false");
     }
+}
+
+function ensureNotesLamp() {
+    if (_notesLampEl && _notesLampEl.isConnected) return _notesLampEl;
+    const toolbar = document.getElementById("mushafToolbar");
+    if (!toolbar) return null;
+    const lamp = document.getElementById("gharibLamp");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "mushafNotesLamp";
+    btn.className = "notes-lamp";
+    btn.setAttribute("aria-label", "تدبرياتي");
+    btn.innerHTML = `
+      <svg class="notes-lamp__ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19"/></svg>
+      ${NOTES_LAMP_ICON}
+      <span class="notes-lamp__badge" data-open="false" aria-hidden="true"><span class="notes-lamp__badge-dot"></span></span>`;
+    btn.addEventListener("click", (e) => {
+        // stopPropagation matches the other fullscreen-cluster buttons (a
+        // background tap toggles the reading chrome).
+        e.stopPropagation();
+        if (_listOpen) closeList(); else openNotesList();
+    });
+    // Dock right after the gharib lamp; fall back to the toolbar end.
+    if (lamp) lamp.insertAdjacentElement("afterend", btn);
+    else toolbar.appendChild(btn);
+    _notesLampEl = btn;
+    updateNotesLampBadge();
+    return btn;
+}
+
+function onPageRendered() {
+    // Defer one frame so gharib.js's same-event handler has built #gharibLamp.
+    requestAnimationFrame(ensureNotesLamp);
 }
 
 /* ----------------------------- Helpers ----------------------------- */
