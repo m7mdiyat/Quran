@@ -1141,7 +1141,7 @@ function buildShell() {
     <!-- Toolbar: Settings + Play/Stop on the left | Surah selector on the right -->
     <div class="mushaf-toolbar" id="mushafToolbar">
       <div class="mushaf-toolbar__btn-wrap" id="mushafSettingsWrap">
-        <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings" id="mushafToolbarSettings" aria-label="إعدادات">${ICONS.gear}</button>
+        <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--settings" id="mushafToolbarSettings" aria-label="إعدادات الصوت">${ICONS.gear}</button>
         <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--settings" id="mushafSettingsDropdown">
           <div class="mushaf-settings__section">
             <div class="mushaf-settings__label">القارئ</div>
