@@ -259,7 +259,7 @@ function buildListSheet() {
     ensurePanelFont();
     const wrap = document.createElement("div");
     wrap.id = "notesListSheet";
-    wrap.className = "offline-sheet";
+    wrap.className = "offline-sheet offline-sheet--smooth";
     wrap.setAttribute("aria-hidden", "true");
     wrap.innerHTML = `
       <div class="offline-sheet__backdrop" data-notes-close></div>
@@ -342,6 +342,7 @@ export function openNotesList() {
     buildListSheet();
     _listOpen = true;
     renderList();
+    void _listSheetEl.offsetWidth; // commit the closed state so the first open transitions
     _listSheetEl.classList.add("offline-sheet--open");
     _listSheetEl.setAttribute("aria-hidden", "false");
     document.body.classList.add("offline-sheet-open");
