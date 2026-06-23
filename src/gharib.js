@@ -1005,28 +1005,26 @@ function ensureWidget() {
         toggleGharibFeature();
     });
 
-    // Press-and-hold (~550ms) opens the learned-words collection; a quick tap
-    // toggles the glow (the click handler above). The collection opens on
-    // RELEASE after the threshold — not mid-hold — so the finger-lift can't
-    // land on the freshly-opened sheet's backdrop and dismiss it. A light
-    // haptic at the threshold signals the hold registered. Works for touch and
-    // a long mouse-down on desktop.
+    // Press-and-hold (~550ms) opens the learned-words collection the INSTANT
+    // the threshold is reached — mid-hold, finger still down (the haptic
+    // confirms it). A quick tap toggles the glow (the click handler above).
+    // Because the sheet opens under the still-pressed finger, the saved panel
+    // guards its backdrop against the RELEASE of this gesture: it only dismisses
+    // on a press that STARTED on the backdrop (see gharib-saved-panel.js), so
+    // lifting the finger here can't close the just-opened sheet. The trailing
+    // click is swallowed by _lanternHoldFired so it never also toggles.
     let holdT = 0;
-    let holdReady = false;
     root.addEventListener("pointerdown", () => {
         _lanternHoldFired = false;
-        holdReady = false;
         clearTimeout(holdT);
-        holdT = setTimeout(() => { holdReady = true; hapticLight(); }, 550);
+        holdT = setTimeout(() => {
+            _lanternHoldFired = true;
+            hapticLight();
+            document.dispatchEvent(new CustomEvent("gharib:open-saved"));
+        }, 550);
     });
-    root.addEventListener("pointerup", () => {
-        clearTimeout(holdT);
-        if (!holdReady) return;          // quick tap → let the click toggle
-        holdReady = false;
-        _lanternHoldFired = true;        // swallow the trailing click (no toggle)
-        document.dispatchEvent(new CustomEvent("gharib:open-saved"));
-    });
-    const cancelHold = () => { clearTimeout(holdT); holdReady = false; };
+    const cancelHold = () => clearTimeout(holdT);
+    root.addEventListener("pointerup", cancelHold);
     root.addEventListener("pointercancel", cancelHold);
     root.addEventListener("pointerleave", cancelHold);
     root.addEventListener("contextmenu", (e) => e.preventDefault());
