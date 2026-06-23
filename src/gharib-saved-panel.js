@@ -99,7 +99,7 @@ function buildSheet() {
     ensurePanelFont();
     const wrap = document.createElement("div");
     wrap.id = "gharibSavedSheet";
-    wrap.className = "offline-sheet";
+    wrap.className = "offline-sheet offline-sheet--smooth";
     wrap.setAttribute("aria-hidden", "true");
     wrap.innerHTML = `
       <div class="offline-sheet__backdrop" data-gh-close></div>
@@ -110,7 +110,7 @@ function buildSheet() {
         <div class="offline-sheet__head">
           <div class="offline-sheet__icon" aria-hidden="true">${LAMP_SVG}</div>
           <h2 id="gharibSavedTitle" class="offline-sheet__title">غريب القرآن</h2>
-          <p class="offline-sheet__desc">كلماتٌ قد تخفى معانيها، تُضيء لك في وضع <span class="gharib-saved-tadabbur">التدبّر</span> لتتعلّمها — وكل لفظة تفهمها تُضاف إلى حصيلتك في هذه القائمة.</p>
+          <p class="offline-sheet__desc">هنا تجتمع كلمات القرآن الغريبة التي تعلّمت معناها. كلما <span class="gharib-saved-tadabbur">أضأت</span> كلمةً وفهمتها، أُضيفت إلى حصيلتك في هذه القائمة.</p>
           <div class="gharib-saved-meta" data-gh-meta></div>
         </div>
         <div class="gharib-saved-list" data-gh-list></div>
@@ -255,6 +255,7 @@ function openSheet() {
     buildSheet();
     SHEET_OPEN = true;
     _confirmingReset = false; // never reopen mid-confirm
+    void SHEET_EL.offsetWidth; // commit the closed (hidden) state so the first open transitions
     SHEET_EL.classList.add("offline-sheet--open");
     SHEET_EL.setAttribute("aria-hidden", "false");
     document.body.classList.add("offline-sheet-open");
