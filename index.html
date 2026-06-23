@@ -3526,13 +3526,41 @@
       overflow: hidden;
     }
 
+    /* Shared backdrop scrim — ONE blurred dim surface behind every sheet,
+       driven by body.offline-sheet-open. It stays put while panels swap (on a
+       hop the body class toggles off+on synchronously, which the browser
+       coalesces → no fade, no dip), and fades only when the first sheet opens
+       or the last one closes. Promoted to its own layer so the viewport blur is
+       rasterized ONCE and only opacity animates — no per-frame re-blur. This
+       kills both the close/open jank (each sheet used to animate its own
+       backdrop-filter) and the cross-fade blur dip on inner Settings hops. */
+    .sheet-scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 2199;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .24s ease, visibility 0s linear .24s;
+      transform: translateZ(0);
+      will-change: opacity;
+    }
+    body.offline-sheet-open .sheet-scrim {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .24s ease, visibility 0s;
+    }
+    @media (prefers-reduced-motion: reduce) { .sheet-scrim { transition: none; } }
+
     .offline-sheet__backdrop {
       position: absolute;
       inset: 0;
-      background: rgba(15, 23, 42, .42);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      animation: offline-sheet-fade 180ms ease forwards;
+      /* Dim + blur now live on the shared .sheet-scrim (one continuous surface
+         across panel swaps). This element is just the click-to-close catcher. */
+      background: transparent;
     }
 
     .offline-sheet__card {
@@ -3581,26 +3609,20 @@
        opacity is compositor-cheap AND blends the blur in smoothly. And because
        two sheets crossing over (sub-panel <-> Settings) overlap their fades,
        the blurred surface never drops out between them — no flash. */
-    .offline-sheet--smooth .offline-sheet__backdrop {
-      animation: none;
-      opacity: 0;
-      transition: opacity .26s ease;
-    }
-    .offline-sheet--smooth.offline-sheet--open .offline-sheet__backdrop {
-      opacity: 1;
-    }
+    /* The blurred dim is the shared .sheet-scrim now; the sheet animates only
+       its CARD (transform + opacity — compositor-cheap, no backdrop-filter in
+       the animation path, so open/close no longer janks). */
     .offline-sheet--smooth .offline-sheet__card {
       animation: none;
       opacity: 0;
-      transform: translateY(10px) scale(0.94);
-      transition: opacity .24s ease, transform .28s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateY(8px) scale(0.96);
+      transition: opacity .2s ease, transform .26s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .offline-sheet--smooth.offline-sheet--open .offline-sheet__card {
       opacity: 1;
       transform: translateY(0) scale(1);
     }
     @media (prefers-reduced-motion: reduce) {
-      .offline-sheet--smooth .offline-sheet__backdrop,
       .offline-sheet--smooth .offline-sheet__card { transition: none; }
     }
 
@@ -4123,6 +4145,7 @@
        focused, well under the default 440px sheet. */
     #gharibSavedSheet .offline-sheet__card {
       width: min(300px, 90vw);
+      max-height: min(70vh, 460px);
       padding: 18px 18px 14px;
       border-radius: 20px;
     }
@@ -4235,7 +4258,7 @@
       display: flex;
       flex-direction: column;
       gap: 9px;
-      max-height: 58vh;
+      max-height: 40vh;
       overflow-y: auto;
       padding-inline-end: 2px;
       margin-top: 2px;
@@ -5238,6 +5261,8 @@
        fade-out lifecycle on it; the inline timer below is a last-resort
        escape if app JS never boots. display:none on the website. -->
   <div id="m7-splash" aria-hidden="true"></div>
+  <!-- One shared blurred dim behind every sheet; shown via body.offline-sheet-open. -->
+  <div class="sheet-scrim" aria-hidden="true"></div>
   <script>
     (function () {
       if (!document.getElementById("m7-splash")) return;
