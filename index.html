@@ -453,6 +453,13 @@
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
+    /* The theme toggle is WEB-ONLY now: in the app, dark/light lives in the
+       Settings sheet, so the top-bar button is hidden there. The inline head
+       script sets html.is-app synchronously before first paint (no flash). On
+       the website (no is-app) it stays — keeping theme switching reachable
+       without an app-only Settings panel. */
+    html.is-app #themeToggle { display: none; }
+
     /* Hover styles are the visual INVERSE of the normal styles (dark in
      * light mode, light in dark mode). On touch devices :hover sticks
      * after a tap until the next touch elsewhere, so the post-tap button
@@ -3553,6 +3560,38 @@
       to { opacity: 1; transform: translateY(0) scale(1) }
     }
 
+    /* Smooth open/close for the collection + notes sheets. The overlay stays
+       display:flex and fades as a whole (visibility-gated); the card adds a
+       gentle scale — so BOTH directions animate with plain CSS transitions, no
+       display:none snap. Overrides the base pop/fade keyframes. */
+    .offline-sheet--smooth {
+      display: flex;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .24s ease, visibility 0s linear .24s;
+    }
+    .offline-sheet--smooth.offline-sheet--open {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity .24s ease, visibility 0s;
+    }
+    .offline-sheet--smooth .offline-sheet__backdrop { animation: none; }
+    .offline-sheet--smooth .offline-sheet__card {
+      animation: none;
+      transform: translateY(10px) scale(0.94);
+      transition: transform .28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .offline-sheet--smooth.offline-sheet--open .offline-sheet__card {
+      transform: translateY(0) scale(1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .offline-sheet--smooth,
+      .offline-sheet--smooth.offline-sheet--open,
+      .offline-sheet--smooth .offline-sheet__card { transition: none; }
+    }
+
     .offline-sheet__close {
       position: absolute;
       top: 12px;
@@ -4068,6 +4107,13 @@
      * gold (static — calm). Removing a row forgets the word (gharibForget).
      * ==================================================================== */
 
+    /* The collection holds short word rows — keep the card compact (narrower
+       than the default 440px sheet). */
+    #gharibSavedSheet .offline-sheet__card {
+      width: min(360px, 100%);
+      padding: 20px 20px 16px;
+    }
+
     /* Head logo → the bare lantern itself (no square box), warm gold body +
        lit flame. It IS the غريب emblem, so it stands alone as the header mark. */
     #gharibSavedSheet .offline-sheet__icon {
@@ -4078,12 +4124,12 @@
       color: #c4a052;
     }
     body.dark #gharibSavedSheet .offline-sheet__icon { color: #d9b266; }
-    #gharibSavedSheet .offline-sheet__icon svg { width: 58px; height: 58px; }
+    #gharibSavedSheet .offline-sheet__icon svg { width: 46px; height: 46px; }
     #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #e3a338; stroke: none; }
     body.dark #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #f0c069; }
 
-    /* "التدبر" in the panel's description — picked out in the lantern's own
-       warm gold (same palette as the flame above). */
+    /* The highlighted word in the panel's intro — picked out in the lantern's
+       own warm gold (same palette as the flame above). */
     .gharib-saved-tadabbur { color: #e3a338; font-weight: 700; }
     body.dark .gharib-saved-tadabbur { color: #f0c069; }
 
