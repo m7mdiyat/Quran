@@ -74,7 +74,7 @@ function buildSheet() {
     ensurePanelFont();
     const wrap = document.createElement("div");
     wrap.id = "settingsSheet";
-    wrap.className = "offline-sheet";
+    wrap.className = "offline-sheet offline-sheet--smooth";
     wrap.setAttribute("aria-hidden", "true");
     wrap.innerHTML = `
       <div class="offline-sheet__backdrop" data-settings-close></div>
@@ -133,6 +133,7 @@ function openSheet() {
     buildSheet();
     SHEET_OPEN = true;
     syncToggles(); // reflect live state every open (dark mode may change elsewhere)
+    void SHEET_EL.offsetWidth; // commit the closed state so the first open transitions
     SHEET_EL.classList.add("offline-sheet--open");
     SHEET_EL.setAttribute("aria-hidden", "false");
     document.body.classList.add("offline-sheet-open");
