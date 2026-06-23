@@ -1,13 +1,14 @@
 /*
  * Feedback panel — APP ONLY.
  *
- * Surfaces a header chat-bubble button (#feedbackMenuBtn) that opens a
- * centered glass sheet containing the feedback form (category, message,
- * optional email, honeypot). Submits POST {API_ROOT}/feedback.
+ * Opened from the Settings hub (openFeedbackPanel) as a centered glass sheet
+ * containing the feedback form (category, message, optional email, honeypot).
+ * Submits POST {API_ROOT}/feedback.
  *
  * Reuses the `.offline-sheet*` CSS classes from index.html for the backdrop +
- * card visuals so the two panels stay visually consistent. Dynamic-imported
- * from app.js init() behind `if (isApp())`, so the web bundle never pulls it.
+ * card visuals so the panels stay visually consistent. Pulled in (statically)
+ * by settings-panel.js, itself dynamic-imported behind `if (isApp())`, so the
+ * web bundle never pulls it.
  */
 
 "use strict";
@@ -22,7 +23,6 @@ const FEEDBACK_CATEGORIES = [
 ];
 
 let SHEET_EL = null;
-let BTN_EL = null;
 let SHEET_OPEN = false;
 let SUBMITTING = false;
 
@@ -215,12 +215,8 @@ function closeSheet() {
     document.removeEventListener("keydown", onKeyDown);
 }
 
-export function initFeedbackPanel() {
-    if (!isApp()) return; // defensive — the import is already gated in app.js
-    BTN_EL = document.getElementById("feedbackMenuBtn");
-    if (!BTN_EL) return;
-    BTN_EL.style.display = ""; // reveal (was display:none by default)
-    BTN_EL.addEventListener("click", () => {
-        if (SHEET_OPEN) closeSheet(); else openSheet();
-    });
+/* Opened from the Settings hub (settings-panel.js). Feedback is app-only. */
+export function openFeedbackPanel() {
+    if (!isApp()) return; // defensive — only the app should reach here
+    if (SHEET_OPEN) closeSheet(); else openSheet();
 }
