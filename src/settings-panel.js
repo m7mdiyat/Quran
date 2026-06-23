@@ -111,9 +111,10 @@ function onSheetClick(e) {
         const act = link.dataset.settingsAct;
         // Close this sheet, then open the target. Both share body.offline-sheet-open,
         // so the lock nets to a no-op (no scroll jump); see sheet-scroll-lock.js.
+        // onBack reopens Settings when the sub-panel is dismissed.
         closeSheet();
-        if (act === "offline") openOfflinePanel();
-        else if (act === "feedback") openFeedbackPanel();
+        if (act === "offline") openOfflinePanel({ onBack: openSheet });
+        else if (act === "feedback") openFeedbackPanel({ onBack: openSheet });
         return;
     }
 
