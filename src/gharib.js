@@ -1005,7 +1005,7 @@ function ensureWidget() {
         toggleGharibFeature();
     });
 
-    // Press-and-hold (~550ms) opens the learned-words collection the INSTANT
+    // Press-and-hold (~400ms) opens the learned-words collection the INSTANT
     // the threshold is reached — mid-hold, finger still down (the haptic
     // confirms it). A quick tap toggles the glow (the click handler above).
     // Because the sheet opens under the still-pressed finger, the saved panel
@@ -1021,7 +1021,7 @@ function ensureWidget() {
             _lanternHoldFired = true;
             hapticLight();
             document.dispatchEvent(new CustomEvent("gharib:open-saved"));
-        }, 550);
+        }, 400);
     });
     const cancelHold = () => clearTimeout(holdT);
     root.addEventListener("pointerup", cancelHold);
