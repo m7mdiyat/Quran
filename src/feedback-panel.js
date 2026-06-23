@@ -25,6 +25,7 @@ const FEEDBACK_CATEGORIES = [
 let SHEET_EL = null;
 let SHEET_OPEN = false;
 let SUBMITTING = false;
+let _onBack = null;        // when set (opened from Settings), dismiss returns there
 
 // App-only: pull IBM Plex Sans Arabic from Google Fonts for the panel.
 // Idempotent across panels — both modules reference the same element ID.
@@ -213,10 +214,29 @@ function closeSheet() {
     }
     document.body.classList.remove("offline-sheet-open");
     document.removeEventListener("keydown", onKeyDown);
+    // Returning from a Settings-launched open hands control back to Settings.
+    const back = _onBack;
+    _onBack = null;
+    if (back) back();
 }
 
-/* Opened from the Settings hub (settings-panel.js). Feedback is app-only. */
-export function openFeedbackPanel() {
+/* Header dismiss icon: a back chevron (RTL: right-pointing, matching the app's
+   nav convention) when opened from Settings, else the plain ✕. */
+const DISMISS_BACK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
+const DISMISS_CLOSE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`;
+
+function applyDismissAffordance() {
+    const btn = SHEET_EL?.querySelector(".offline-sheet__close");
+    if (!btn) return;
+    btn.innerHTML = _onBack ? DISMISS_BACK : DISMISS_CLOSE;
+    btn.setAttribute("aria-label", _onBack ? "العودة إلى الإعدادات" : "إغلاق");
+}
+
+/* Opened from the Settings hub (settings-panel.js). Feedback is app-only.
+   opts.onBack — when given — returns to Settings on dismiss instead of the page. */
+export function openFeedbackPanel(opts) {
     if (!isApp()) return; // defensive — only the app should reach here
-    if (SHEET_OPEN) closeSheet(); else openSheet();
+    _onBack = opts?.onBack || null;
+    openSheet();
+    applyDismissAffordance();
 }
