@@ -1,8 +1,8 @@
 /*
  * Offline downloads panel — APP ONLY.
  *
- * Surfaces a header cloud-arrow button that opens a centered glass sheet with
- * two rows (Mushaf, Tafsir). Each row shows one of:
+ * Opened from the Settings hub (openOfflinePanel) as a centered glass sheet
+ * with two rows (Mushaf, Tafsir). Each row shows one of:
  *   - idle:        "تحميل" button + size
  *   - downloading: live progress bar + rotating Arabic message
  *   - offline:     inline "no connection" pill (auto-retries on `online`)
@@ -14,9 +14,9 @@
  * cancel a running download — the in-flight promise + ready flag are owned by
  * the download modules, not by the panel.
  *
- * Dynamic-imported from app.js init() behind `if (isApp())`, so the web bundle
- * never even pulls this code. Feedback lives in a sibling module
- * (feedback-panel.js) opened by its own header button.
+ * Pulled in (statically) by settings-panel.js, itself dynamic-imported behind
+ * `if (isApp())`, so the web bundle never pulls this code. The first-launch
+ * coachmark now points at the Settings button (#settingsMenuBtn).
  */
 
 "use strict";
@@ -295,18 +295,17 @@ function closeSheet() {
     PENDING_CONFIRM.tafsir = null;
 }
 
+/* Opened from the Settings hub (settings-panel.js). */
+export function openOfflinePanel() { openSheet(); }
+
 export function initOfflinePanel() {
-    BTN_EL = document.getElementById("offlineMenuBtn");
+    // The panel now opens from the Settings hub (openOfflinePanel); there is no
+    // dedicated header button anymore. We keep the first-launch coachmark, but
+    // re-point it at the Settings button it now lives behind.
+    BTN_EL = document.getElementById("settingsMenuBtn");
     if (!BTN_EL) return;
-    BTN_EL.style.display = ""; // reveal (was display:none by default)
-    BTN_EL.addEventListener("click", () => {
-        if (SHEET_OPEN) closeSheet(); else openSheet();
-        // Any tap on the offline button counts as discovering offline mode —
-        // dismiss the first-launch tooltip immediately and never show it again.
-        dismissOfflineTooltip();
-    });
-    // First-launch only: gently point at the offline button so users discover
-    // offline mode. Persisted dismissal via m7_offline_tooltip_seen.
+    // First-launch only: gently point at Settings so users discover offline
+    // mode. Persisted dismissal via m7_offline_tooltip_seen.
     try {
         if (!localStorage.getItem(TOOLTIP_SEEN_KEY)) scheduleOfflineTooltip();
     } catch { }
