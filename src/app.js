@@ -5596,18 +5596,17 @@ async function init() {
         isDark: () => document.documentElement.classList.contains("dark"),
       }))
       .catch((e) => console.error("splash init failed", e));
-    import("./offline-panel.js")
-      .then((m) => m.initOfflinePanel())
-      .catch((e) => console.error("offline-panel init failed", e));
+    // Settings hub (gear) — collects offline downloads, feedback, the غريب
+    // on/off toggle, and a dark-mode mirror. It owns the offline + feedback
+    // panels now (their old top-bar buttons are gone).
+    import("./settings-panel.js")
+      .then((m) => m.initSettingsPanel({
+        isDark: () => document.documentElement.classList.contains("dark"),
+        toggleDark: () => toggleDarkMode(),
+      }))
+      .catch((e) => console.error("settings-panel init failed", e));
     // Reclaim the superseded tafsir cache (v1) now that the asset set is v2.
     purgeStaleTafsirCaches();
-    // Lock the page behind any open header sheet (offline/feedback/notes/غريب).
-    import("./sheet-scroll-lock.js")
-      .then((m) => m.initSheetScrollLock())
-      .catch((e) => console.error("sheet-scroll-lock init failed", e));
-    import("./feedback-panel.js")
-      .then((m) => m.initFeedbackPanel())
-      .catch((e) => console.error("feedback-panel init failed", e));
     // Resume (silent restore on next launch) + auto-flush on hide.
     import("./resume.js")
       .then((m) => {
@@ -5615,7 +5614,8 @@ async function init() {
         _recordResume = m.recordResume;
       })
       .catch((e) => console.error("resume init failed", e));
-    // Personal notes panel + "ملاحظاتي" header button.
+    // Personal notes — the list opener now lives in the Mushaf toolbar next to
+    // the lantern; the editor still opens from the ayah long-press menu.
     import("./notes.js")
       .then((m) => m.initNotesPanel({
         // Jump to an ayah in whichever mode is currently displayed. The
@@ -5627,10 +5627,6 @@ async function init() {
         getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
       }))
       .catch((e) => console.error("notes init failed", e));
-    // غريب القرآن — saved-words collection + lantern header button.
-    import("./gharib-saved-panel.js")
-      .then((m) => m.initGharibSavedPanel())
-      .catch((e) => console.error("gharib-saved-panel init failed", e));
   } else {
     // Website only: smart app-download banner. Mobile visitors (iOS/Android)
     // get a dismissible bottom banner linking to the correct store; desktop and
@@ -5766,6 +5762,19 @@ async function init() {
   // غريب القرآن — glowing word discovery in the Mushaf (src/gharib.js).
   // Listens for mushaf:page-rendered; data loads lazily on the first page.
   initGharib({ surahMeta: SURAH_META, isApp });
+
+  // Learned-words collection (web + app). The Mushaf lamp tap dispatches
+  // "gharib:open-saved"; this registers the listener that opens the sheet.
+  // The learned set (localStorage m7_gharib) exists on the website too.
+  import("./gharib-saved-panel.js")
+    .then((m) => m.initGharibSavedPanel())
+    .catch((e) => console.error("gharib-saved-panel init failed", e));
+  // The saved sheet can now open on the website too, so the background
+  // scroll-lock (body.offline-sheet-open → position:fixed) must run on web as
+  // well — otherwise a scrolled page would jump to the top when it opens.
+  import("./sheet-scroll-lock.js")
+    .then((m) => m.initSheetScrollLock())
+    .catch((e) => console.error("sheet-scroll-lock init failed", e));
 
   // If the URL was /read/* the early-routing script set window._mushafInit;
   // resolve it now that meta is available. The mushaf panel opens INLINE
