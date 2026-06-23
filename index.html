@@ -4399,6 +4399,88 @@
     body.dark .m7-tip__close:hover { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; }
     .m7-tip__close svg { width: 13px; height: 13px; }
 
+    /* ── First-launch guided tour (app only). The dim is the spotlight's huge
+       box-shadow spread, so the .tour layer itself is just a transparent tap-
+       catcher; the bubble reuses the .m7-tip glass/slate look. ── */
+    .tour {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000; /* above app chrome; the splash (max int) is gone by now */
+      opacity: 0;
+      transition: opacity .2s ease;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      direction: rtl;
+    }
+    .tour--show { opacity: 1; }
+
+    .tour__spot {
+      position: fixed;
+      top: 0; left: 0; width: 0; height: 0;
+      border-radius: 14px;
+      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+      outline: 2px solid rgba(255, 255, 255, 0.85);
+      outline-offset: 0;
+      pointer-events: none; /* taps fall through to .tour → advance */
+    }
+    body.dark .tour__spot {
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58);
+      outline-color: rgba(255, 255, 255, 0.55);
+    }
+    /* Transition only once shown, so the first placement doesn't fly in from 0,0. */
+    .tour--show .tour__spot {
+      transition:
+        top .3s cubic-bezier(0.16, 1, 0.3, 1), left .3s cubic-bezier(0.16, 1, 0.3, 1),
+        width .3s cubic-bezier(0.16, 1, 0.3, 1), height .3s cubic-bezier(0.16, 1, 0.3, 1),
+        border-radius .3s ease;
+    }
+
+    .tour__bubble {
+      position: fixed;
+      top: 0; left: 0;
+      max-width: min(300px, calc(100vw - 24px));
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 14px;
+      padding: 12px 14px 10px;
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.08);
+    }
+    body.dark .tour__bubble {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.16);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    .tour--show .tour__bubble {
+      transition: top .3s cubic-bezier(0.16, 1, 0.3, 1), left .3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tour__text { font-size: 13.5px; font-weight: 600; line-height: 1.75; }
+    .tour__actions {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-top: 10px;
+    }
+    .tour__skip {
+      border: 0; background: transparent; color: #64748b;
+      font: inherit; font-size: 13px; font-weight: 600;
+      padding: 6px 4px; cursor: pointer; border-radius: 8px;
+    }
+    .tour__skip:hover { color: #334155; }
+    body.dark .tour__skip { color: #94a3b8; }
+    body.dark .tour__skip:hover { color: #e2e8f0; }
+    .tour__next {
+      border: 0; border-radius: 10px; cursor: pointer;
+      background: #1d8fff; color: #fff;
+      font: inherit; font-size: 13px; font-weight: 700;
+      padding: 7px 18px;
+      box-shadow: 0 2px 8px rgba(29, 143, 255, 0.3);
+    }
+    @media (hover: hover) { .tour__next:hover { background: #0f7ae6; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tour, .tour--show .tour__spot, .tour--show .tour__bubble { transition: none; }
+    }
+
     /* ── App-only native-feel lockdown ──────────────────────────────
        Gated to html.is-app (set before first paint by the head script),
        so the website is completely unaffected. This inline copy loads last,
