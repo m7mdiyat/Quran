@@ -576,6 +576,8 @@ function applyGharibOff(off, fade) {
     }
 }
 
+/* The gharib glow on/off — the lamp TAP toggles it (press-and-hold opens the
+ * learned-words collection instead). Learned totals are untouched. */
 function toggleGharibFeature() {
     _featureOff = !_featureOff;
     saveStore();
@@ -872,12 +874,6 @@ export function initGharib(deps) {
     // under the long-press threshold's path (which never reaches
     // gharibTapTarget at all).
     document.addEventListener("pointerdown", (e) => {
-        // Any tap dismisses an open lantern explainer (a hold on the
-        // lantern itself just re-shows it 550ms later).
-        if (_explainEl?.classList.contains("is-open")
-            && !e.target?.closest?.(".gharib-tip--explain")) {
-            hideLanternExplainer();
-        }
         if (!_tipOpenState) return;
         if (e.target?.closest?.(".gharib-tip")) return;
         const word = e.target?.closest?.(".gharib-word");
@@ -890,7 +886,6 @@ export function initGharib(deps) {
     // position tip off its word — dismiss instead of tracking.
     document.addEventListener("scroll", () => {
         closeTip();
-        hideLanternExplainer();
     }, { capture: true, passive: true });
 }
 
@@ -957,109 +952,22 @@ const LAMP_SVG = `
     <path d="M9.6 18.1h4.8"/>
   </svg>`;
 
-/* ── Lantern explainer — press-and-hold shows a tiny card that
- * says what the feature does (same .gharib-tip card family,
- * arrow pointing at the lantern). The card is DOM-ANCHORED:
- * appended INSIDE the lamp button and absolutely positioned
- * below it (CSS .gharib-lamp > .gharib-tip--explain), so the
- * browser keeps the arrow glued to the lantern in every state —
- * page scrolled, fullscreen re-anchor, anything. No screen-
- * coordinate math (the old fixed-position placement drifted off
- * the lamp in the app once the page was scrolled). Auto-hides
- * after 5.5s, or on any tap/scroll. The hold must never toggle
- * the feature: the click that follows a fired hold is swallowed,
- * and taps on the card itself don't reach the toggle. ── */
-
-let _explainEl = null;
-let _explainHideT = 0;
-let _explainCloseT = 0;   // Transitions.dev modal: is-closing → removed after --modal-close-dur
+/* Press-and-hold the lantern opens the learned-words collection; the "what is
+ * غريب القرآن" intro now lives in that panel's header (see gharib-saved-panel.js),
+ * so there is no separate explainer card. A fired hold sets _lanternHoldFired
+ * so the trailing click never also toggles the glow. */
 let _lanternHoldFired = false;
 
-/* Desktop web only (mouse + fine pointer, not the app): the lantern
- * explainer is hover-driven there — shown on pointer-enter, hidden on
- * leave. Touch and the app keep the press-and-hold path. */
-function canHoverWeb() {
-    try {
-        return !DEPS?.isApp?.()
-            && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-    } catch { return false; }
-}
-
-/* The card lives on <body>, NOT inside the lamp. The lamp sits in the
- * backdrop-filtered .mushaf-root.glass; appending a child to it / lifting
- * its z-index on hover repainted the filter and jittered the lamp ("jump"
- * on hover). A body-level fixed card touches nothing in the glass. */
-function ensureExplainer() {
-    if (_explainEl) return _explainEl;
-    const el = document.createElement("div");
-    // --below = arrow on the top edge, pointing UP at the lantern.
-    el.className = "gharib-tip gharib-tip--explain gharib-tip--below";
-    el.setAttribute("dir", "rtl");
-    el.setAttribute("role", "note");
-    el.innerHTML = "<b>غريب القرآن</b>"
-        + "مع كل لفظة قرآنية تفهمها: تتّسع حصيلتك، ويعمُق تدبّرك، وتُضاف نقطة إلى حسابك هنا";
-    document.body.appendChild(el);
-    _explainEl = el;
-    return el;
-}
-
-/* Anchor the fixed card centred under the lamp, arrow pointing up at the
- * lamp's centre, clamped to the viewport. Re-run on every open (the lamp
- * may have moved); the card is dismissed on scroll, so it can't drift. */
-function positionExplainer(el) {
-    const root = _widget?.root;
-    if (!root) return;
-    const lamp = root.getBoundingClientRect();
-    const GAP = 10, MARGIN = 8;
-    const cw = el.offsetWidth;
-    const cx = lamp.left + lamp.width / 2;
-    const maxL = Math.max(window.innerWidth - MARGIN - cw, MARGIN);
-    const left = Math.min(Math.max(cx - cw / 2, MARGIN), maxL);
-    el.style.left = `${left.toFixed(1)}px`;
-    el.style.top = `${(lamp.bottom + GAP).toFixed(1)}px`;
-    const ax = Math.min(Math.max(cx - left, 14), Math.max(cw - 14, 14));
-    el.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
-}
-
-function hideLanternExplainer() {
-    clearTimeout(_explainHideT);
-    const el = _explainEl;
-    if (!el || !el.classList.contains("is-open")) return;
-    // Transitions.dev modal close: swap is-open → is-closing, then drop
-    // is-closing after --modal-close-dur (150ms) back to the base closed
-    // state (identical scale+opacity, so removing it never flickers).
-    el.classList.remove("is-open");
-    el.classList.add("is-closing");
-    clearTimeout(_explainCloseT);
-    _explainCloseT = setTimeout(() => el.classList.remove("is-closing"), 150);
-}
-
-function showLanternExplainer(autoHide = true) {
-    if (!_widget?.root) return;
-    const el = ensureExplainer();
-    clearTimeout(_explainCloseT);
-    // Transitions.dev modal: base/closing → is-open. Anchor first so the
-    // grow happens from the placed spot; no reflow, so a re-hover mid-close
-    // eases from the current frame instead of snapping.
-    el.classList.remove("is-closing");
-    positionExplainer(el);
-    el.classList.add("is-open");
-    clearTimeout(_explainHideT);
-    // Web hover keeps the card up until the pointer leaves the lantern
-    // (mouseleave hides it); the press-and-hold path (touch/app) still
-    // auto-hides after 5.5s.
-    if (autoHide) _explainHideT = setTimeout(hideLanternExplainer, 5500);
-}
-
-/* Reflect the toggle on the lantern: flame lit/unlit, ring +
- * badge dimmed, button semantics. */
+/* Reflect the toggle on the lantern: flame lit/unlit, ring + badge dimmed,
+ * button semantics. Tap toggles; press-and-hold opens the collection (the
+ * title hints the hold on desktop, where it's less discoverable). */
 function syncLanternState() {
     if (!_widget) return;
     _widget.root.classList.toggle("gharib-lamp--off", _featureOff);
-    // No `title` — it surfaced a native browser tooltip on hover; the
-    // explainer card already conveys the feature, and aria-pressed below
-    // keeps the toggle state for screen readers.
     _widget.root.setAttribute("aria-pressed", String(!_featureOff));
+    _widget.root.setAttribute("aria-label",
+        _featureOff ? "تشغيل غريب القرآن" : "إيقاف غريب القرآن");
+    _widget.root.setAttribute("title", "اضغط للتبديل · اضغط مطولًا لعرض حصيلتك");
 }
 
 function ensureWidget() {
@@ -1090,42 +998,38 @@ function ensureWidget() {
     // other fullscreen-cluster buttons (background taps toggle chrome).
     root.addEventListener("click", (e) => {
         e.stopPropagation();
-        // The explainer card lives INSIDE the button — taps on it
-        // must never toggle the feature.
-        if (e.target?.closest?.(".gharib-tip--explain")) return;
+        // A fired press-and-hold already opened the collection — swallow the
+        // trailing click so the hold never also toggles the glow.
         if (_lanternHoldFired) { _lanternHoldFired = false; return; }
-        hideLanternExplainer();
+        // Tap = toggle the gharib glow on/off (web + app).
         toggleGharibFeature();
     });
 
-    // Press-and-hold (~550ms) explains the feature instead of toggling.
+    // Press-and-hold (~550ms) opens the learned-words collection; a quick tap
+    // toggles the glow (the click handler above). The collection opens on
+    // RELEASE after the threshold — not mid-hold — so the finger-lift can't
+    // land on the freshly-opened sheet's backdrop and dismiss it. A light
+    // haptic at the threshold signals the hold registered. Works for touch and
+    // a long mouse-down on desktop.
     let holdT = 0;
-    root.addEventListener("pointerdown", (e) => {
-        if (e.target?.closest?.(".gharib-tip--explain")) return;
+    let holdReady = false;
+    root.addEventListener("pointerdown", () => {
         _lanternHoldFired = false;
+        holdReady = false;
         clearTimeout(holdT);
-        holdT = setTimeout(() => {
-            _lanternHoldFired = true;
-            hapticLight();
-            showLanternExplainer();
-        }, 550);
+        holdT = setTimeout(() => { holdReady = true; hapticLight(); }, 550);
     });
-    const cancelHold = () => clearTimeout(holdT);
-    root.addEventListener("pointerup", cancelHold);
+    root.addEventListener("pointerup", () => {
+        clearTimeout(holdT);
+        if (!holdReady) return;          // quick tap → let the click toggle
+        holdReady = false;
+        _lanternHoldFired = true;        // swallow the trailing click (no toggle)
+        document.dispatchEvent(new CustomEvent("gharib:open-saved"));
+    });
+    const cancelHold = () => { clearTimeout(holdT); holdReady = false; };
     root.addEventListener("pointercancel", cancelHold);
     root.addEventListener("pointerleave", cancelHold);
     root.addEventListener("contextmenu", (e) => e.preventDefault());
-
-    // Desktop web: hovering the lantern shows the explainer; moving the
-    // pointer off it hides the card. No auto-hide while hovering. Gated
-    // to mouse/non-app so touch and the app are untouched (they keep the
-    // press-and-hold path above).
-    root.addEventListener("mouseenter", () => {
-        if (canHoverWeb()) showLanternExplainer(false);
-    });
-    root.addEventListener("mouseleave", () => {
-        if (canHoverWeb()) hideLanternExplainer();
-    });
 
     _widget = {
         root,
