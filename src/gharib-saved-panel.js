@@ -34,6 +34,7 @@ let SHEET_EL = null;
 let SHEET_OPEN = false;
 let _inited = false;
 let _confirmingReset = false; // reset-all two-step confirm state
+let _pressStartedOnBackdrop = false; // backdrop dismiss only if the press began on it
 
 const REDUCED_MOTION = () => {
     try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
@@ -118,6 +119,12 @@ function buildSheet() {
     document.body.appendChild(wrap);
     SHEET_EL = wrap;
     wrap.addEventListener("click", onSheetClick);
+    // Track where a press BEGINS, so the backdrop only dismisses on a genuine
+    // backdrop tap — never on the finger-lift that ends the lantern hold which
+    // opened this sheet under the finger (#4).
+    wrap.addEventListener("pointerdown", (e) => {
+        _pressStartedOnBackdrop = !!e.target.closest(".offline-sheet__backdrop");
+    });
     return wrap;
 }
 
@@ -220,7 +227,18 @@ function removeRow(rowEl, key) {
 }
 
 function onSheetClick(e) {
-    if (e.target.closest("[data-gh-close]")) { closeSheet(); return; }
+    const closeEl = e.target.closest("[data-gh-close]");
+    if (closeEl) {
+        // The ✕ button always closes. The backdrop closes only if the press
+        // STARTED on it — so the finger-lift that ends the lantern hold (which
+        // opened this sheet under the finger) can't immediately dismiss it.
+        const isBackdrop = closeEl.classList.contains("offline-sheet__backdrop");
+        const started = _pressStartedOnBackdrop;
+        _pressStartedOnBackdrop = false;
+        if (isBackdrop && !started) return;
+        closeSheet();
+        return;
+    }
 
     // Reset-all (two-step confirm), in the head meta row.
     if (e.target.closest("[data-gh-reset]")) {
@@ -255,6 +273,7 @@ function openSheet() {
     buildSheet();
     SHEET_OPEN = true;
     _confirmingReset = false; // never reopen mid-confirm
+    _pressStartedOnBackdrop = false; // a hold-open starts with no backdrop press
     void SHEET_EL.offsetWidth; // commit the closed (hidden) state so the first open transitions
     SHEET_EL.classList.add("offline-sheet--open");
     SHEET_EL.setAttribute("aria-hidden", "false");
