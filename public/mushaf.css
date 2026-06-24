@@ -3571,18 +3571,8 @@ body.dark .gharib-tip::after {
     border-color: rgba(240, 192, 105, 0.18);
 }
 
-/* Lantern first-use hint — same card family + arrow as the meaning tip, sized
-   for a sentence + a "تم" button. Anchored in .mushaf-root by gharib.js
-   (position:absolute via .gharib-tip--anchored), arrow points up at the lamp. */
-.gharib-tip--hint {
-    max-width: min(280px, calc(100vw - 24px));
-    padding: 0.72rem 0.85rem 0.62rem;
-    font-size: 0.82rem;
-    text-align: right;
-    cursor: default;
-    display: flex;
-    flex-direction: column;
-}
+/* Shared card text + "تم" button — used by the first-use spotlight coachmark
+   (.mushaf-coach__card; see the coach block below). */
 .gharib-hint__text {
     line-height: 1.7;
     color: #4b463d;
@@ -3612,6 +3602,66 @@ body.dark .gharib-hint__text {
     .gharib-tip.is-open {
         transition: none;
     }
+}
+
+/* ── First-use spotlight coachmark (app only) ──────────────
+   Dim overlay + circular spotlight on a toolbar button + a card. Hosted in
+   .mushaf-root (position:absolute, root-content coords — see gharib.js
+   placeCoach) so it can't drift; the dim is the spot's huge box-shadow spread.
+   Above the Mushaf chrome (toolbar/tooltip 2100) but below the sheet scrim
+   (2199). The card reuses .gharib-hint__text / .gharib-hint__done. */
+.mushaf-coach {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 2120;
+    opacity: 0;
+    transition: opacity 0.26s ease;
+}
+.mushaf-coach:not(.mushaf-coach--anchored) {
+    position: fixed;               /* body fallback (opened outside a root) */
+    inset: 0;
+}
+.mushaf-coach.is-open {
+    opacity: 1;
+}
+.mushaf-coach__spot {
+    position: absolute;
+    border-radius: 50%;
+    /* Order matters: earlier shadows paint ON TOP, so the rim + halo come first
+       and the 9999px dim spread comes LAST (behind them). */
+    box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.92),     /* crisp rim */
+        0 0 24px 7px rgba(255, 255, 255, 0.26),  /* soft halo */
+        0 0 0 9999px rgba(15, 23, 42, 0.46);     /* the dim, everywhere but the circle */
+    pointer-events: none;
+}
+body.dark .mushaf-coach__spot {
+    box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.6),
+        0 0 24px 7px rgba(255, 255, 255, 0.16),
+        0 0 0 9999px rgba(0, 0, 0, 0.6);
+}
+.mushaf-coach__card {
+    position: absolute;
+    max-width: min(290px, calc(100vw - 28px));
+    padding: 0.78rem 0.9rem 0.66rem;
+    font-size: 0.82rem;
+    text-align: right;
+    background: #fbf7ef;
+    border: 1px solid rgba(120, 100, 60, 0.16);
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+body.dark .mushaf-coach__card {
+    background: #232a36;
+    border-color: rgba(148, 163, 184, 0.18);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.46), 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-coach { transition: none; }
 }
 
 /* ── Illumination counter widget (فانوس + badge + ring) ─────
