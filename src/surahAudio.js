@@ -336,6 +336,24 @@ export function resume() {
   startTick();
 }
 
+/**
+ * Jump to the adjacent ayah in the current surah and keep playing.
+ * Powers the lock-screen prev/next buttons (and any in-app skip). Clamped:
+ * stepping past the first/last ayah is a no-op. Fires onAyahChange so
+ * whichever view owns the engine re-highlights in sync.
+ */
+export function seekAyah(delta) {
+  if (!_audio || !_timings || !_activeAyah) return;
+  const entry = ayahEntryFor(_timings, _activeAyah + Number(delta));
+  if (!entry) return;
+  try { _audio.currentTime = entry.start / 1000; } catch { }
+  _activeAyah = entry.ayah;
+  startLoopFor(`${_surah}:${_activeAyah}`);
+  fire("onAyahChange", _activeAyah, _surah);
+  if (_audio.paused) resume();
+  else startTick();
+}
+
 export function stop() {
   _loadGen++; // invalidate any in-flight cold-load
   stopTick();
@@ -388,7 +406,7 @@ export function getVolume() { return _volume; }
 export function getContinuous() { return _continuous; }
 
 export const surahAudio = {
-  play, pause, resume, stop,
+  play, pause, resume, stop, seekAyah,
   setVolume, setSpeed, setContinuous, setCallbacks,
   isActive, isPlaying,
   getSurah, getReciter, getActiveAyah, getAudio,
