@@ -3539,6 +3539,17 @@
       overflow: hidden;
     }
 
+    /* First-use spotlight coachmark (gharib/notes) — the SAME position:fixed
+       lock, but no scrim (the coach paints its own dim). gharib.js pins/restores
+       the scroll offset (lockScroll/unlockScroll). */
+    body.mushaf-coach-open {
+      position: fixed;
+      left: 0;
+      right: 0;
+      width: 100%;
+      overflow: hidden;
+    }
+
     /* Shared backdrop scrim — ONE blurred dim surface behind every sheet,
        driven by body.offline-sheet-open. It stays put while panels swap (on a
        hop the body class toggles off+on synchronously, which the browser
