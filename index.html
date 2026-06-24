@@ -64,6 +64,19 @@
               && navigator.userAgent.indexOf("Android") !== -1);
         if (!inApp) return;
         document.documentElement.classList.add("is-app");
+        // Resume-reload safety (iOS). When the app is backgrounded, WKWebView
+        // can be purged under memory pressure and RELOADED on resume. With the
+        // default scroll restoration ("auto") the WebView re-applies the old
+        // (scrolled-down) position at first paint — and a position:fixed element
+        // laid out on an already-scrolled WKWebView document anchors to the
+        // DOCUMENT, not the viewport (the same fixed-on-scrolled-document bug
+        // documented elsewhere in this file). That makes the full-screen
+        // #m7-splash cover render off-position / cut off. Hand scroll control to
+        // the app: every (re)load now starts at 0 so the splash always covers
+        // the viewport correctly; the app restores the reading position itself
+        // (resume.js) AFTER the splash, behind it — so no flash, no jump.
+        // App-only: the website keeps auto restoration for normal back/forward.
+        try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch (e) { }
         // App: lock the viewport so the WebView feels native — kill double-tap
         // zoom AND pinch-zoom (maximum-scale=1 + user-scalable=no) while keeping
         // the edge-to-edge safe-area layout (viewport-fit=cover). Runs only
