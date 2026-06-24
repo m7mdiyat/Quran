@@ -874,6 +874,10 @@ export function initGharib(deps) {
     // under the long-press threshold's path (which never reaches
     // gharibTapTarget at all).
     document.addEventListener("pointerdown", (e) => {
+        // A tap anywhere outside the lantern hint dismisses it (marks it seen).
+        // Capture phase + no preventDefault, so the tap still reaches its target
+        // — tapping the lamp dismisses the hint AND toggles the glow.
+        if (_hintEl && !e.target?.closest?.(".gharib-tip--hint")) dismissLanternHint();
         if (!_tipOpenState) return;
         if (e.target?.closest?.(".gharib-tip")) return;
         const word = e.target?.closest?.(".gharib-word");
@@ -886,6 +890,9 @@ export function initGharib(deps) {
     // position tip off its word — dismiss instead of tracking.
     document.addEventListener("scroll", () => {
         closeTip();
+        // The lantern hint, by contrast, STAYS glued: re-anchor it to the lamp's
+        // live position (root-content coords) on scroll, rAF-throttled.
+        if (_hintEl) { cancelAnimationFrame(_hintRaf); _hintRaf = requestAnimationFrame(placeLanternHint); }
     }, { capture: true, passive: true });
 }
 
@@ -1189,7 +1196,105 @@ _onDecorateHook = () => {
     if (!ensureWidget()) return;
     setCount(gharibLearnedCount(), false);
     updateRing(false);
+    // Reliable trigger: the lamp now exists + is laid out. maybeShowLanternHint
+    // is a no-op once seen / already showing / off-screen, so it fires exactly
+    // once — on whichever Mushaf render first puts the lamp on screen, by any
+    // entry path.
+    maybeShowLanternHint();
 };
+
+/* ============================================================
+ * Lantern first-use hint — a one-time coachmark anchored to the lamp via the
+ * SAME root-content coordinate frame the meaning tooltip + ayah menu use (host
+ * inside .mushaf-root, position:absolute, subtract the root's box/scroll), so
+ * it stays glued through scroll and the fullscreen re-anchor — never the
+ * position:fixed-on-scrolled-document drift. App-only; shown once, persisted as
+ * m7_lantern_hint_seen.
+ * ============================================================ */
+
+const LANTERN_HINT_KEY = "m7_lantern_hint_seen";
+const LANTERN_HINT_TEXT = "الفانوس: اضغط لإبراز غريب القرآن، واضغط مطولًا لعرض حصيلتك.";
+let _hintEl = null;
+let _hintRaf = 0;
+
+function lanternHintSeen() {
+    try { return !!localStorage.getItem(LANTERN_HINT_KEY); } catch { return false; }
+}
+
+function maybeShowLanternHint() {
+    if (_hintEl || lanternHintSeen() || !DEPS?.isApp?.()) return;
+    const lamp = _widget?.root;
+    if (!lamp) return;
+    const r = lamp.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) return;                 // not laid out yet
+    if (r.bottom <= 0 || r.top >= window.innerHeight) return;  // off-screen → retry next decorate
+
+    const root = lamp.closest(".mushaf-root");
+    const el = document.createElement("div");
+    el.className = "gharib-tip gharib-tip--hint gharib-tip--below" + (root ? " gharib-tip--anchored" : "");
+    el.setAttribute("dir", "rtl");
+    el.setAttribute("role", "dialog");
+    el.innerHTML = `<div class="gharib-hint__text">${LANTERN_HINT_TEXT}</div>`
+        + `<button type="button" class="gharib-hint__done">تم</button>`;
+    (root || document.body).appendChild(el);
+    _hintEl = el;
+    el.querySelector(".gharib-hint__done")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dismissLanternHint();
+    });
+    // Place + reveal only AFTER the next two frames. The notes lamp
+    // (#mushafNotesLamp) is inserted afterend THIS lamp on the same
+    // mushaf:page-rendered event but in its own rAF (notes.js), and with the
+    // toolbar's flex:1 spacer that insertion shifts the lamp LEFT. Measuring
+    // synchronously would anchor to the lamp's pre-shift spot — the arrow then
+    // lands on the notes button. Two rAFs guarantee that reflow has happened, so
+    // placeLanternHint reads the lamp's FINAL rect; then fade in (no jump).
+    // Scroll re-anchoring (initGharib) keeps it glued to #gharibLamp after that.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!_hintEl) return;
+        placeLanternHint();
+        _hintEl.classList.add("is-open");
+    }));
+}
+
+/* Place the hint under the lamp, converted into the root's content space —
+ * identical math to openTipFor, so it lands on the lamp first time and every
+ * time; re-run on scroll (above) to stay glued. */
+function placeLanternHint() {
+    const el = _hintEl, lamp = _widget?.root;
+    if (!el || !lamp) return;
+    const root = el.classList.contains("gharib-tip--anchored") ? lamp.closest(".mushaf-root") : null;
+    const lr = lamp.getBoundingClientRect();
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    const GAP = 10, MARGIN = 8;
+    const cx = lr.left + lr.width / 2;
+    const left = Math.min(Math.max(cx - tw / 2, MARGIN), Math.max(window.innerWidth - MARGIN - tw, MARGIN));
+    let top = lr.bottom + GAP;
+    const below = top + th <= window.innerHeight - 10;   // flip above only if no room below
+    if (!below) top = Math.max(10, lr.top - GAP - th);
+    el.classList.toggle("gharib-tip--below", below);
+    let originX = 0, originY = 0;
+    if (root) {
+        const rRect = root.getBoundingClientRect();
+        originX = rRect.left + root.clientLeft - root.scrollLeft;
+        originY = rRect.top + root.clientTop - root.scrollTop;
+    }
+    el.style.left = `${(left - originX).toFixed(1)}px`;
+    el.style.top = `${(top - originY).toFixed(1)}px`;
+    const ax = Math.min(Math.max(cx - left, 14), Math.max(tw - 14, 14));
+    el.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
+    el.style.transformOrigin = `${ax.toFixed(1)}px ${below ? "0%" : "100%"}`; // grow from the lamp side
+}
+
+function dismissLanternHint() {
+    try { localStorage.setItem(LANTERN_HINT_KEY, "1"); } catch { }
+    cancelAnimationFrame(_hintRaf);
+    const el = _hintEl;
+    _hintEl = null;
+    if (!el) return;
+    el.classList.remove("is-open");
+    setTimeout(() => { try { el.remove(); } catch { } }, 200);
+}
 
 /* ============================================================
  * Forget a learned word — the saved-words panel's "remove".
