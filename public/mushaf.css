@@ -2527,12 +2527,11 @@ body.dark .mushaf-root--fullscreen {
 .mushaf-root--fullscreen .mushaf-toolbar {
     position: fixed;
     top: 12px;
-    /* Tightly clustered with font + settings, no gap between them.
-     * RTL right-to-left order: font (12) → play (48) → settings (84),
-     * each with a 4px gap. Literal `right` so the toolbar's own
+    /* Play sits in the LEFT group: X(left 12) · settings(left 48) · play(left
+     * 84) — each 32px + a 4px gap. Literal `left` so the toolbar's own
      * direction:ltr can't shift it. */
-    right: 48px;
-    left: auto;
+    left: 84px;
+    right: auto;
     z-index: 1001;
     background: transparent !important;
     border: 0 !important;
@@ -2552,15 +2551,13 @@ body.dark .mushaf-root--fullscreen {
     display: none !important;
 }
 
-/* In fullscreen the toolbar sits near the right edge (right: 48px), so the
- * default `left: 0` anchor on the play-button volume/speed dropdown makes
- * the 220px panel overflow to the right of the viewport — only the leftmost
- * "1x" pill stays visible. Anchor to the right edge of the play wrap so it
- * opens LEFTWARD into the screen instead, sliding under the empty space
- * between the play button and the floating settings/font controls. */
+/* The play wrap now sits in the LEFT group (left: 84px), so anchor its
+ * volume/speed dropdown to the wrap's LEFT edge and let it open RIGHTWARD into
+ * the screen (the default). Anchoring it right would push the 220px panel off
+ * the left edge. */
 .mushaf-root--fullscreen .mushaf-toolbar__dropdown--volume {
-    left: auto !important;
-    right: 0 !important;
+    left: 0 !important;
+    right: auto !important;
 }
 
 /* Re-style the existing play button to match the overlay aesthetic. */
@@ -2665,9 +2662,9 @@ body.dark .mushaf-fs__close:hover {
 .mushaf-fs__settings-btn {
     position: fixed;
     top: 12px;
-    /* font(12)+32+4 = 48 (play) → play+32+4 = 84 (settings) */
-    right: 84px;
-    left: auto;
+    /* LEFT group: X(12) → settings(48) → play(84), 32px + 4px gaps. */
+    left: 48px;
+    right: auto;
     z-index: 1001;
     width: 32px;
     height: 32px;
@@ -2786,14 +2783,14 @@ body.dark .mushaf-fs__font-btn:hover {
     position: fixed;
     z-index: 1002;
     top: 52px;
-    /* Right edge of panel aligned with right edge of the settings button
-     * (84px from viewport's right). Panel extends LEFTWARD from there.
-     * max-width keeps it inside the viewport on narrow phones. Literal
-     * `right` so direction inheritance can't shift it. */
-    right: 84px;
-    left: auto;
+    /* Left edge of panel aligned with the settings button's left edge (48px
+     * from the viewport's left); the panel extends RIGHTWARD from there.
+     * max-width keeps it inside the viewport on narrow phones. Literal `left`
+     * so direction inheritance can't shift it. */
+    left: 48px;
+    right: auto;
     min-width: 220px;
-    max-width: calc(100vw - 96px);     /* 84 (anchor) + 12 (gutter on far side) */
+    max-width: calc(100vw - 60px);     /* 48 (anchor) + 12 (gutter on far side) */
     /* SOLID white, not var(--card): the light --card is rgba(255,255,255,.82)
      * and the Quran text bled through, making the panel hard to read.
      * (Dark theme already overrides with solid #2a313b below.) */
@@ -3064,7 +3061,8 @@ body.mushaf-fs-open {
  * ============================================================ */
 html.is-app .mushaf-root--fullscreen .mushaf-toolbar {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(48px + env(safe-area-inset-right, 0px));
+    left: calc(84px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
 html.is-app .mushaf-fs__close {
@@ -3074,7 +3072,8 @@ html.is-app .mushaf-fs__close {
 
 html.is-app .mushaf-fs__settings-btn {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(84px + env(safe-area-inset-right, 0px));
+    left: calc(48px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
 html.is-app .mushaf-fs__font-btn {
@@ -3082,16 +3081,24 @@ html.is-app .mushaf-fs__font-btn {
     right: calc(12px + env(safe-area-inset-right, 0px));
 }
 
-/* The gharib lantern — fourth circle in the row (see its base
- * fullscreen rule near the end of the gharib block). */
+/* The gharib lantern — middle of the RIGHT group: notes(84) · lantern(48) · +(12). */
 html.is-app .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(120px + env(safe-area-inset-right, 0px));
+    right: calc(48px + env(safe-area-inset-right, 0px));
+}
+
+/* The notes lamp — leftmost of the RIGHT group (right: 84px). It needs the
+ * SAME safe-area top bias as the other cluster buttons; without this override
+ * it kept the base top:12px and sat too high. */
+html.is-app .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(84px + env(safe-area-inset-right, 0px));
 }
 
 html.is-app .mushaf-fs__settings-panel {
     top: calc(52px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(84px + env(safe-area-inset-right, 0px));
+    left: calc(48px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
 /* Stage padding clears the floating control row + the bottom nav.
@@ -3285,6 +3292,24 @@ body.dark .gharib-word::before {
    drop-shadows bloom that result outward (wide soft falloff).
    Light theme = deep saturated amber against the white page;
    dark theme = bright pale gold. */
+/* iOS/WKWebView only: pin each gharib word to a STABLE GPU layer. The glow
+ * ::before uses filter: blur()+drop-shadow() (the app path below) which
+ * composites the word, and isolation:isolate GPU-rasterises its whole stacking
+ * context — so the word's box is pixel-snapped. Tapping a SECOND gharib word
+ * recolours its ::before (gold → settled, via --settling) WHILE the first
+ * word's tooltip (a persistent will-change:transform layer, hosted in
+ * .mushaf-root) is still open over the region; WKWebView then re-snaps the
+ * re-rasterised word to a different sub-pixel row, rendering it a hair ABOVE
+ * its line — the proven تمنى→ألقى case (تمنى is fine because its own
+ * --settling re-snap happens BEFORE its tip opens). No layout reflow is
+ * involved: the tap only swaps cosmetic classes and repositions the
+ * root-hosted tip. A constant translateZ(0) fixes the layer's position so a
+ * re-raster can no longer move it. Web uses text-shadow (no filter, word not
+ * composited) and never shows this — so scope to the app. */
+html.is-app .gharib-word {
+    transform: translateZ(0);
+}
+
 html.is-app .gharib-word::before {
     color: #f0a428;
     text-shadow: none;
@@ -3575,7 +3600,7 @@ body.dark .gharib-tip::after {
    (.mushaf-coach__card; see the coach block below). */
 .gharib-hint__text {
     line-height: 1.7;
-    color: #4b463d;
+    color: #334155;
 }
 body.dark .gharib-hint__text {
     color: #d6dae1;
@@ -3605,22 +3630,22 @@ body.dark .gharib-hint__text {
 }
 
 /* ── First-use spotlight coachmark (app only) ──────────────
-   Dim overlay + circular spotlight on a toolbar button + a card. Hosted in
-   .mushaf-root (position:absolute, root-content coords — see gharib.js
-   placeCoach) so it can't drift; the dim is the spot's huge box-shadow spread.
-   Above the Mushaf chrome (toolbar/tooltip 2100) but below the sheet scrim
-   (2199). The card reuses .gharib-hint__text / .gharib-hint__done. */
+   Dim overlay + circular spotlight on a toolbar button + a card. Hosted on
+   <body> as position:fixed inset:0 (like .sheet-scrim) so the dim covers the
+   WHOLE viewport — it can't live in .mushaf-root, whose .glass backdrop-filter
+   stacking context would trap it behind the header (the top bar would stay
+   bright). The dim is the spot's huge box-shadow spread; the card reuses
+   .gharib-hint__text / .gharib-hint__done. */
 .mushaf-coach {
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 2120;
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;           /* top-level coachmark, above all app chrome */
     opacity: 0;
     transition: opacity 0.26s ease;
-}
-.mushaf-coach:not(.mushaf-coach--anchored) {
-    position: fixed;               /* body fallback (opened outside a root) */
-    inset: 0;
+    /* Refuse scroll gestures on the dim while a guide is up — the page must not
+       be draggable under this fixed overlay (iOS WKWebView wouldn't repaint it at
+       the new offset → undimmed/detached bottom). */
+    touch-action: none;
 }
 .mushaf-coach.is-open {
     opacity: 1;
@@ -3648,8 +3673,8 @@ body.dark .mushaf-coach__spot {
     padding: 0.78rem 0.9rem 0.66rem;
     font-size: 0.82rem;
     text-align: right;
-    background: #fbf7ef;
-    border: 1px solid rgba(120, 100, 60, 0.16);
+    background: #f8fafc;                       /* clean slate-white, matches the tour card */
+    border: 1px solid rgba(15, 23, 42, 0.08);
     border-radius: 16px;
     box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.1);
     display: flex;
@@ -4019,7 +4044,7 @@ body.dark .gharib-badge__dot {
     display: flex !important;
     position: fixed;
     top: 12px;
-    right: 120px;
+    right: 48px;
     left: auto;
     z-index: 1001;
     width: 32px;
@@ -4044,7 +4069,8 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
    lamp, sitting next to it in the toolbar. Same 40×40 transparent
    button, 20px icon and grey body; a thin STATIC ring lends the
    lantern's circular silhouette (no progress segments), and the count
-   badge is teal so it never reads as the lamp's gold metric. ── */
+   badge is the notes blue (the noted-ayah dot colour) so it never reads
+   as the lamp's gold metric. ── */
 .notes-lamp {
     position: relative;
     width: 40px;
@@ -4073,6 +4099,17 @@ body.dark .notes-lamp { color: #9ca3af; }
 /* Opt out of the site-wide button:hover lift (same as #gharibLamp). */
 #mushafNotesLamp:hover { transform: none; }
 
+/* Normal (flex) toolbar order — notes LEFT, lantern to its RIGHT, both just
+ * left of the surah selector, matching the fullscreen cluster. Enforced with
+ * `order` (NOT DOM insertion order): the notes lamp is often inserted before
+ * the gharib lamp exists — decoratePage() returns early on the first page while
+ * the lazy gharib.json loads, so the lamp builds a beat later — which left the
+ * DOM order unreliable (notes fell back to the toolbar end). In fullscreen both
+ * lamps are position:fixed, so `order` is simply ignored there. */
+.mushaf-toolbar > #mushafNotesLamp { order: 1; margin-inline-end: -6px; } /* tighten the notes↔lantern gap (12px → ~4px) */
+.mushaf-toolbar > #gharibLamp { order: 2; }
+.mushaf-toolbar > #mushafSurahWrap { order: 3; }
+
 .notes-lamp__ring {
     position: absolute;
     inset: 0;
@@ -4097,7 +4134,7 @@ body.dark .notes-lamp__ring circle {
     z-index: 1;
 }
 
-/* Count badge — same geometry + entrance as .gharib-badge, teal fill. */
+/* Count badge — same geometry + entrance as .gharib-badge, the notes blue. */
 .notes-lamp__badge {
     position: absolute;
     top: -4px;
@@ -4120,31 +4157,33 @@ body.dark .notes-lamp__ring circle {
     height: 17px;
     padding: 0 4.5px;
     border-radius: 9px;
-    background: linear-gradient(160deg, #2dd4bf, #0d9488);
+    /* The exact noted-ayah dot blue (.mushaf-ayah--has-note .mushaf-end::after)
+       — one unified "notes blue" shared by the marker and this count badge. */
+    background: #2A52C8;
     color: #fff;
     font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
     font-size: 10.5px;
     font-weight: 600;
     line-height: 17px;
     text-align: center;
-    box-shadow: 0 1px 4px rgba(13, 148, 136, 0.35);
+    box-shadow: 0 1px 4px rgba(42, 82, 200, 0.35);
 }
 
 body.dark .notes-lamp__badge-dot {
-    background: linear-gradient(160deg, #5eead4, #14b8a6);
-    color: #06302b;
+    background: #2A52C8;   /* same notes blue in BOTH themes (no lighter variant) */
+    color: #fff;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-/* ── Fullscreen: the notes lamp joins the floating cluster as the
-   FIFTH circle — font(12) → play(48) → settings(84) → lantern(120)
-   → notes(156). Exempted from the toolbar children-hide rule (ID
-   specificity + later in the file) and re-anchored to match. ── */
+/* ── Fullscreen: the notes lamp is the LEFTMOST of the RIGHT group —
+   notes(84) · lantern(48) · +(12), reading left to right. Exempted from
+   the toolbar children-hide rule (ID specificity + later in the file)
+   and re-anchored to match. ── */
 .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
     display: flex !important;
     position: fixed;
     top: 12px;
-    right: 156px;
+    right: 84px;
     left: auto;
     z-index: 1001;
     width: 32px;

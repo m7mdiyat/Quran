@@ -1256,8 +1256,13 @@ function buildShell() {
       </div>
     </div>
 
-    <!-- مختصر التفاسير quick-view card -->
-    <div class="mushaf-mukhtasar" id="mushafMukhtasar" role="dialog" aria-label="مختصر التفاسير" aria-hidden="true">
+    <!-- مختصر التفاسير quick-view card. Ships with .t-modal so it is opacity:0
+         (hidden) from the moment buildShell creates it — WITHOUT it the card has
+         no hiding rule at all (its .mushaf-mukhtasar CSS only sets position/size;
+         visibility is owned by .t-modal, which modalOpen/modalClose add only on
+         first open). That gap left the card painted at the bottom of the panel
+         all through a cold load's page fetch, smearing over the loading content. -->
+    <div class="mushaf-mukhtasar t-modal" id="mushafMukhtasar" role="dialog" aria-label="مختصر التفاسير" aria-hidden="true">
       <div class="mushaf-mukhtasar__header">
         <span class="mushaf-mukhtasar__title">${ICONS.sparkles}<span>مختصر التفاسير</span></span>
         <button type="button" class="mushaf-mukhtasar__close" id="mushafMukhtasarClose" aria-label="إغلاق">${ICONS.close}</button>
