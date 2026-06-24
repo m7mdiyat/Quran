@@ -20,12 +20,13 @@
 
 const SUPPORTED = typeof navigator !== "undefined" && "mediaSession" in navigator;
 
-// Root-relative, bundled, offline-safe. Two sizes so the OS can pick the
-// cheap one for a small tile and the crisp one when it wants detail; the
-// 512 is listed first as the common lock-screen size.
+// The blue app-icon (rasterized from /favicon.svg — the same blue mushaf the
+// in-app banner uses as the icon). Root-relative, bundled, offline-safe. Two
+// sizes so the OS can pick the cheap one for a small tile and the crisp one
+// when it wants detail; the 512 is listed first as the common lock-screen size.
 const ARTWORK = [
-  { src: "/logo-512.jpg", sizes: "512x512", type: "image/jpeg" },
-  { src: "/logo.jpg", sizes: "2048x2048", type: "image/jpeg" },
+  { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+  { src: "/icon-1024.png", sizes: "1024x1024", type: "image/png" },
 ];
 
 const ALBUM = "محمديات";
