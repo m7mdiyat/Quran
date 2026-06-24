@@ -142,6 +142,38 @@ function build() {
     });
 }
 
+/* Place + reveal the FIRST step only once the target's rect has SETTLED. A fast
+ * scroll in the split second before the guide appears used to place it against a
+ * stale rect → misplaced. Same proven pattern as the gharib coach: poll the
+ * target rect each frame, keep the overlay invisible (no tour--show) until the
+ * rect holds steady for 2 frames, then place + fade in. Capped so it can't hang.
+ * (Subsequent steps reposition instantly via render()/place() — the overlay is
+ * already shown and the user isn't mid-fling at that point.) */
+function revealWhenSettled(lastKey, stable, frames) {
+    if (!_active || !_overlay) return;
+    let el = targetEl(_steps[_i]);
+    if (!isVisible(el)) {
+        // target vanished before we could show → advance to the next visible one
+        // and keep settling on IT (so we still reveal, just on the right target).
+        const j = firstVisibleFrom(_i + 1);
+        if (j === -1) { end(); return; }
+        _i = j;
+        _textEl.textContent = _steps[_i].text;
+        _nextBtn.textContent = hasFurtherVisible() ? "التالي" : "تم";
+        el = targetEl(_steps[_i]);
+        lastKey = ""; stable = 0;
+    }
+    const r = el.getBoundingClientRect();
+    const key = `${r.left.toFixed(1)}:${r.top.toFixed(1)}:${r.width.toFixed(1)}:${r.height.toFixed(1)}`;
+    const heldSteady = key === lastKey ? stable + 1 : 0;
+    if ((heldSteady >= 2 && r.width > 1) || frames > 30) {
+        place();
+        _overlay.classList.add("tour--show");
+        return;
+    }
+    requestAnimationFrame(() => revealWhenSettled(key, heldSteady, frames + 1));
+}
+
 function runCoach(steps, seenKey) {
     if (_active) return;                 // never stack two coachmarks
     _steps = steps;
@@ -152,8 +184,10 @@ function runCoach(steps, seenKey) {
     _i = first;
     build();
     _active = true;
-    render();                            // place BEFORE --show so it doesn't fly in from 0,0
-    requestAnimationFrame(() => _overlay && _overlay.classList.add("tour--show"));
+    // Set the bubble text now, but place + reveal only after the target settles.
+    _textEl.textContent = _steps[_i].text;
+    _nextBtn.textContent = hasFurtherVisible() ? "التالي" : "تم";
+    requestAnimationFrame(() => revealWhenSettled("", 0, 0));
     document.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, { capture: true, passive: true });
