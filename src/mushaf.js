@@ -3633,10 +3633,13 @@ function toggleAudioForAyah(verseKey) {
     /* ── Continuous mode → full-surah engine ──
      * engineOnly reciters (e.g. dosari) have no per-ayah files, so single
      * mode also routes through the engine — startMushafSurahEngine passes
-     * continuous: AUDIO_MODE === "continuous", which the engine honours. */
+     * continuous: AUDIO_MODE === "continuous", which the engine honours.
+     * Downloaded reciters likewise route through the engine so single-mode
+     * Mushaf taps play from the offline cache. */
     const reciter = DEPS?.getCurrentReciter?.() || "alijaber";
     const reciterEngineOnly = !!DEPS?.reciters?.[reciter]?.engineOnly;
-    if (AUDIO_MODE === "continuous" || reciterEngineOnly) {
+    const reciterOffline = !!DEPS?.isReciterOfflineReady?.(reciter);
+    if (AUDIO_MODE === "continuous" || reciterEngineOnly || reciterOffline) {
         const engineLoaded = surahAudio.isActive() && surahAudio.getSurah() === vs && surahAudio.getReciter() === reciter;
         if (engineLoaded && AUDIO_VERSE === verseKey) {
             // Same ayah → pause/resume
