@@ -33,6 +33,7 @@
 "use strict";
 
 import { isApp } from "./app.js";
+import { buildReciterPickerHtml } from "./reciter-picker.js";
 
 // Two-state + button. Cycle: 0 (default = normal Madinah Mushaf autoFit)
 // → 1 (a little bigger) → 0. Saved between sessions.
@@ -448,11 +449,8 @@ function buildSettingsPanel() {
 
     const reciters = _deps?.reciters || {};
     const reciterOrder = _deps?.reciterOrder || [];
-    const reciterChipsHtml = reciterOrder.map((key) => {
-        const r = reciters[key] || {};
-        const name = r.name || key;
-        return `<button type="button" class="mushaf-settings__chip" data-val="${key}">${name}</button>`;
-    }).join("");
+    // 4 default chips + a "+ المزيد" chip that reveals the rest as more chips.
+    const reciterChipsHtml = buildReciterPickerHtml(reciterOrder, reciters, _deps?.getCurrentReciter?.());
 
     const panel = document.createElement("div");
     panel.className = "mushaf-fs__settings-panel";
