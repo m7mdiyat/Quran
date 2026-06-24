@@ -1,0 +1,48 @@
+{
+  "generated": "static",
+  "base": "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/surah",
+  "reciters": {
+    "alijaber": {
+      "audio": 727429537,
+      "timings": 50378,
+      "total": 727479915,
+      "files": 228,
+      "missing": 0
+    },
+    "shuraim": {
+      "audio": 1045140735,
+      "timings": 49383,
+      "total": 1045190118,
+      "files": 228,
+      "missing": 0
+    },
+    "ayoub": {
+      "audio": 1844280168,
+      "timings": 51139,
+      "total": 1844331307,
+      "files": 228,
+      "missing": 0
+    },
+    "qasim": {
+      "audio": 1724299753,
+      "timings": 287718,
+      "total": 1724587471,
+      "files": 228,
+      "missing": 0
+    },
+    "dosari": {
+      "audio": 1486947536,
+      "timings": 50379,
+      "total": 1486997915,
+      "files": 228,
+      "missing": 0
+    },
+    "luhaidan": {
+      "audio": 1460505887,
+      "timings": 252774,
+      "total": 1460758661,
+      "files": 228,
+      "missing": 0
+    }
+  }
+}
