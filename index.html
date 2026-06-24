@@ -271,6 +271,19 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/mushaf.css">
 
+  <!-- IBM Plex Sans Arabic — BUNDLED locally (public/fonts/, Arabic subset, the
+       weights the panels + mushaf footer use) so it's instant + offline on a
+       FRESH install with NO FOUT. The id is the same one every panel's
+       ensurePanelFont() checks, so they skip injecting the old remote Google-
+       Fonts <link> (which, loaded later, would override these and bring the
+       first-install flash back). app.js force-loads the weights at boot. -->
+  <style id="offlinePanelFont">
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-arabic-400.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/ibm-plex-arabic-500.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/ibm-plex-arabic-600.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/ibm-plex-arabic-700.woff2") format("woff2"); }
+  </style>
+
   <style>
     @font-face {
       font-family: "MeQuran";
@@ -3531,23 +3544,22 @@
        position:fixed lock is the one iOS WKWebView honours — matches
        body.mushaf-fs-open; sheet-scroll-lock.js pins/restores the scroll
        offset so the page never jumps. */
-    body.offline-sheet-open {
-      position: fixed;
-      left: 0;
-      right: 0;
-      width: 100%;
-      overflow: hidden;
-    }
+    /* body.offline-sheet-open / body.mushaf-coach-open carry NO positioning. The
+       scroll-lock is behavioral (sheet-scroll-lock.js preventDefaults touchmove),
+       so the body stays in normal flow and nothing re-anchors. These classes are
+       markers for the shared .sheet-scrim, the lock observer, and the rule below. */
 
-    /* First-use spotlight coachmark (gharib/notes) — the SAME position:fixed
-       lock, but no scrim (the coach paints its own dim). gharib.js pins/restores
-       the scroll offset (lockScroll/unlockScroll). */
-    body.mushaf-coach-open {
-      position: fixed;
-      left: 0;
-      right: 0;
-      width: 100%;
-      overflow: hidden;
+    /* Hide the page (root) scrollbar while a sheet/guide is open — the page is
+       locked anyway, and its bar showed at the screen's right edge over the dim.
+       :has() reaches the root scroller (html) from the body marker class. */
+    html:has(> body.offline-sheet-open),
+    html:has(> body.mushaf-coach-open) {
+      scrollbar-width: none;            /* Firefox */
+    }
+    html:has(> body.offline-sheet-open)::-webkit-scrollbar,
+    html:has(> body.mushaf-coach-open)::-webkit-scrollbar {
+      display: none;                    /* WebKit / iOS */
+      width: 0;
     }
 
     /* Shared backdrop scrim — ONE blurred dim surface behind every sheet,
@@ -3585,6 +3597,11 @@
       /* Dim + blur now live on the shared .sheet-scrim (one continuous surface
          across panel swaps). This element is just the click-to-close catcher. */
       background: transparent;
+      /* The page must not be draggable under the (position:fixed) dim while a
+         panel is up — iOS WKWebView wouldn't repaint the fixed overlay at the new
+         offset, leaving the scrolled-in bottom undimmed/detached. touch-action:
+         none refuses the scroll gesture here (the card keeps its own and scrolls). */
+      touch-action: none;
     }
 
     .offline-sheet__card {
@@ -3592,6 +3609,12 @@
       width: min(440px, 100%);
       max-height: calc(100vh - 32px);
       overflow: auto;
+      /* The scroll-lock no longer freezes the page via CSS (it preventDefaults
+         touchmove), so contain this card's own scroll here — it must never chain
+         out to the page behind it. */
+      overscroll-behavior: contain;
+      scrollbar-width: none;        /* Firefox: no scrollbar line */
+      -ms-overflow-style: none;     /* old Edge */
       background: rgba(247, 251, 255, .96);
       border: 1px solid rgba(15, 23, 42, .08);
       border-radius: 22px;
@@ -3599,6 +3622,7 @@
       box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
       animation: offline-sheet-pop 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
+    .offline-sheet__card::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
     body.dark .offline-sheet__card {
       background: rgba(35, 41, 51, .98);
@@ -4120,7 +4144,8 @@
     body.dark .notes-editor__hint { color: #64748b; }
 
     /* --- Notes list (sheet contents) --- */
-    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; padding-inline-end: 2px; }
+    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; padding-inline-end: 2px; }
+    .notes-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
     .notes-list__row {
       background: rgba(15, 23, 42, .04); border: 1px solid rgba(15, 23, 42, .06);
       border-radius: 14px; padding: 12px; cursor: pointer;
@@ -4165,8 +4190,17 @@
      * gold (static — calm). Removing a row forgets the word (gharibForget).
      * ==================================================================== */
 
-    /* The collection holds short word rows — keep the card genuinely small and
-       focused, well under the default 440px sheet. */
+    /* The card is vertically centred in the shared .offline-sheet shell; that
+       pure centre felt a touch top-heavy, so bias the centring point downward a
+       little via asymmetric wrapper padding — NOT a transform (which would fight
+       the --smooth entry translate) and NOT extra height (which would grow both
+       edges). The backdrop is absolute inset:0, so padding never shrinks it. */
+    #gharibSavedSheet {
+      padding-top: 64px;
+    }
+
+    /* The collection holds short word rows — keep the card compact and narrow,
+       well under the default 440px sheet. */
     #gharibSavedSheet .offline-sheet__card {
       width: min(300px, 90vw);
       max-height: min(76vh, 520px);
@@ -4283,26 +4317,71 @@
     .gharib-saved-confirm__actions { display: flex; gap: 8px; }
     .gharib-saved-confirm__actions .offline-btn { min-width: 92px; }
 
+    /* The scrolling word list + its custom gold scroll-rail, side by side. This
+       wrap takes the list's old place in the card's flex column (fills the
+       remaining height, min-height:0 so the LIST scrolls, not the card), with
+       the rail sitting flush beside it and matching its height. */
+    .gharib-saved-listwrap {
+      display: flex;
+      gap: 7px;
+      flex: 0 1 auto;
+      min-height: 0;
+      margin-top: 2px;
+    }
+
     /* Scrollable list of revealed words. */
     .gharib-saved-list {
       display: flex;
       flex-direction: column;
       gap: 9px;
-      /* Fill the card's remaining height and scroll INTERNALLY — the card no
-         longer scrolls. min-height:0 lets this flex child shrink below its
-         content so the overflow is contained here, not on the whole panel. */
-      flex: 0 1 auto;
+      /* Scroll INTERNALLY — the card no longer scrolls. flex:1 fills the wrap;
+         min-height:0 lets it shrink below its content so the overflow is
+         contained here, not on the whole panel. */
+      flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
-      padding-inline-end: 2px;
-      margin-top: 2px;
+      scrollbar-width: none;        /* Firefox: no scrollbar line */
+      -ms-overflow-style: none;     /* old Edge */
+      /* Mirror the rail (3px) + wrap gap (7px) = 10px on the OPPOSITE side (left,
+         which is inline-end in this RTL panel) so the rows stay centred in the
+         card instead of being pulled left by the right-hand rail. */
+      padding-inline-end: 10px;
     }
-    /* Clean, thin scrollbar confined to the list (matches .results-list). */
-    .gharib-saved-list::-webkit-scrollbar { width: 6px; }
-    .gharib-saved-list::-webkit-scrollbar-track { background: transparent; }
-    .gharib-saved-list::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 10px; }
-    .gharib-saved-list::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+    /* Hidden native scrollbar (still scrollable) — the gold rail replaces it. */
+    .gharib-saved-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+    /* Custom scroll-progress rail — a thin translucent track with a gold thumb
+       whose size = visible/total and position = scroll fraction (native-feel,
+       small thumb ⇒ more words below). Replaces the hidden native scrollbar;
+       purely indicative (no pointer events). Hidden until the list actually
+       scrolls. Reuses the lantern/count-chip gold — no new colour. */
+    .gharib-saved-scroll {
+      position: relative;
+      flex: 0 0 auto;
+      align-self: stretch;          /* match the list's height = track height */
+      width: 3px;
+      border-radius: 999px;
+      background: rgba(176, 138, 60, .14);
+      opacity: 0;                   /* shown only when scrollable (.is-active) */
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .gharib-saved-scroll.is-active { opacity: 1; }
+    .gharib-saved-scroll__thumb {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      min-height: 22px;
+      border-radius: 999px;
+      background: #e3a338;          /* solid lantern gold — no gradient */
+      /* height transitions smoothly when the list changes; transform (scroll
+         position) is set per-rAF and must NOT transition, or the thumb lags. */
+      transition: height .15s ease;
+    }
+    body.dark .gharib-saved-scroll { background: rgba(240, 192, 105, .12); }
+    body.dark .gharib-saved-scroll__thumb { background: #f0c069; }
 
     .gharib-saved-row {
       position: relative;
@@ -5554,9 +5633,9 @@
               <div class="mt-6">
                 <div id="tafsirComparePanel" class="mt-6 hidden" aria-hidden="true">
                   <div class="rounded-3xl border border-slate-900/10 bg-white/60 p-5">
-                    <div class="compare-header-row flex items-center justify-between gap-3 flex-wrap"
+                    <div class="compare-header-row flex items-center justify-between gap-2 flex-wrap"
                       style="cursor: pointer;">
-                      <div class="text-sm font-extrabold text-slate-700 flex items-center gap-2">
+                      <div class="text-xs font-extrabold text-slate-700 flex items-center gap-2">
                         <span>مقارنة بين التفاسير</span>
                         <svg id="compareToggleIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                           stroke-width="2.5" stroke="currentColor"
@@ -5566,8 +5645,10 @@
                       </div>
                       <div class="flex items-center gap-2">
                         <button type="button" id="compareWritePauseBtn"
+                          style="min-width: 5rem; text-align: center;"
                           class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition">إيقاف</button>
                         <button type="button" id="compareStopBtn"
+                          style="min-width: 5rem; text-align: center;"
                           class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إيقاف</button>
                         <button type="button" id="compareCloseBtn"
                           class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إغلاق</button>

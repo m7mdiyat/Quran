@@ -5606,6 +5606,15 @@ async function init() {
   // overlay awaits it before fading. No-op on the website.
   let _markAppReady = () => {};
   if (isApp()) {
+    // The panel font (IBM Plex Sans Arabic) is BUNDLED locally — see the
+    // <style id="offlinePanelFont"> @font-face block in index.html. @font-face
+    // fonts load lazily (only when text first uses them), which flashed the
+    // fallback the first time a sheet opened on a fresh install. Force-load the
+    // weights NOW so they're decoded before any sheet can open. No network.
+    try {
+      ["400", "500", "600", "700"].forEach((w) =>
+        document.fonts?.load?.(`${w} 16px "IBM Plex Sans Arabic"`)?.catch?.(() => { }));
+    } catch { }
     // Opening splash: build the overlay + play the Lottie immediately (before the
     // big quran.json load) so it covers the cold-start window. The native splash
     // (launchAutoHide:false) stays up until splash.js calls SplashScreen.hide()
