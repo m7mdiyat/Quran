@@ -359,33 +359,56 @@ body.dark .mushaf-download {
     inset: 0;
 }
 
-/* Keyframe fade: 0% → 100% opacity — guaranteed to run */
-@keyframes mushafFadeIn {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
+/* ============================================================
+ * Page-turn: soft horizontal slide (replaces the cross-fade). The new page
+ * slides in from one side while the old page slides out the other — they move
+ * together so it reads as one page replacing another. transform: translateX
+ * ONLY (GPU-friendly; no layout/opacity/shadow/blur), so it stays light on
+ * low-end devices. RTL: NEXT (forward) → new enters from the LEFT, old exits to
+ * the RIGHT (the strip sweeps right); PREV → the opposite. Direction is set by
+ * goNext()→"left" / goPrev()→"right" in renderPage().
+ *
+ * The new page stays in normal flow (so .mushaf-pages keeps its height and the
+ * stage doesn't collapse) and slides via transform; the OLD page is taken
+ * absolute + inset:0 (overlapping) and slides out. .mushaf-pages--animating
+ * clips the overflow only for the duration of the slide.
+ * ============================================================ */
+:root {
+    --mushaf-slide-dur: 420ms;
+    --mushaf-slide-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes mushafFadeOut {
-    from {
-        opacity: 1;
-    }
+@keyframes mushafSlideInFromLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes mushafSlideInFromRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes mushafSlideOutToRight { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes mushafSlideOutToLeft { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
-    to {
-        opacity: 0;
-    }
+.mushaf-page--enter-from-left {
+    animation: mushafSlideInFromLeft var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--enter-from-right {
+    animation: mushafSlideInFromRight var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--exit-to-right {
+    position: absolute;
+    inset: 0;
+    animation: mushafSlideOutToRight var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--exit-to-left {
+    position: absolute;
+    inset: 0;
+    animation: mushafSlideOutToLeft var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
 }
 
-.mushaf-page--fade-in {
-    animation: mushafFadeIn 250ms ease-out both;
-}
-
-.mushaf-page--fade-out {
-    animation: mushafFadeOut 200ms ease-in both;
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-page--enter-from-left,
+    .mushaf-page--enter-from-right,
+    .mushaf-page--exit-to-right,
+    .mushaf-page--exit-to-left { animation: none !important; }
 }
 
 /* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
@@ -1342,6 +1365,79 @@ body.dark .mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true
 .mushaf-settings__chip:disabled:hover,
 .mushaf-settings__chip--disabled:hover {
     background: var(--card2);
+}
+
+/* ============================================================
+ * Reciter picker — 4 default chips + a "+ المزيد" chip (same pill style) that
+ * smoothly reveals the rest as more identical chips. One consistent chip
+ * family; the reveal uses the accordion grid-rows 0fr↔1fr grow + blur/opacity
+ * fade (no separate panel, no morphing). Used in Tafsir, Mushaf, fullscreen.
+ * ============================================================ */
+.reciter-pick-group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.reciter-pick-group__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.reciter-pick-group__rest {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reciter-pick-group[data-open="true"] .reciter-pick-group__rest {
+    grid-template-rows: 1fr;
+}
+.reciter-pick-group__rest-inner {
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    opacity: 0;
+    filter: blur(2px);
+    transition:
+        opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+        filter 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reciter-pick-group[data-open="true"] .reciter-pick-group__rest-inner {
+    opacity: 1;
+    filter: blur(0);
+}
+/* (3b) Fill rows efficiently: chips grow to take the available width so there
+ * are no awkward trailing gaps, and the toggle flows with its chips. */
+.reciter-pick-group .mushaf-settings__chip { flex: 1 1 auto; }
+/* Exactly one toggle shows per state: "+ المزيد" collapsed, "− أقل" expanded
+ * (the latter lives inside the collapsible, so it's hidden when collapsed). */
+.reciter-pick-group[data-open="true"] .reciter-more--more { display: none; }
+/* (3a) Subtle, tasteful color-coding on the toggle only. */
+.reciter-more--more {
+    color: #047857;
+    background: rgba(16, 185, 129, .1);
+    border-color: rgba(16, 185, 129, .32);
+}
+.reciter-more--more:hover { background: rgba(16, 185, 129, .16); }
+body.dark .reciter-more--more {
+    color: #6ee7b7;
+    background: rgba(16, 185, 129, .14);
+    border-color: rgba(16, 185, 129, .3);
+}
+.reciter-more--less {
+    color: #b91c1c;
+    background: rgba(239, 68, 68, .09);
+    border-color: rgba(239, 68, 68, .28);
+}
+.reciter-more--less:hover { background: rgba(239, 68, 68, .15); }
+body.dark .reciter-more--less {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, .13);
+    border-color: rgba(239, 68, 68, .3);
+}
+@media (prefers-reduced-motion: reduce) {
+    .reciter-pick-group__rest, .reciter-pick-group__rest-inner { transition: none !important; }
 }
 
 /* ============================================================
@@ -4109,6 +4205,15 @@ body.dark .notes-lamp { color: #9ca3af; }
 .mushaf-toolbar > #mushafNotesLamp { order: 1; margin-inline-end: -6px; } /* tighten the notes↔lantern gap (12px → ~4px) */
 .mushaf-toolbar > #gharibLamp { order: 2; }
 .mushaf-toolbar > #mushafSurahWrap { order: 3; }
+
+/* Left button group order (LTR toolbar → ascending = left→right): settings ·
+ * play · fullscreen. fullscreen moved to the far-right END of the group (was
+ * settings · fullscreen · play). CSS order only — DOM untouched; values stay
+ * below the lamps (1/2/3) so the group keeps its place on the left. Normal
+ * toolbar only; the fullscreen-view buttons are a separate component. */
+.mushaf-toolbar > #mushafSettingsWrap { order: -2; }
+.mushaf-toolbar > #mushafPlayWrap { order: -1; }
+.mushaf-toolbar > #mushafFullscreenBtn { order: 0; }
 
 .notes-lamp__ring {
     position: absolute;
