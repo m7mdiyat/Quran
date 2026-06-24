@@ -19,6 +19,7 @@
 "use strict";
 
 import { surahAudio } from "./surahAudio.js";
+import { buildReciterPickerHtml } from "./reciter-picker.js";
 import * as mediaSession from "./mediaSession.js";
 import { gharibTapTarget, gharibHoverTarget } from "./gharib.js";
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, subscribeRepeat } from "./repeat.js";
@@ -1624,21 +1625,36 @@ function renderPage(data, direction = "none") {
     PAGES_EL.appendChild(newPage);
 
     if (direction !== "none" && old) {
-        // Clip the cross-fading (absolute) pages to the container ONLY while
-        // animating; the static reading state keeps overflow:visible so gharib
-        // glows bleed past the page edge unclipped (see .mushaf-pages CSS).
-        // A shared, debounced timer survives rapid swipes (resets each swap).
+        // Soft horizontal slide (transform-only). RTL: NEXT (goNext → "left") →
+        // the new page enters from the LEFT while the old exits to the RIGHT;
+        // PREV (goPrev → "right") → the opposite. Both move together.
+        const next = direction === "left";
+        const enterCls = next ? "mushaf-page--enter-from-left" : "mushaf-page--enter-from-right";
+        const exitCls = next ? "mushaf-page--exit-to-right" : "mushaf-page--exit-to-left";
+
+        // Rapid taps: drop any pages still sliding out from an earlier swap so
+        // they can't stack — keep only `old` (sliding out) + `newPage` (sliding in).
+        PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => {
+            if (p !== old && p !== newPage) p.remove();
+        });
+
+        // Clip the sliding pages to the container ONLY while animating; the
+        // static reading state keeps overflow:visible so gharib glows bleed past
+        // the page edge unclipped (see .mushaf-pages CSS). A shared, debounced
+        // timer survives rapid swipes (resets each swap).
         PAGES_EL.classList.add("mushaf-pages--animating");
         clearTimeout(PAGES_ANIM_TIMER);
         PAGES_ANIM_TIMER = setTimeout(
-            () => PAGES_EL?.classList.remove("mushaf-pages--animating"), 320);
-        // New page fades in from 0% → 100% opacity
-        newPage.classList.add("mushaf-page--fade-in");
-        // Old page fades out and is removed when animation ends
-        old.classList.add("mushaf-page--animating", "mushaf-page--fade-out");
+            () => PAGES_EL?.classList.remove("mushaf-pages--animating"), 480);
+        // New page slides in (stays in flow → keeps the stage height); drop the
+        // class once it lands so it sits at rest.
+        newPage.classList.add(enterCls);
+        newPage.addEventListener("animationend", () => newPage.classList.remove(enterCls), { once: true });
+        // Old page slides out (absolute, overlapping) and is removed when done.
+        old.classList.add(exitCls);
         old.addEventListener("animationend", () => old.remove(), { once: true });
         // Safety fallback in case animationend doesn't fire
-        setTimeout(() => { if (old.parentNode) old.remove(); }, 300);
+        setTimeout(() => { if (old.parentNode) old.remove(); }, 480);
     } else {
         // No animation needed (initial load or direct navigation) — make sure
         // the static state isn't left clipped by a prior transition.
@@ -1778,6 +1794,7 @@ function wireFullscreenButton(btn) {
                 goNext: () => goNext(),
                 reciters: DEPS?.reciters || {},
                 reciterOrder: DEPS?.reciterOrder || [],
+                getCurrentReciter: () => DEPS?.getCurrentReciter?.(),
                 handleSettingsChip: (chip) => handleSettingsChip(chip),
                 syncSettingsUI: () => syncSettingsUI(),
             });
@@ -3980,12 +3997,8 @@ function buildReciterChips() {
     if (!dd) return;
     const row = dd.querySelector('[data-settings-group="reciter"]');
     if (!row) return;
-    row.innerHTML = (DEPS.reciterOrder || Object.keys(DEPS.reciters))
-        .map((key) => {
-            const r = DEPS.reciters[key];
-            return `<button type="button" class="mushaf-settings__chip" data-val="${key}">${r.name}</button>`;
-        })
-        .join("");
+    // 4 default chips + a "+ المزيد" chip that reveals the rest as more chips.
+    row.innerHTML = buildReciterPickerHtml(DEPS.reciterOrder || Object.keys(DEPS.reciters), DEPS.reciters, DEPS.getCurrentReciter?.());
 }
 
 function handleSettingsChip(chip) {
