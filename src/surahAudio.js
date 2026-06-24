@@ -22,7 +22,7 @@ const AUDIO_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/su
 const TIMINGS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/timings";
 const TICK_INTERVAL_MS = 100;
 
-const SURAH_RECITERS = new Set(["qasim", "alijaber", "shuraim", "ayoub", "dosari", "luhaidan"]);
+const SURAH_RECITERS = new Set(["qasim", "alijaber", "shuraim", "ayoub", "dosari", "luhaidan", "abdulbasit", "husary", "minshawi", "maher"]);
 export function isSurahAudioReciter(reciter) {
   return SURAH_RECITERS.has(reciter);
 }
