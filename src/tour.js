@@ -26,7 +26,7 @@ const TOUR_SEEN_KEY = "m7_tour_seen";
 const TOUR_STEPS = [
     { sel: "#searchPanel", text: "ابحث عن آية بكلماتها، أو اختر السورة لتبدأ." },
     { sel: "[data-mode-toggle]", text: "بدّل بين التفسير ووضع التدبّر (المصحف) من هنا." },
-    { sel: "#settingsMenuBtn", text: "الإعدادات: للقراءة دون إنترنت، وغيّر المظهر، وراسِلنا." },
+    { sel: "#settingsMenuBtn", text: "الإعدادات: للقراءة بدون إنترنت، وتغيير المظهر، ومراسلتنا." },
 ];
 
 function seen(key) { try { return !!localStorage.getItem(key); } catch { return false; } }
