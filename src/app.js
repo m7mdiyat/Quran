@@ -1073,6 +1073,13 @@ const RECITERS = {
 const RECITER_ORDER = ['alijaber', 'shuraim', 'ayoub', 'qasim', 'dosari', 'luhaidan'];
 let CURRENT_RECITER = 'alijaber';
 
+// App-only: true when this reciter has been downloaded for offline playback.
+// Set by the dynamic import of reciter-offline.js (isApp block in init); stays
+// a no-op on the website so the module never enters the web bundle. A
+// downloaded reciter is routed through the cache-first surah engine in every
+// mode (the user opted for "always prefer downloaded audio").
+let _isReciterOfflineReady = () => false;
+
 // Per-reciter surah blocklist — some reciters don't have a recording for a
 // given surah. Each entry maps a reciter key to the Set of surah numbers for
 // which that reciter is disabled (UI greys the chip and the engine falls
@@ -1609,8 +1616,9 @@ function playCurrentAyah() {
   // Listening (continuous) mode — full-surah engine.
   // engineOnly reciters (e.g. dosari) have no per-ayah files, so single
   // mode also routes through the engine; the engine honours continuous:
-  // false by stopping at end-of-ayah.
-  if (LISTENING_MODE || RECITERS[CURRENT_RECITER]?.engineOnly) {
+  // false by stopping at end-of-ayah. Downloaded reciters likewise route
+  // through the engine so single-mode taps play from the offline cache.
+  if (LISTENING_MODE || RECITERS[CURRENT_RECITER]?.engineOnly || _isReciterOfflineReady(CURRENT_RECITER)) {
     startSurahEngineForCurrent();
     return;
   }
@@ -5636,6 +5644,15 @@ async function init() {
         toggleDark: () => toggleDarkMode(),
       }))
       .catch((e) => console.error("settings-panel init failed", e));
+    // Offline reciter downloads: installs cache-first hooks on the surah audio
+    // engine and powers the "القرّاء" section of the offline panel. Fully
+    // dynamic so the module never enters the web bundle.
+    import("./reciter-offline.js")
+      .then((m) => {
+        m.initReciterOffline({ reciters: RECITERS, reciterOrder: RECITER_ORDER });
+        _isReciterOfflineReady = m.isReciterOfflineReady;
+      })
+      .catch((e) => console.error("reciter-offline init failed", e));
     // First-launch guided tour (homepage) + one-time lantern hint on first
     // تدبّر page — app only; replaces the old single offline coachmark.
     import("./tour.js")
@@ -5699,6 +5716,9 @@ async function init() {
     setCurrentReciter: (r) => switchReciter(r),
     isReciterAllowedForSurah: (r, s) => isReciterAllowedForSurah(r, s),
     enforceReciterForSurah: (s) => enforceReciterForSurah(s),
+    // App-only: a downloaded reciter routes Mushaf single-mode taps through the
+    // cache-first surah engine too (so offline playback works in Mushaf mode).
+    isReciterOfflineReady: (r) => _isReciterOfflineReady(r),
     stopAudio: () => stopAudio(),
     // Quiet teardown of the Tafsir-side per-ayah <audio> only — does NOT
     // touch the engine. Used by Mushaf play paths to enforce the
