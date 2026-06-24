@@ -39,6 +39,9 @@ import { initMushaf, openMushafAtAyah, openMushafAtPage, openMushafAtSurah, isMu
 /* Continuous full-surah audio engine (all reciters) */
 import { surahAudio } from "./surahAudio.js";
 
+/* OS now-playing surface (lock screen / Dynamic Island). No-op where unsupported. */
+import * as mediaSession from "./mediaSession.js";
+
 /* Pulse-outside glow driver for the مختصر التفاسير button */
 import { initMukhtasarPulse } from "./pulse-beam.js";
 import { initGharib } from "./gharib.js";
@@ -1450,6 +1453,19 @@ function setAudioActiveUI(active) {
   document.querySelector(".mobile-audio-btn")?.classList.toggle("playing", AUDIO_PLAYING);
   updateAudioIcons(AUDIO_PLAYING);
   updateSeekSliderVisibility(AUDIO_PLAYING);
+  // Mirror to the OS now-playing card (Tafsir engine path; per-ayah has its
+  // own hook on the <audio> element).
+  mediaSession.setPlaybackState(AUDIO_PLAYING ? "playing" : "paused");
+  if (AUDIO_PLAYING) pushTafsirNowPlaying();
+}
+
+/** Feed the lock-screen card the current Tafsir surah + reciter. */
+function pushTafsirNowPlaying() {
+  if (!CURRENT) return;
+  mediaSession.setNowPlaying({
+    surahName: SURAH_META.find((x) => x.number === CURRENT.s)?.name_ar,
+    reciterName: RECITERS[CURRENT_RECITER]?.name,
+  });
 }
 
 /**
@@ -1625,6 +1641,12 @@ function playCurrentAyah() {
     updateAudioIcons(true);
     updateSeekSliderVisibility(true);
     hideTafsirAudioOffline();
+    pushTafsirNowPlaying();
+    mediaSession.setPlaybackState("playing");
+  });
+  nextAudio.addEventListener("pause", () => {
+    if (AUDIO_PLAYER !== nextAudio) return;
+    mediaSession.setPlaybackState("paused");
   });
   nextAudio.addEventListener("timeupdate", () => {
     if (AUDIO_PLAYER !== nextAudio) return;
@@ -5762,6 +5784,22 @@ async function init() {
       reflectAyahInBar(s, a);
       deactivateSearchBeam();
     },
+  });
+
+  // Lock-screen / Dynamic Island transport buttons → our engines. Prefer the
+  // Tafsir per-ayah <audio> when one is live, else the full-surah engine;
+  // next/prev skip ayahs (engine: in-stream seek; per-ayah: re-target).
+  mediaSession.wireActions({
+    onPlay: () => {
+      if (AUDIO_PLAYER) AUDIO_PLAYER.play().catch(() => { });
+      else if (surahAudio.isActive()) surahAudio.resume();
+    },
+    onPause: () => {
+      if (AUDIO_PLAYER) { try { AUDIO_PLAYER.pause(); } catch { } }
+      else if (surahAudio.isActive()) surahAudio.pause();
+    },
+    onNext: () => { if (AUDIO_PLAYER) stepAyah(1); else if (surahAudio.isActive()) surahAudio.seekAyah(1); },
+    onPrev: () => { if (AUDIO_PLAYER) stepAyah(-1); else if (surahAudio.isActive()) surahAudio.seekAyah(-1); },
   });
 
   // غريب القرآن — glowing word discovery in the Mushaf (src/gharib.js).
