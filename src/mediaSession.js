@@ -20,10 +20,11 @@
 
 const SUPPORTED = typeof navigator !== "undefined" && "mediaSession" in navigator;
 
-// The blue app-icon (rasterized from /favicon.svg — the same blue mushaf the
-// in-app banner uses as the icon). Root-relative, bundled, offline-safe. Two
-// sizes so the OS can pick the cheap one for a small tile and the crisp one
-// when it wants detail; the 512 is listed first as the common lock-screen size.
+// The real app icon — the blue «محمديات» calligraphic wordmark, i.e. the same
+// image as the iOS/Android home-screen icon (sourced from the AppIcon set, no
+// alpha). Root-relative, bundled, offline-safe. Two sizes so the OS can pick the
+// cheap one for a small tile and the crisp one when it wants detail; the 512 is
+// listed first as the common lock-screen size.
 const ARTWORK = [
   { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
   { src: "/icon-1024.png", sizes: "1024x1024", type: "image/png" },
