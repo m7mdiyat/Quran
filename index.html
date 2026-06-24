@@ -2021,6 +2021,58 @@
       background: #22d3ee;
     }
 
+    /* Abdul Basit - Emerald */
+    .audio-player-wrapper.reciter-abdulbasit .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-abdulbasit .audio-main-btn:hover {
+      background: rgba(5, 150, 105, 0.12);
+      border-color: rgba(5, 150, 105, 0.35);
+      color: #059669;
+    }
+
+    .reciter-abdulbasit .audio-reciter-name { color: #059669; }
+    body.dark .reciter-abdulbasit .audio-reciter-name { color: #34d399; }
+    .reciter-abdulbasit .audio-slider::-webkit-slider-thumb { background: #059669; }
+    body.dark .reciter-abdulbasit .audio-slider::-webkit-slider-thumb { background: #34d399; }
+
+    /* Husary - Violet */
+    .audio-player-wrapper.reciter-husary .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-husary .audio-main-btn:hover {
+      background: rgba(124, 58, 237, 0.12);
+      border-color: rgba(124, 58, 237, 0.35);
+      color: #7c3aed;
+    }
+
+    .reciter-husary .audio-reciter-name { color: #7c3aed; }
+    body.dark .reciter-husary .audio-reciter-name { color: #a78bfa; }
+    .reciter-husary .audio-slider::-webkit-slider-thumb { background: #7c3aed; }
+    body.dark .reciter-husary .audio-slider::-webkit-slider-thumb { background: #a78bfa; }
+
+    /* Minshawi - Teal */
+    .audio-player-wrapper.reciter-minshawi .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-minshawi .audio-main-btn:hover {
+      background: rgba(13, 148, 136, 0.12);
+      border-color: rgba(13, 148, 136, 0.35);
+      color: #0d9488;
+    }
+
+    .reciter-minshawi .audio-reciter-name { color: #0d9488; }
+    body.dark .reciter-minshawi .audio-reciter-name { color: #2dd4bf; }
+    .reciter-minshawi .audio-slider::-webkit-slider-thumb { background: #0d9488; }
+    body.dark .reciter-minshawi .audio-slider::-webkit-slider-thumb { background: #2dd4bf; }
+
+    /* Maher Al-Muaiqly - Indigo */
+    .audio-player-wrapper.reciter-maher .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-maher .audio-main-btn:hover {
+      background: rgba(79, 70, 229, 0.12);
+      border-color: rgba(79, 70, 229, 0.35);
+      color: #4f46e5;
+    }
+
+    .reciter-maher .audio-reciter-name { color: #4f46e5; }
+    body.dark .reciter-maher .audio-reciter-name { color: #818cf8; }
+    .reciter-maher .audio-slider::-webkit-slider-thumb { background: #4f46e5; }
+    body.dark .reciter-maher .audio-slider::-webkit-slider-thumb { background: #818cf8; }
+
     /* Audio Seek Row */
 
     .audio-seek-row {
@@ -3532,7 +3584,16 @@
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      /* Respect the status-bar safe area at the TOP (and the home-indicator at
+         the bottom) using the app's canonical inset chain — otherwise a tall
+         centered card (e.g. the offline page with the reciter list expanded)
+         reaches its max-height and its top edge lands at the 16px padding,
+         OVER the status bar. max(env, --m7-statusbar-height) handles the
+         Android-14 WebView quirk where env() reports 0. */
+      padding:
+        calc(max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) + 12px)
+        16px
+        calc(env(safe-area-inset-bottom, 0px) + 16px);
       font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
       direction: rtl;
     }
@@ -3607,7 +3668,10 @@
     .offline-sheet__card {
       position: relative;
       width: min(440px, 100%);
-      max-height: calc(100vh - 32px);
+      /* Match the sheet's safe-area padding so the card never exceeds the safe
+         region (top status bar + bottom home indicator), no matter how tall its
+         content gets — this is what keeps the top from creeping over the bars. */
+      max-height: calc(100vh - 28px - max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) - env(safe-area-inset-bottom, 0px));
       overflow: auto;
       /* The scroll-lock no longer freezes the page via CSS (it preventDefaults
          touchmove), so contain this card's own scroll here — it must never chain
@@ -3700,6 +3764,23 @@
     }
 
     body.dark .offline-sheet__close:hover { background: rgba(148, 163, 184, .24); }
+
+    /* Change 1c — keep the offline panel's back/close button reachable while a
+       tall (expanded) card scrolls. The pin is a 0-height STICKY anchor at the
+       card's content top (the card is the scroller); the absolute close button
+       positions within it, so it stays put as content scrolls beneath. The card
+       already respects the status-bar safe area, so the pinned button sits below
+       the status bar too. Only the offline sheet wraps its button in a pin. */
+    .offline-sheet__pin {
+      position: sticky;
+      top: 0;
+      height: 0;
+      z-index: 6;
+    }
+    .offline-sheet__pin .offline-sheet__close {
+      top: -10px;
+      left: -10px;
+    }
 
     .offline-sheet__head { text-align: center; margin-bottom: 18px; padding-top: 4px; }
 
@@ -4027,6 +4108,107 @@
     body.dark .offline-reciters__total-val { color: #e2e8f0; }
     .offline-reciters__foot .offline-btn--primary[disabled] { opacity: .5; cursor: default; box-shadow: none; transform: none; }
 
+    /* ---------- Transitions.dev "Accordion" (EXACT) — collapses the القرّاء
+       section into a single header tab. Mechanism: grid-template-rows 0fr↔1fr
+       (no JS height measuring) + chevron scaleY flip. ---------- */
+    :root {
+      /* slower + smoother reveal (Change 1b) — gentle, premium feel */
+      --acc-expand: 440ms;
+      --acc-collapse: 420ms;
+      --acc-chevron: 320ms;
+      --acc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .t-acc-panel {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-panel {
+      grid-template-rows: 1fr;
+      transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-panel-inner {
+      overflow: hidden;
+      opacity: 0;
+      filter: blur(2px);
+      transition:
+        opacity var(--acc-collapse) var(--acc-ease),
+        filter var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-panel-inner {
+      opacity: 1;
+      filter: blur(0);
+      transition:
+        opacity var(--acc-expand) var(--acc-ease),
+        filter var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-chevron {
+      display: inline-flex;
+      transform: scaleY(1);
+      transform-origin: center;
+      transition: transform var(--acc-chevron) var(--acc-ease);
+    }
+    .t-acc-chevron path { vector-effect: non-scaling-stroke; }
+    .t-acc[data-open="true"] .t-acc-chevron {
+      transform: scaleY(-1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron {
+        transition: none !important;
+      }
+    }
+    /* App adaptation (colors/spacing only — animation untouched). Collapsed, the
+       القرّاء card reads like the التدبّر/التفسير cards: title + chevron row, a
+       subtitle, and a blue CTA button. The CTA is its own grid-collapse so it
+       gives way to the reciter list as the panel expands (Change 1a). */
+    .t-acc-head {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      font-family: inherit;
+      color: inherit;
+      text-align: right;
+    }
+    .t-acc-head__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .t-acc-head .offline-row__desc { margin: 0; }
+    .t-acc-chevron { color: var(--muted, #64748b); }
+    .t-acc-chevron svg { width: 16px; height: 16px; display: block; }
+
+    /* CTA shown collapsed, collapses (height + fade) as the list expands. */
+    .t-acc-cta {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-cta {
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-cta__inner {
+      overflow: hidden;
+      padding-top: 12px;
+      opacity: 1;
+      transition: opacity var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-cta__inner { opacity: 0; pointer-events: none; }
+    .t-acc-cta__btn { width: 100%; }
+    /* small breathing room above the revealed reciter list */
+    .offline-row--reciters .t-acc-panel-inner { padding-top: 6px; }
+    @media (prefers-reduced-motion: reduce) {
+      .t-acc-cta, .t-acc-cta__inner { transition: none !important; }
+    }
+
     /* ---------- Settings hub (app-only) — link rows + toggles inside the
        .offline-sheet shell. Rows echo .offline-row; the switch uses the site's
        slate track / blue accent so it reads as native chrome. ---------- */
@@ -4229,11 +4411,16 @@
       font-variant-numeric: tabular-nums;
     }
     body.dark .notes-editor__counter { color: #64748b; }
+    /* Change 4 — stack the editor buttons full-width: حفظ primary on top,
+       إلغاء a full-width quiet/secondary button below it (neutral, NOT red —
+       cancelling here is non-destructive). حذف (only when editing an existing
+       note) sits between them. Clear primary → secondary hierarchy. */
     .notes-editor__actions {
-      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;
-      justify-content: flex-end;
+      display: flex; flex-direction: column; gap: 8px; margin-top: 4px;
     }
-    .notes-editor__actions .offline-btn { min-width: 90px; }
+    .notes-editor__actions .offline-btn { width: 100%; min-width: 0; }
+    .notes-editor__actions [data-note-close] { color: var(--muted, #64748b); font-weight: 700; }
+    body.dark .notes-editor__actions [data-note-close] { color: #94a3b8; }
     .notes-editor__hint {
       font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 6px;
     }
