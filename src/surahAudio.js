@@ -43,11 +43,31 @@ let _volume = 0.8;
 let _speed = 1;
 let _pendingSeekAyah = null;    // ayah # to seek to once timings finish loading
 
-/* ------------------------------------------------------------ URLs */
-function audioUrl(reciter, surah) {
+/* ------------------------------------------------------------ Offline hooks
+ * The app (not the website) can make the engine play DOWNLOADED reciters from
+ * the Cache API. surahAudio stays Cache/isApp-agnostic: src/reciter-offline.js
+ * injects these hooks. All optional — when unset, every path below is exactly
+ * the old network behavior, so the website + non-downloaded reciters are
+ * untouched (incl. the synchronous play()-inside-gesture cold start).
+ *   isDownloaded(reciter)        → boolean (SYNC). Gates whether the cold path
+ *                                  takes the async cached-blob branch at all.
+ *   resolveAudioUrl(reciter,s)   → Promise<string|null>: a `blob:` URL for the
+ *                                  cached MP3, or null to fall back to network.
+ *   revokeAudioUrl(url)          → release a blob: URL when the element is torn down.
+ *   fetchTimings(url)            → Promise<Response|null>: a cached timings
+ *                                  Response, or null to fall back to network. */
+let _offlineHooks = null;
+let _currentBlobUrl = null;     // the live element's blob: src, revoked on teardown
+export function setOfflineHooks(h) { _offlineHooks = h || null; }
+
+/* ------------------------------------------------------------ URLs
+ * Exported so the offline-download module (src/reciter-offline.js) caches each
+ * asset under the EXACT URL the engine later fetches — otherwise cache.match
+ * would miss (note the asymmetry: MP3 surah is 3-digit padded, timings is not). */
+export function audioUrl(reciter, surah) {
   return `${AUDIO_BASE}/${reciter}/${String(surah).padStart(3, "0")}.mp3`;
 }
-function timingsUrl(reciter, surah) {
+export function timingsUrl(reciter, surah) {
   return `${TIMINGS_BASE}/${reciter}/${surah}.json`;
 }
 
@@ -77,7 +97,13 @@ function normalizeTimings(raw) {
 async function loadTimings(reciter, surah) {
   const key = `${reciter}:${surah}`;
   if (_timingsCache.has(key)) return _timingsCache.get(key);
-  const res = await fetch(timingsUrl(reciter, surah));
+  const url = timingsUrl(reciter, surah);
+  // Cache-first for downloaded reciters (app only); null → network fallback.
+  let res = null;
+  if (_offlineHooks?.fetchTimings) {
+    try { res = await _offlineHooks.fetchTimings(url); } catch { res = null; }
+  }
+  if (!res) res = await fetch(url);
   if (!res.ok) {
     // A real HTTP response (e.g. 404 for a missing timings file) means the
     // server WAS reachable — tag the status so the UI doesn't misreport a
@@ -160,6 +186,12 @@ function tick() {
 
 /* ------------------------------------------------------------ Audio el */
 function destroyAudio() {
+  // Release the previous element's cached blob: URL (if any) so object URLs
+  // don't leak across reciter/surah swaps.
+  if (_currentBlobUrl) {
+    try { _offlineHooks?.revokeAudioUrl?.(_currentBlobUrl); } catch { }
+    _currentBlobUrl = null;
+  }
   if (!_audio) return;
   try { _audio.pause(); } catch { }
   try {
@@ -277,13 +309,30 @@ export async function play({ surah, ayah, reciter, continuous, volume, speed, ca
   _reciter = reciter;
   _pendingSeekAyah = ayah;
 
+  // Cache-first source for DOWNLOADED reciters (app only). Only this branch
+  // awaits before play(); non-downloaded reciters (and the whole website) skip
+  // it entirely, preserving the synchronous play()-inside-gesture cold start.
+  // Inside the app the WebView permits programmatic (muted) playback, so the
+  // extra await here is safe. A cache miss returns null → network URL, so a
+  // stale ready-flag or partial download just falls back to streaming.
+  let srcUrl = audioUrl(reciter, surah);
+  if (_offlineHooks?.isDownloaded?.(reciter)) {
+    let blobUrl = null;
+    try { blobUrl = await _offlineHooks.resolveAudioUrl(reciter, surah); } catch { }
+    if (gen !== _loadGen) {                 // superseded while resolving
+      if (blobUrl) { try { _offlineHooks.revokeAudioUrl?.(blobUrl); } catch { } }
+      return;
+    }
+    if (blobUrl) { srcUrl = blobUrl; _currentBlobUrl = blobUrl; }
+  }
+
   const audio = new Audio();
   audio.preload = "auto";
   audio.muted = true;                 // gesture-lock: unmute after seek lands
   audio.volume = _volume;
   audio.defaultPlaybackRate = _speed;
   audio.playbackRate = _speed;
-  audio.src = audioUrl(reciter, surah);
+  audio.src = srcUrl;
   _audio = audio;
   bindAudioEvents(audio);
 
@@ -408,6 +457,7 @@ export function getContinuous() { return _continuous; }
 export const surahAudio = {
   play, pause, resume, stop, seekAyah,
   setVolume, setSpeed, setContinuous, setCallbacks,
+  setOfflineHooks,
   isActive, isPlaying,
   getSurah, getReciter, getActiveAyah, getAudio,
   getSpeed, getVolume, getContinuous,
