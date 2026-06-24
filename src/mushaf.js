@@ -19,6 +19,7 @@
 "use strict";
 
 import { surahAudio } from "./surahAudio.js";
+import * as mediaSession from "./mediaSession.js";
 import { gharibTapTarget, gharibHoverTarget } from "./gharib.js";
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, subscribeRepeat } from "./repeat.js";
 import {
@@ -3000,10 +3001,27 @@ function wireToolbar() {
 }
 
 function setPlaybackPlayingState(playing) {
+    // Canonical Mushaf play/pause point — fires for both the full-surah engine
+    // and the per-ayah <audio>, so mirror it to the OS now-playing card here.
+    mediaSession.setPlaybackState(playing ? "playing" : "paused");
+    if (playing) pushMushafNowPlaying();
     if (!PLAYBACK_PLAY_BTN) return;
     PLAYBACK_PLAY_BTN.innerHTML = playing ? ICONS.pause : ICONS.play;
     PLAYBACK_PLAY_BTN.setAttribute("aria-label", playing ? "إيقاف" : "تشغيل");
     PLAYBACK_PLAY_BTN.setAttribute("data-playing", playing ? "true" : "false");
+}
+
+/** Feed the lock-screen card the current Mushaf surah + reciter. */
+function pushMushafNowPlaying() {
+    const s = surahAudio.isActive()
+        ? surahAudio.getSurah()
+        : Number(String(AUDIO_VERSE || "").split(":")[0]);
+    if (!s) return;
+    const reciter = DEPS?.getCurrentReciter?.();
+    mediaSession.setNowPlaying({
+        surahName: DEPS?.surahMeta?.find((x) => x.number === s)?.name_ar,
+        reciterName: DEPS?.reciters?.[reciter]?.name,
+    });
 }
 
 function toArabicDigits(n) {
