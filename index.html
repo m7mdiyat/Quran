@@ -3931,6 +3931,102 @@
     .offline-btn--danger-text { color: #b91c1c; }
     body.dark .offline-btn--danger-text { color: #fecaca; }
 
+    /* ---------- Offline reciter download (app-only) — multi-select list inside
+       the offline panel. Reuses .offline-btn + .mushaf-download__bar tokens. ---------- */
+    .offline-row--reciters .offline-row__desc { margin-bottom: 10px; }
+    .offline-reciters__list { display: flex; flex-direction: column; gap: 6px; }
+    .reciter-pick-slot { display: block; }
+
+    .reciter-pick {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 11px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, .035);
+      border: 1px solid rgba(15, 23, 42, .06);
+      font-family: inherit;
+      text-align: right;
+      color: var(--text, #0b1326);
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    body.dark .reciter-pick { background: rgba(148, 163, 184, .08); border-color: rgba(148, 163, 184, .14); color: #e2e8f0; }
+
+    .reciter-pick--pick { cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+    .reciter-pick--pick:hover { background: rgba(15, 23, 42, .06); }
+    body.dark .reciter-pick--pick:hover { background: rgba(148, 163, 184, .14); }
+    .reciter-pick--pick.is-checked { border-color: rgba(29, 143, 255, .5); background: rgba(29, 143, 255, .08); }
+    body.dark .reciter-pick--pick.is-checked { border-color: rgba(29, 143, 255, .55); background: rgba(29, 143, 255, .14); }
+
+    .reciter-pick__box {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      border-radius: 6px;
+      border: 1.6px solid rgba(15, 23, 42, .25);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    body.dark .reciter-pick__box { border-color: rgba(148, 163, 184, .4); }
+    .reciter-pick--pick.is-checked .reciter-pick__box { background: #1d8fff; border-color: #1d8fff; }
+    .reciter-pick__box svg { width: 13px; height: 13px; }
+
+    .reciter-pick__name { flex: 1; font-size: 13.5px; font-weight: 600; }
+    .reciter-pick__size {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted, #64748b);
+      font-variant-numeric: tabular-nums;
+      background: rgba(15, 23, 42, .05);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+    body.dark .reciter-pick__size { background: rgba(148, 163, 184, .14); }
+
+    .reciter-pick__check {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      color: #10b981;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .reciter-pick__check svg { width: 18px; height: 18px; }
+    .reciter-pick--done { border-color: rgba(16, 185, 129, .3); background: rgba(16, 185, 129, .07); }
+    body.dark .reciter-pick--done { border-color: rgba(16, 185, 129, .28); background: rgba(16, 185, 129, .1); }
+    .reciter-pick__del { padding: 5px 10px; font-size: 12px; }
+
+    /* downloading / queued → vertical; error / warn → inline */
+    .reciter-pick--busy, .reciter-pick--confirm { flex-direction: column; align-items: stretch; gap: 7px; }
+    .reciter-pick__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .reciter-pick--busy .mushaf-download__bar { margin: 0; }
+    .reciter-pick__pct { font-size: 12px; font-weight: 700; color: var(--muted, #64748b); font-variant-numeric: tabular-nums; }
+    .reciter-pick__msg { font-size: 11.5px; font-weight: 600; color: var(--muted, #64748b); min-height: 1.4em; transition: opacity .25s ease; }
+    .reciter-pick__hint { font-size: 12px; font-weight: 600; color: var(--muted, #64748b); }
+    .reciter-pick--warn { justify-content: space-between; }
+    .reciter-pick--warn { border-color: rgba(245, 158, 11, .25); }
+    .reciter-pick--err { justify-content: space-between; border-color: rgba(239, 68, 68, .25); }
+    .reciter-pick--err .reciter-pick__name { color: #b91c1c; }
+    body.dark .reciter-pick--err .reciter-pick__name { color: #fca5a5; }
+    .reciter-pick--confirm { border-color: rgba(245, 158, 11, .25); background: rgba(245, 158, 11, .08); }
+    body.dark .reciter-pick--confirm { background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .3); }
+    .reciter-pick__actions { display: flex; gap: 6px; }
+    .reciter-pick__actions .offline-btn { padding: 7px 12px; font-size: 12px; }
+
+    .offline-reciters__foot:not(:empty) { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .offline-reciters__total { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .offline-reciters__total-cap { font-size: 12.5px; font-weight: 600; color: var(--muted, #64748b); }
+    .offline-reciters__total-val { font-size: 14px; font-weight: 800; color: var(--text, #0b1326); font-variant-numeric: tabular-nums; }
+    body.dark .offline-reciters__total-val { color: #e2e8f0; }
+    .offline-reciters__foot .offline-btn--primary[disabled] { opacity: .5; cursor: default; box-shadow: none; transform: none; }
+
     /* ---------- Settings hub (app-only) — link rows + toggles inside the
        .offline-sheet shell. Rows echo .offline-row; the switch uses the site's
        slate track / blue accent so it reads as native chrome. ---------- */
