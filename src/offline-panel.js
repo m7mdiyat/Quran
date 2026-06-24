@@ -364,9 +364,11 @@ function buildSheet() {
     wrap.innerHTML = `
       <div class="offline-sheet__backdrop" data-offline-close></div>
       <div class="offline-sheet__card" role="dialog" aria-modal="true" aria-labelledby="offlineSheetTitle">
-        <button type="button" class="offline-sheet__close" data-offline-close aria-label="إغلاق">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
+        <div class="offline-sheet__pin">
+          <button type="button" class="offline-sheet__close" data-offline-close aria-label="إغلاق">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
         <div class="offline-sheet__head">
           <div class="offline-sheet__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/></svg>
@@ -389,13 +391,28 @@ function buildSheet() {
             <div class="offline-row__desc">${ROW_DEFS.tafsir.desc}</div>
             <div class="offline-row__status"></div>
           </div>
-          <div class="offline-row offline-row--reciters" data-offline-reciters>
-            <div class="offline-row__head">
-              <div class="offline-row__title">القرّاء</div>
+          <div class="offline-row offline-row--reciters t-acc" data-offline-reciters data-open="false">
+            <button type="button" class="t-acc-head" data-acc-toggle aria-expanded="false">
+              <span class="t-acc-head__row">
+                <span class="offline-row__title">القرّاء</span>
+                <span class="t-acc-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5L8 10.5L12 6.5"/></svg></span>
+              </span>
+              <span class="offline-row__desc">تلاوات كاملة للاستماع بدون إنترنت.</span>
+            </button>
+            <div class="t-acc-cta">
+              <div class="t-acc-cta__inner">
+                <button type="button" class="offline-btn offline-btn--primary t-acc-cta__btn" data-acc-toggle>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-5a9 9 0 0 1 18 0v5"/><path d="M21 19a2 2 0 0 1-2 2h-1a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3zM3 19a2 2 0 0 0 2 2h1a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1H3z"/></svg>
+                  اضغط لاختيار القرّاء
+                </button>
+              </div>
             </div>
-            <div class="offline-row__desc">اختر القرّاء لتحميل تلاواتهم والاستماع بدون إنترنت.</div>
-            <div class="offline-reciters__list"></div>
-            <div class="offline-reciters__foot"></div>
+            <div class="t-acc-panel">
+              <div class="t-acc-panel-inner">
+                <div class="offline-reciters__list"></div>
+                <div class="offline-reciters__foot"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>`;
@@ -449,6 +466,16 @@ function onReciterClick(e) {
 function onSheetClick(e) {
     const closeEl = e.target.closest("[data-offline-close]");
     if (closeEl) { closeSheet(); return; }
+    // Accordion (القرّاء) — header OR the CTA button toggles it; CSS animates.
+    const accToggle = e.target.closest("[data-acc-toggle]");
+    if (accToggle) {
+        const acc = accToggle.closest(".t-acc");
+        const open = acc?.getAttribute("data-open") === "true";
+        acc?.setAttribute("data-open", open ? "false" : "true");
+        // keep the head button's aria-expanded authoritative
+        acc?.querySelector(".t-acc-head")?.setAttribute("aria-expanded", open ? "false" : "true");
+        return;
+    }
     if (onReciterClick(e)) return;
     const actEl = e.target.closest("[data-offline-act]");
     if (!actEl) return;
