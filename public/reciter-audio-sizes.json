@@ -43,6 +43,34 @@
       "total": 1460758661,
       "files": 228,
       "missing": 0
+    },
+    "abdulbasit": {
+      "audio": 2601460486,
+      "timings": 253374,
+      "total": 2601713860,
+      "files": 228,
+      "missing": 0
+    },
+    "husary": {
+      "audio": 1232943552,
+      "timings": 255462,
+      "total": 1233199014,
+      "files": 228,
+      "missing": 0
+    },
+    "minshawi": {
+      "audio": 1665764338,
+      "timings": 253138,
+      "total": 1666017476,
+      "files": 228,
+      "missing": 0
+    },
+    "maher": {
+      "audio": 601307042,
+      "timings": 251035,
+      "total": 601558077,
+      "files": 228,
+      "missing": 0
     }
   }
 }
