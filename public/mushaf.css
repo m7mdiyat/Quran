@@ -3571,6 +3571,42 @@ body.dark .gharib-tip::after {
     border-color: rgba(240, 192, 105, 0.18);
 }
 
+/* Lantern first-use hint — same card family + arrow as the meaning tip, sized
+   for a sentence + a "تم" button. Anchored in .mushaf-root by gharib.js
+   (position:absolute via .gharib-tip--anchored), arrow points up at the lamp. */
+.gharib-tip--hint {
+    max-width: min(280px, calc(100vw - 24px));
+    padding: 0.72rem 0.85rem 0.62rem;
+    font-size: 0.82rem;
+    text-align: right;
+    cursor: default;
+    display: flex;
+    flex-direction: column;
+}
+.gharib-hint__text {
+    line-height: 1.7;
+    color: #4b463d;
+}
+body.dark .gharib-hint__text {
+    color: #d6dae1;
+}
+.gharib-hint__done {
+    align-self: flex-end;          /* RTL: sit at the end (left) */
+    margin-top: 0.6rem;
+    border: 0;
+    border-radius: 10px;
+    background: #1d8fff;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    padding: 6px 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(29, 143, 255, 0.32);
+}
+@media (hover: hover) {
+    .gharib-hint__done:hover { background: #0f7ae6; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .gharib-tip,
     .gharib-tip.is-open {
