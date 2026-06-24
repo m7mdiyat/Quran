@@ -116,6 +116,29 @@ Several features (offline downloads, feedback form, QCF4 caching) only exist in 
 
 When adding any new app-only feature, follow this same recipe.
 
+### iOS WKWebView gotchas (read before touching panels, overlays, or scroll)
+
+The app ships in a WKWebView (Capacitor iOS, deployment target **15.0**) where the chrome is `position:fixed` (`header.site-header`) and the root is `html{height:100%}`. That combination makes several "standard" web techniques actively break. These cost hours to diagnose — follow the patterns, don't re-derive them.
+
+**Scroll-locking a sheet/modal/coachmark — behavioral only, NEVER layout.** The background-scroll lock for every header sheet (`offline-sheet-open`) and first-use coachmark (`mushaf-coach-open`) lives in `src/sheet-scroll-lock.js` and MUST stay purely behavioral (`preventDefault` on `touchmove`), mutating NO layout. Two layout-based locks were tried and both break WKWebView:
+- `position:fixed` on `<body>` → re-anchors the body's `position:fixed` header/chrome, flashing/jumping the layout on open AND close.
+- `overflow:hidden` on the root → the root is `height:100%`, so it CLIPS the taller page (detached/cut-off bottom) and shifts the coordinate context, mis-placing every fixed overlay.
+The behavioral guard reflows nothing, so the fixed chrome stays put and overlay coordinates stay exact. Any new panel/sheet/modal reuses this lock — add its body-class to `shouldLock()`; do not invent a CSS lock.
+
+**Scroll-chaining is the hidden culprit — contain the _inner_ scroller, guard its edges in JS.** A scrollable element inside a panel chains its scroll to the page at its top/bottom edges; that page movement _under the fixed dim overlay_ is what visibly breaks the layout. The real scroller is usually an INNER element (the list), not the card. So apply `overscroll-behavior:contain` to the actual inner scroller (not just the card) AND guard the chain at its edges in JS (`findScroller` + `preventDefault` when at-top-pulling-down / at-bottom-pulling-up). `overscroll-behavior:contain` alone is unreliable on WKWebView — the JS guard is the real guarantee.
+
+**`position:fixed` floating UI anchors to the SCROLLED DOCUMENT, not the viewport.** When the page is scrolled, a naive `position:fixed` element lands at the wrong place on WKWebView — this bit the gharib tooltip, the splash, and the onboarding guides. Don't use naive `position:fixed` for floating UI. Use the proven root-hosted / live-position pattern the gharib word-meaning tooltip uses: host at the root and position from the target's live `getBoundingClientRect()`.
+
+**Positioning an overlay on a target — poll the rect until steady, NEVER a fixed rAF count.** Place + reveal an overlay (coachmark/guide/tooltip) only once the target's `getBoundingClientRect()` has held steady for ~2 frames (keep it invisible until then; cap the poll so it can't hang). Do NOT reveal after a fixed number of rAFs ("after 2 frames"). Lazily-created or sibling-shifted targets (the lantern is created lazily; inserting the notes lamp shifts it via the flex spacer) are not settled in a fixed frame count on fast entry — that is exactly what mis-placed the guide. See `revealWhenSettled` in `src/gharib.js`.
+
+**`:has()` needs iOS 15.4+** — the deployment target is 15.0, so it silently no-ops on 15.0–15.3. Don't rely on `:has()` for anything load-bearing.
+
+### Font loading (FOUT on first install)
+
+Custom fonts MUST be bundled locally and force-loaded at boot — never fetched remotely at runtime — or the first sheet that uses a not-yet-downloaded weight on a FRESH install flashes the fallback then swaps (FOUT). Don't assume a font is "already cached from elsewhere."
+
+IBM Plex Sans Arabic (the panels + mushaf-footer font; Arabic subset; weights **400/500/600/700**) ships in `public/fonts/ibm-plex-arabic-*.woff2` with a local `@font-face` in `index.html` inside `<style id="offlinePanelFont">`. That id is deliberate: every panel's old `ensurePanelFont()` checks `getElementById("offlinePanelFont")` and skips when it exists, so they no longer inject the remote Google-Fonts `<link>` (which, loading later, would override the bundled face and bring the flash back — later same-family `@font-face` wins the cascade). `@font-face` fonts load lazily (only when text first uses them), so `src/app.js init()` force-loads each weight at boot via `document.fonts.load()`. To add a weight/style: drop the woff2 in `public/fonts/`, add its `@font-face` to that `<style>`, and force-load it. `scripts/build-app.js` prunes only `fonts/qcf4`, so `public/fonts/*.woff2` ship in the app bundle.
+
 ### Environment
 
 `VITE_API_BASE` in `.env.local` overrides the backend URL (default falls back to the hardcoded Cloud Run URL in `src/app.js:21`).
