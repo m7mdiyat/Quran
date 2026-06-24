@@ -5608,7 +5608,7 @@ async function init() {
     // First-launch guided tour (homepage) + one-time lantern hint on first
     // تدبّر page — app only; replaces the old single offline coachmark.
     import("./tour.js")
-      .then((m) => { m.initTour(); m.initLanternHint(); })
+      .then((m) => m.initTour())
       .catch((e) => console.error("tour init failed", e));
     // Reclaim the superseded tafsir cache (v1) now that the asset set is v2.
     purgeStaleTafsirCaches();
