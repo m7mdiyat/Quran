@@ -427,7 +427,11 @@ function ensureNotesLamp() {
         e.stopPropagation();
         if (_listOpen) closeList(); else openNotesList();
     });
-    // Dock right after the gharib lamp; fall back to the toolbar end.
+    // Dock next to the gharib lamp; fall back to the toolbar end if the lamp
+    // isn't built yet (it waits on the lazy gharib.json fetch). Either way the
+    // VISUAL order (notes left, lantern right) is enforced by `order` in
+    // mushaf.css, NOT by this insertion point — so the lamp-build race can't
+    // mis-order them.
     if (lamp) lamp.insertAdjacentElement("afterend", btn);
     else toolbar.appendChild(btn);
     _notesLampEl = btn;

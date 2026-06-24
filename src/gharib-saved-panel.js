@@ -35,6 +35,7 @@ let SHEET_OPEN = false;
 let _inited = false;
 let _confirmingReset = false; // reset-all two-step confirm state
 let _pressStartedOnBackdrop = false; // backdrop dismiss only if the press began on it
+let _scrollRAF = 0; // rAF handle throttling the scroll-rail update
 
 const REDUCED_MOTION = () => {
     try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
@@ -93,6 +94,46 @@ function wordDisplay(w) {
     return String(w).replace(/\.{2,}|…/g, " … ").replace(/\s+/g, " ").trim();
 }
 
+/* ------------------------- Scroll-progress rail ------------------------- */
+
+// Size + place the gold thumb from the list's live scroll metrics: thumb
+// height = visible/total, thumb top = scroll fraction of the free track. The
+// rail hides itself when the list isn't scrollable (everything fits).
+function updateScrollRail() {
+    if (!SHEET_EL) return;
+    const list = SHEET_EL.querySelector("[data-gh-list]");
+    const rail = SHEET_EL.querySelector("[data-gh-scroll]");
+    if (!list || !rail) return;
+    const thumb = rail.querySelector(".gharib-saved-scroll__thumb");
+    const sh = list.scrollHeight, ch = list.clientHeight;
+    const scrollable = sh - ch;
+    const trackH = rail.clientHeight;
+    if (scrollable <= 1 || ch <= 0 || trackH <= 0) {
+        rail.classList.remove("is-active"); // fits → no rail
+        return;
+    }
+    const thumbH = Math.min(trackH, Math.max(22, Math.round((ch / sh) * trackH)));
+    const maxTop = Math.max(0, trackH - thumbH);
+    const top = Math.round((list.scrollTop / scrollable) * maxTop);
+    if (thumb) {
+        thumb.style.height = `${thumbH}px`;
+        thumb.style.transform = `translateY(${top}px)`;
+    }
+    rail.classList.add("is-active");
+}
+
+// Scroll handler: coalesce bursts to one update per frame (transform-only, so
+// the thumb tracks the finger 1:1 with no jank).
+function onListScroll() {
+    if (_scrollRAF) return;
+    _scrollRAF = requestAnimationFrame(() => { _scrollRAF = 0; updateScrollRail(); });
+}
+
+// Re-measure after layout settles (open / render / row removal / resize).
+function scheduleRailUpdate() {
+    requestAnimationFrame(updateScrollRail);
+}
+
 /* ----------------------------- Sheet ----------------------------- */
 
 function buildSheet() {
@@ -114,11 +155,19 @@ function buildSheet() {
           <p class="offline-sheet__desc">هنا تجتمع كلمات القرآن الغريبة التي تعلّمت معناها. كلما <span class="gharib-saved-tadabbur">أضأت</span> كلمةً وفهمتها، أُضيفت إلى حصيلتك في هذه القائمة.</p>
           <div class="gharib-saved-meta" data-gh-meta></div>
         </div>
-        <div class="gharib-saved-list" data-gh-list></div>
+        <div class="gharib-saved-listwrap">
+          <!-- Rail FIRST so it lands on the RIGHT in the panel's RTL flex row;
+               the list takes the rest of the width to its left. -->
+          <div class="gharib-saved-scroll" data-gh-scroll aria-hidden="true"><div class="gharib-saved-scroll__thumb"></div></div>
+          <div class="gharib-saved-list" data-gh-list></div>
+        </div>
       </div>`;
     document.body.appendChild(wrap);
     SHEET_EL = wrap;
     wrap.addEventListener("click", onSheetClick);
+    // Drive the custom gold scroll-rail from the list's own scroll (rAF-throttled).
+    const list = wrap.querySelector("[data-gh-list]");
+    if (list) list.addEventListener("scroll", onListScroll, { passive: true });
     // Track where a press BEGINS, so the backdrop only dismisses on a genuine
     // backdrop tap — never on the finger-lift that ends the lantern hold which
     // opened this sheet under the finger (#4).
@@ -185,6 +234,7 @@ async function renderList() {
     if (gharibLearnedCount() === 0) {
         slot.innerHTML = emptyHtml();
         renderMeta(0);
+        scheduleRailUpdate();
         return;
     }
 
@@ -195,6 +245,7 @@ async function renderList() {
     const words = gharibSavedWords();
     renderMeta(words.length);
     slot.innerHTML = words.length ? words.map(rowHtml).join("") : emptyHtml();
+    scheduleRailUpdate();
 }
 
 function removeRow(rowEl, key) {
@@ -205,6 +256,7 @@ function removeRow(rowEl, key) {
         rowEl.remove();
         const slot = SHEET_EL?.querySelector("[data-gh-list]");
         if (slot && !slot.querySelector(".gharib-saved-row")) slot.innerHTML = emptyHtml();
+        scheduleRailUpdate(); // content shrank → resize/hide the rail
     };
 
     if (REDUCED_MOTION()) { finish(); return; }
@@ -280,6 +332,7 @@ function openSheet() {
     document.body.classList.add("offline-sheet-open");
     renderList();
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", scheduleRailUpdate); // re-fit rail on rotate/resize
 }
 
 function closeSheet() {
@@ -290,6 +343,8 @@ function closeSheet() {
     }
     document.body.classList.remove("offline-sheet-open");
     document.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("resize", scheduleRailUpdate);
+    if (_scrollRAF) { cancelAnimationFrame(_scrollRAF); _scrollRAF = 0; }
 }
 
 /* ----------------------------- Init ----------------------------- */

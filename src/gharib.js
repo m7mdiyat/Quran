@@ -1211,24 +1211,28 @@ _onDecorateHook = () => {
  * first Mushaf visits: the lantern (#gharibLamp), then the notes button
  * (#mushafNotesLamp). Each shows once (m7_lantern_hint_seen / m7_notes_hint_seen).
  *
- * Positioning uses the SAME root-content coordinate frame as the meaning tooltip
- * (host inside .mushaf-root, position:absolute, subtract the root's box/scroll),
- * NEVER position:fixed — whose anchor drifts on a scrolled document in iOS
- * WKWebView (the old bug: the spotlight landing off-target / on the wrong
- * button). The container is placed once to cover the viewport; the spotlight +
- * card inside it then use plain viewport coords. The page is also scroll-locked
- * while a coach is up so it can't move — but the live-position math is the real
- * guarantee, not the lock.
+ * The overlay is hosted on <body> as position:fixed inset:0 — the SAME full-
+ * viewport pattern as .sheet-scrim — so the dim covers the ENTIRE screen,
+ * including the header / search / تدبّر-تفسير toggle that sit OUTSIDE .mushaf-root.
+ * It CANNOT live inside .mushaf-root: that element carries .glass (backdrop-
+ * filter), which makes it a stacking context, so a coach nested in it is trapped
+ * behind the header and the whole top bar stays bright (the bug this fixes).
+ *
+ * Drift-safety instead comes from (a) the page being scroll-locked while a coach
+ * is up — it physically can't move — and (b) the spotlight + card being computed
+ * every frame from the target's LIVE getBoundingClientRect (plain viewport coords,
+ * since the container is inset:0). With scroll pinned, fixed positioning and the
+ * rect agree, so nothing drifts — exactly how .sheet-scrim stays put.
  * ============================================================ */
 
 const COACH_STEPS = [
     {
         key: "m7_lantern_hint_seen", sel: "#gharibLamp",
-        text: "الفانوس: اضغط لإبراز غريب القرآن، واضغط مطولًا لعرض حصيلتك.",
+        text: "غريب القرآن: اضغط لتُضيء الكلمات الغريبة أو تُخفيها، واضغط مطولًا لعرض حصيلتك.",
     },
     {
         key: "m7_notes_hint_seen", sel: "#mushafNotesLamp",
-        text: "الملاحظات: دوّن تدبّراتك حول الآيات، وراجِعها متى شئت.",
+        text: "الملاحظات: دوّن تدبّرك بالضغط مطوّلًا على الآية ثم \"ملاحظة\"، وراجع ما كتبته من هنا متى شئت.",
     },
 ];
 
@@ -1236,7 +1240,6 @@ let _coachEl = null;       // live overlay (the viewport-covering container) or 
 let _coachStep = -1;       // index into COACH_STEPS currently showing
 let _coachTarget = null;   // the spotlit element
 let _coachRaf = 0;
-let _coachLocked = false;  // did WE apply the scroll-lock (vs. fullscreen/sheet)?
 
 function coachSeen(key) {
     try { return !!localStorage.getItem(key); } catch { return false; }
@@ -1269,11 +1272,14 @@ function maybeShowCoach() {
 
 function showCoach(i, target) {
     const step = COACH_STEPS[i];
-    const root = target.closest(".mushaf-root");
-    lockScroll();
+    // Scroll-lock: sheet-scroll-lock.js watches this class and pins the page
+    // (shared with the panels, so the capture/restore is identical + correct).
+    document.body.classList.add("mushaf-coach-open");
 
+    // Body-level (NOT in .mushaf-root, whose .glass backdrop-filter would trap
+    // the dim behind the header). position:fixed inset:0, like .sheet-scrim.
     const el = document.createElement("div");
-    el.className = "mushaf-coach" + (root ? " mushaf-coach--anchored" : "");
+    el.className = "mushaf-coach";
     el.setAttribute("dir", "rtl");
     el.setAttribute("role", "dialog");
     el.innerHTML =
@@ -1282,7 +1288,7 @@ function showCoach(i, target) {
         + `<div class="gharib-hint__text">${step.text}</div>`
         + `<button type="button" class="gharib-hint__done">تم</button>`
         + `</div>`;
-    (root || document.body).appendChild(el);
+    document.body.appendChild(el);
     _coachEl = el;
     _coachStep = i;
     _coachTarget = target;
@@ -1297,40 +1303,34 @@ function showCoach(i, target) {
         dismissCoach();
     });
 
-    // Place + reveal only AFTER two frames. The notes lamp (#mushafNotesLamp) is
-    // inserted afterend the lantern on the same mushaf:page-rendered event but in
-    // its own rAF, and the toolbar's flex spacer shifts the lamp LEFT on that
-    // insertion. Measuring synchronously would spotlight the pre-shift spot. Two
-    // rAFs outlast the reflow, so placeCoach reads the FINAL rect; then fade in.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (_coachEl !== el) return;
-        placeCoach();
-        el.classList.add("is-open");
-    }));
+    // Place + reveal only once the target has SETTLED. A fixed frame-count wait
+    // raced on fast entry: the notes lamp (#mushafNotesLamp) inserts in its own
+    // rAF and the toolbar's flex spacer then shifts #gharibLamp, so measuring at
+    // a fixed 2 rAFs read a PRE-SHIFT rect → misplaced spotlight. Instead poll
+    // the target rect each frame and place + fade in only after it's held steady
+    // for two frames (the coach stays opacity:0 until then, so it never shows at
+    // the wrong spot). Cap at ~0.5s so it can never hang. Any entry speed → exact.
+    const revealWhenSettled = (lastKey, stable, frames) => {
+        if (_coachEl !== el || !_coachTarget) return;
+        const r = _coachTarget.getBoundingClientRect();
+        const key = `${r.left.toFixed(1)}:${r.top.toFixed(1)}:${r.width.toFixed(1)}:${r.height.toFixed(1)}`;
+        const heldSteady = key === lastKey ? stable + 1 : 0;
+        if ((heldSteady >= 2 && r.width > 1) || frames > 30) {
+            placeCoach();
+            el.classList.add("is-open");
+            return;
+        }
+        requestAnimationFrame(() => revealWhenSettled(key, heldSteady, frames + 1));
+    };
+    requestAnimationFrame(() => revealWhenSettled("", 0, 0));
 }
 
-/* Cover the viewport with the container (the root-content conversion happens
- * HERE, once — identical math to openTipFor), then position the spotlight + card
- * inside it in plain viewport coords. With the container's top-left pinned to
- * viewport (0,0), child coords ARE viewport coords, so nothing drifts. */
+/* The container is position:fixed inset:0 (full viewport, in CSS), so the
+ * spotlight + card position in plain viewport coords — read live from the
+ * target's rect every call, so they sit exactly on it and can't drift. */
 function placeCoach() {
     const el = _coachEl, target = _coachTarget;
     if (!el || !target) return;
-    const root = el.classList.contains("mushaf-coach--anchored") ? target.closest(".mushaf-root") : null;
-
-    // Container → exact viewport cover. originX/Y is the viewport coord of the
-    // root's content origin; placing the container at -origin puts its top-left
-    // at viewport (0,0).
-    let originX = 0, originY = 0;
-    if (root) {
-        const rRect = root.getBoundingClientRect();
-        originX = rRect.left + root.clientLeft - root.scrollLeft;
-        originY = rRect.top + root.clientTop - root.scrollTop;
-    }
-    el.style.left = `${(-originX).toFixed(1)}px`;
-    el.style.top = `${(-originY).toFixed(1)}px`;
-    el.style.width = `${window.innerWidth}px`;
-    el.style.height = `${window.innerHeight}px`;
 
     // Spotlight circle, centred on the target's live rect (viewport coords).
     const tr = target.getBoundingClientRect();
@@ -1363,37 +1363,12 @@ function dismissCoach() {
     cancelAnimationFrame(_coachRaf);
     const el = _coachEl;
     _coachEl = null; _coachStep = -1; _coachTarget = null;
-    unlockScroll();
+    document.body.classList.remove("mushaf-coach-open");
     el.classList.remove("is-open");
     setTimeout(() => { try { el.remove(); } catch { } }, 220);
     // Sequence: once the lantern is gone, show the notes coach if it's still
     // pending + on screen. The delay lets the fade-out finish first.
     setTimeout(() => maybeShowCoach(), 300);
-}
-
-/* Scroll-lock via the existing position:fixed-body technique (same one
- * fullscreen + the header sheets use). Skip if the page is ALREADY pinned by
- * one of those, so we don't fight an existing lock; positioning works either
- * way, and unlock then becomes a no-op. */
-function lockScroll() {
-    if (_coachLocked) return;
-    const b = document.body;
-    if (b.classList.contains("mushaf-fs-open") || b.classList.contains("offline-sheet-open")) return;
-    const y = window.scrollY || window.pageYOffset || 0;
-    b.dataset.coachScrollY = String(y);
-    b.style.top = `-${y}px`;
-    b.classList.add("mushaf-coach-open");
-    _coachLocked = true;
-}
-function unlockScroll() {
-    if (!_coachLocked) return;
-    _coachLocked = false;
-    const b = document.body;
-    const y = Number(b.dataset.coachScrollY || 0);
-    b.classList.remove("mushaf-coach-open");
-    b.style.top = "";
-    delete b.dataset.coachScrollY;
-    window.scrollTo(0, y);
 }
 
 /* ============================================================
