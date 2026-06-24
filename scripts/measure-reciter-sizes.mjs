@@ -19,7 +19,7 @@ const AUDIO_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/su
 const TIMINGS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/timings";
 
 // Keep in sync with RECITERS / RECITER_ORDER in src/app.js.
-const RECITERS = ["alijaber", "shuraim", "ayoub", "qasim", "dosari", "luhaidan"];
+const RECITERS = ["alijaber", "shuraim", "ayoub", "qasim", "dosari", "luhaidan", "abdulbasit", "husary", "minshawi", "maher"];
 const SURAHS = Array.from({ length: 114 }, (_, i) => i + 1);
 const CONCURRENCY = 24;
 
