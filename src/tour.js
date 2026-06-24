@@ -1,17 +1,17 @@
 /*
- * First-launch guided tour + lantern hint — APP ONLY.
+ * First-launch guided tour — APP ONLY.
  *
  * A spotlight coachmark: a ~35% dim overlay with a cutout around the current
  * target (the dim is one element's huge box-shadow spread, so it's free at
  * rest), plus a small glass bubble (التالي / تخطّي) reusing the app's m7-tip
- * look. One shared engine drives two entry points:
+ * look.
  *
- *   - initTour()        the homepage tour (3 steps), once, behind m7_tour_seen.
- *                       Runs AFTER the splash clears. Each step auto-advances to
- *                       the next VISIBLE target; the tour ends cleanly even if a
- *                       target is missing — it never stalls.
- *   - initLanternHint() a one-time hint on the first تدبّر page render that has
- *                       #gharibLamp on screen, behind m7_lantern_hint_seen.
+ *   - initTour() — the homepage tour (3 steps), once, behind m7_tour_seen. Runs
+ *                  AFTER the splash clears; each step auto-advances to the next
+ *                  VISIBLE target, ending cleanly even if one is missing.
+ *
+ * (The lantern's own first-use hint lives in gharib.js, anchored to the lamp via
+ * the root-coordinate pattern so it can't drift on scroll — see maybeShowLanternHint.)
  *
  * Dynamic-imported from app.js init() behind isApp(); never on the website.
  * Replaces the old single offline coachmark — Step 3 (Settings) now covers it.
@@ -22,12 +22,11 @@
 import { isApp } from "./app.js";
 
 const TOUR_SEEN_KEY = "m7_tour_seen";
-const LANTERN_HINT_KEY = "m7_lantern_hint_seen";
 
 const TOUR_STEPS = [
     { sel: "#searchPanel", text: "ابحث عن آية بكلماتها، أو اختر السورة لتبدأ." },
     { sel: "[data-mode-toggle]", text: "بدّل بين التفسير ووضع التدبّر (المصحف) من هنا." },
-    { sel: "#settingsMenuBtn", text: "الإعدادات: حمّل للقراءة دون إنترنت، وغيّر المظهر، وراسِلنا." },
+    { sel: "#settingsMenuBtn", text: "الإعدادات: للقراءة دون إنترنت، وغيّر المظهر، وراسِلنا." },
 ];
 
 function seen(key) { try { return !!localStorage.getItem(key); } catch { return false; } }
@@ -181,22 +180,4 @@ export function initTour() {
     // Start once the splash has cleared + a short settle so the homepage is
     // painted and the user has oriented.
     whenSplashGone(() => setTimeout(() => runCoach(TOUR_STEPS, TOUR_SEEN_KEY), 450));
-}
-
-export function initLanternHint() {
-    if (!isApp() || seen(LANTERN_HINT_KEY)) return;
-    const onRender = () => {
-        if (seen(LANTERN_HINT_KEY)) { document.removeEventListener("mushaf:page-rendered", onRender); return; }
-        // Defer a frame so gharib.js has built #gharibLamp this same event.
-        requestAnimationFrame(() => {
-            if (_active) return;                 // don't collide with the homepage tour
-            if (!isVisible(document.getElementById("gharibLamp"))) return; // retry next render
-            document.removeEventListener("mushaf:page-rendered", onRender);
-            runCoach(
-                [{ sel: "#gharibLamp", text: "الفانوس: اضغط لإبراز غريب القرآن، واضغط مطولًا لعرض حصيلتك." }],
-                LANTERN_HINT_KEY,
-            );
-        });
-    };
-    document.addEventListener("mushaf:page-rendered", onRender);
 }
