@@ -874,10 +874,7 @@ export function initGharib(deps) {
     // under the long-press threshold's path (which never reaches
     // gharibTapTarget at all).
     document.addEventListener("pointerdown", (e) => {
-        // A tap anywhere outside the lantern hint dismisses it (marks it seen).
-        // Capture phase + no preventDefault, so the tap still reaches its target
-        // — tapping the lamp dismisses the hint AND toggles the glow.
-        if (_hintEl && !e.target?.closest?.(".gharib-tip--hint")) dismissLanternHint();
+        // (Spotlight coachmarks dismiss via their own overlay — see showCoach.)
         if (!_tipOpenState) return;
         if (e.target?.closest?.(".gharib-tip")) return;
         const word = e.target?.closest?.(".gharib-word");
@@ -890,10 +887,15 @@ export function initGharib(deps) {
     // position tip off its word — dismiss instead of tracking.
     document.addEventListener("scroll", () => {
         closeTip();
-        // The lantern hint, by contrast, STAYS glued: re-anchor it to the lamp's
-        // live position (root-content coords) on scroll, rAF-throttled.
-        if (_hintEl) { cancelAnimationFrame(_hintRaf); _hintRaf = requestAnimationFrame(placeLanternHint); }
+        // A coach spotlight stays glued: re-place from the target's live rect on
+        // any scroll/pan, rAF-throttled. (Scroll is locked while a coach is up,
+        // so this is a belt-and-suspenders for fullscreen panning.)
+        if (_coachEl) { cancelAnimationFrame(_coachRaf); _coachRaf = requestAnimationFrame(placeCoach); }
     }, { capture: true, passive: true });
+    // Orientation / viewport changes re-place the live coach too.
+    window.addEventListener("resize", () => {
+        if (_coachEl) { cancelAnimationFrame(_coachRaf); _coachRaf = requestAnimationFrame(placeCoach); }
+    });
 }
 
 /* ============================================================
@@ -1196,104 +1198,202 @@ _onDecorateHook = () => {
     if (!ensureWidget()) return;
     setCount(gharibLearnedCount(), false);
     updateRing(false);
-    // Reliable trigger: the lamp now exists + is laid out. maybeShowLanternHint
-    // is a no-op once seen / already showing / off-screen, so it fires exactly
-    // once — on whichever Mushaf render first puts the lamp on screen, by any
-    // entry path.
-    maybeShowLanternHint();
+    // Reliable trigger: the lamp now exists + is laid out. maybeShowCoach is a
+    // no-op once both coachmarks are seen / one is already showing / the target
+    // is off-screen, so each fires exactly once — on whichever Mushaf render
+    // first puts its button on screen, by any entry path.
+    maybeShowCoach();
 };
 
 /* ============================================================
- * Lantern first-use hint — a one-time coachmark anchored to the lamp via the
- * SAME root-content coordinate frame the meaning tooltip + ayah menu use (host
- * inside .mushaf-root, position:absolute, subtract the root's box/scroll), so
- * it stays glued through scroll and the fullscreen re-anchor — never the
- * position:fixed-on-scrolled-document drift. App-only; shown once, persisted as
- * m7_lantern_hint_seen.
+ * First-use spotlight coachmarks (app-only) — a dimmed overlay with a circular
+ * spotlight on a toolbar button + a card below it. Two run in sequence on the
+ * first Mushaf visits: the lantern (#gharibLamp), then the notes button
+ * (#mushafNotesLamp). Each shows once (m7_lantern_hint_seen / m7_notes_hint_seen).
+ *
+ * Positioning uses the SAME root-content coordinate frame as the meaning tooltip
+ * (host inside .mushaf-root, position:absolute, subtract the root's box/scroll),
+ * NEVER position:fixed — whose anchor drifts on a scrolled document in iOS
+ * WKWebView (the old bug: the spotlight landing off-target / on the wrong
+ * button). The container is placed once to cover the viewport; the spotlight +
+ * card inside it then use plain viewport coords. The page is also scroll-locked
+ * while a coach is up so it can't move — but the live-position math is the real
+ * guarantee, not the lock.
  * ============================================================ */
 
-const LANTERN_HINT_KEY = "m7_lantern_hint_seen";
-const LANTERN_HINT_TEXT = "الفانوس: اضغط لإبراز غريب القرآن، واضغط مطولًا لعرض حصيلتك.";
-let _hintEl = null;
-let _hintRaf = 0;
+const COACH_STEPS = [
+    {
+        key: "m7_lantern_hint_seen", sel: "#gharibLamp",
+        text: "الفانوس: اضغط لإبراز غريب القرآن، واضغط مطولًا لعرض حصيلتك.",
+    },
+    {
+        key: "m7_notes_hint_seen", sel: "#mushafNotesLamp",
+        text: "الملاحظات: دوّن تدبّراتك حول الآيات، وراجِعها متى شئت.",
+    },
+];
 
-function lanternHintSeen() {
-    try { return !!localStorage.getItem(LANTERN_HINT_KEY); } catch { return false; }
+let _coachEl = null;       // live overlay (the viewport-covering container) or null
+let _coachStep = -1;       // index into COACH_STEPS currently showing
+let _coachTarget = null;   // the spotlit element
+let _coachRaf = 0;
+let _coachLocked = false;  // did WE apply the scroll-lock (vs. fullscreen/sheet)?
+
+function coachSeen(key) {
+    try { return !!localStorage.getItem(key); } catch { return false; }
 }
 
-function maybeShowLanternHint() {
-    if (_hintEl || lanternHintSeen() || !DEPS?.isApp?.()) return;
-    const lamp = _widget?.root;
-    if (!lamp) return;
-    const r = lamp.getBoundingClientRect();
-    if (r.width <= 1 || r.height <= 1) return;                 // not laid out yet
-    if (r.bottom <= 0 || r.top >= window.innerHeight) return;  // off-screen → retry next decorate
+/* Laid out + on screen + visible? (same gate the old hint used.) */
+function coachTargetReady(el) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 1 || r.height <= 1) return false;                // not laid out yet
+    if (r.bottom <= 0 || r.top >= window.innerHeight) return false; // off-screen
+    const cs = getComputedStyle(el);
+    return cs.display !== "none" && cs.visibility !== "hidden";
+}
 
-    const root = lamp.closest(".mushaf-root");
+/* Entry point — called from _onDecorateHook on every Mushaf render. Shows the
+ * first not-yet-seen step whose target is ready; a no-op once both are seen or
+ * while one is already up. Sequencing falls out of the in-order scan: the notes
+ * step waits behind the lantern step until the lantern is dismissed. */
+function maybeShowCoach() {
+    if (_coachEl || !DEPS?.isApp?.()) return;
+    for (let i = 0; i < COACH_STEPS.length; i++) {
+        if (coachSeen(COACH_STEPS[i].key)) continue;
+        const el = document.querySelector(COACH_STEPS[i].sel);
+        if (!coachTargetReady(el)) return;   // wait for a render where it's ready
+        showCoach(i, el);
+        return;
+    }
+}
+
+function showCoach(i, target) {
+    const step = COACH_STEPS[i];
+    const root = target.closest(".mushaf-root");
+    lockScroll();
+
     const el = document.createElement("div");
-    el.className = "gharib-tip gharib-tip--hint gharib-tip--below" + (root ? " gharib-tip--anchored" : "");
+    el.className = "mushaf-coach" + (root ? " mushaf-coach--anchored" : "");
     el.setAttribute("dir", "rtl");
     el.setAttribute("role", "dialog");
-    el.innerHTML = `<div class="gharib-hint__text">${LANTERN_HINT_TEXT}</div>`
-        + `<button type="button" class="gharib-hint__done">تم</button>`;
+    el.innerHTML =
+        `<div class="mushaf-coach__spot" aria-hidden="true"></div>`
+        + `<div class="mushaf-coach__card">`
+        + `<div class="gharib-hint__text">${step.text}</div>`
+        + `<button type="button" class="gharib-hint__done">تم</button>`
+        + `</div>`;
     (root || document.body).appendChild(el);
-    _hintEl = el;
+    _coachEl = el;
+    _coachStep = i;
+    _coachTarget = target;
+
+    // Dismiss on تم or on a tap anywhere on the dim backdrop (but not the card).
     el.querySelector(".gharib-hint__done")?.addEventListener("click", (e) => {
         e.stopPropagation();
-        dismissLanternHint();
+        dismissCoach();
     });
-    // Place + reveal only AFTER the next two frames. The notes lamp
-    // (#mushafNotesLamp) is inserted afterend THIS lamp on the same
-    // mushaf:page-rendered event but in its own rAF (notes.js), and with the
-    // toolbar's flex:1 spacer that insertion shifts the lamp LEFT. Measuring
-    // synchronously would anchor to the lamp's pre-shift spot — the arrow then
-    // lands on the notes button. Two rAFs guarantee that reflow has happened, so
-    // placeLanternHint reads the lamp's FINAL rect; then fade in (no jump).
-    // Scroll re-anchoring (initGharib) keeps it glued to #gharibLamp after that.
+    el.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".mushaf-coach__card")) return;
+        dismissCoach();
+    });
+
+    // Place + reveal only AFTER two frames. The notes lamp (#mushafNotesLamp) is
+    // inserted afterend the lantern on the same mushaf:page-rendered event but in
+    // its own rAF, and the toolbar's flex spacer shifts the lamp LEFT on that
+    // insertion. Measuring synchronously would spotlight the pre-shift spot. Two
+    // rAFs outlast the reflow, so placeCoach reads the FINAL rect; then fade in.
     requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (!_hintEl) return;
-        placeLanternHint();
-        _hintEl.classList.add("is-open");
+        if (_coachEl !== el) return;
+        placeCoach();
+        el.classList.add("is-open");
     }));
 }
 
-/* Place the hint under the lamp, converted into the root's content space —
- * identical math to openTipFor, so it lands on the lamp first time and every
- * time; re-run on scroll (above) to stay glued. */
-function placeLanternHint() {
-    const el = _hintEl, lamp = _widget?.root;
-    if (!el || !lamp) return;
-    const root = el.classList.contains("gharib-tip--anchored") ? lamp.closest(".mushaf-root") : null;
-    const lr = lamp.getBoundingClientRect();
-    const tw = el.offsetWidth, th = el.offsetHeight;
-    const GAP = 10, MARGIN = 8;
-    const cx = lr.left + lr.width / 2;
-    const left = Math.min(Math.max(cx - tw / 2, MARGIN), Math.max(window.innerWidth - MARGIN - tw, MARGIN));
-    let top = lr.bottom + GAP;
-    const below = top + th <= window.innerHeight - 10;   // flip above only if no room below
-    if (!below) top = Math.max(10, lr.top - GAP - th);
-    el.classList.toggle("gharib-tip--below", below);
+/* Cover the viewport with the container (the root-content conversion happens
+ * HERE, once — identical math to openTipFor), then position the spotlight + card
+ * inside it in plain viewport coords. With the container's top-left pinned to
+ * viewport (0,0), child coords ARE viewport coords, so nothing drifts. */
+function placeCoach() {
+    const el = _coachEl, target = _coachTarget;
+    if (!el || !target) return;
+    const root = el.classList.contains("mushaf-coach--anchored") ? target.closest(".mushaf-root") : null;
+
+    // Container → exact viewport cover. originX/Y is the viewport coord of the
+    // root's content origin; placing the container at -origin puts its top-left
+    // at viewport (0,0).
     let originX = 0, originY = 0;
     if (root) {
         const rRect = root.getBoundingClientRect();
         originX = rRect.left + root.clientLeft - root.scrollLeft;
         originY = rRect.top + root.clientTop - root.scrollTop;
     }
-    el.style.left = `${(left - originX).toFixed(1)}px`;
-    el.style.top = `${(top - originY).toFixed(1)}px`;
-    const ax = Math.min(Math.max(cx - left, 14), Math.max(tw - 14, 14));
-    el.style.setProperty("--tip-ax", `${ax.toFixed(1)}px`);
-    el.style.transformOrigin = `${ax.toFixed(1)}px ${below ? "0%" : "100%"}`; // grow from the lamp side
+    el.style.left = `${(-originX).toFixed(1)}px`;
+    el.style.top = `${(-originY).toFixed(1)}px`;
+    el.style.width = `${window.innerWidth}px`;
+    el.style.height = `${window.innerHeight}px`;
+
+    // Spotlight circle, centred on the target's live rect (viewport coords).
+    const tr = target.getBoundingClientRect();
+    const cx = tr.left + tr.width / 2, cy = tr.top + tr.height / 2;
+    const D = Math.max(tr.width, tr.height) + 26;   // a little breathing room
+    const spot = el.querySelector(".mushaf-coach__spot");
+    spot.style.width = spot.style.height = `${D.toFixed(1)}px`;
+    spot.style.left = `${(cx - D / 2).toFixed(1)}px`;
+    spot.style.top = `${(cy - D / 2).toFixed(1)}px`;
+
+    // Card below the circle; flip above if no room. Centre on the target, clamp
+    // to screen margins + never tuck under the status bar / notch.
+    const card = el.querySelector(".mushaf-coach__card");
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    const GAP = 14, M = 12;
+    const safeTop = 10 + (parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue("--m7-statusbar-height")) || 0);
+    let top = cy + D / 2 + GAP;
+    if (top + ch > window.innerHeight - M) top = Math.max(safeTop, cy - D / 2 - GAP - ch);
+    let left = cx - cw / 2;
+    left = Math.min(Math.max(left, M), Math.max(window.innerWidth - M - cw, M));
+    card.style.left = `${left.toFixed(1)}px`;
+    card.style.top = `${top.toFixed(1)}px`;
 }
 
-function dismissLanternHint() {
-    try { localStorage.setItem(LANTERN_HINT_KEY, "1"); } catch { }
-    cancelAnimationFrame(_hintRaf);
-    const el = _hintEl;
-    _hintEl = null;
-    if (!el) return;
+function dismissCoach() {
+    if (!_coachEl) return;
+    const step = COACH_STEPS[_coachStep];
+    if (step) { try { localStorage.setItem(step.key, "1"); } catch { } }
+    cancelAnimationFrame(_coachRaf);
+    const el = _coachEl;
+    _coachEl = null; _coachStep = -1; _coachTarget = null;
+    unlockScroll();
     el.classList.remove("is-open");
-    setTimeout(() => { try { el.remove(); } catch { } }, 200);
+    setTimeout(() => { try { el.remove(); } catch { } }, 220);
+    // Sequence: once the lantern is gone, show the notes coach if it's still
+    // pending + on screen. The delay lets the fade-out finish first.
+    setTimeout(() => maybeShowCoach(), 300);
+}
+
+/* Scroll-lock via the existing position:fixed-body technique (same one
+ * fullscreen + the header sheets use). Skip if the page is ALREADY pinned by
+ * one of those, so we don't fight an existing lock; positioning works either
+ * way, and unlock then becomes a no-op. */
+function lockScroll() {
+    if (_coachLocked) return;
+    const b = document.body;
+    if (b.classList.contains("mushaf-fs-open") || b.classList.contains("offline-sheet-open")) return;
+    const y = window.scrollY || window.pageYOffset || 0;
+    b.dataset.coachScrollY = String(y);
+    b.style.top = `-${y}px`;
+    b.classList.add("mushaf-coach-open");
+    _coachLocked = true;
+}
+function unlockScroll() {
+    if (!_coachLocked) return;
+    _coachLocked = false;
+    const b = document.body;
+    const y = Number(b.dataset.coachScrollY || 0);
+    b.classList.remove("mushaf-coach-open");
+    b.style.top = "";
+    delete b.dataset.coachScrollY;
+    window.scrollTo(0, y);
 }
 
 /* ============================================================
