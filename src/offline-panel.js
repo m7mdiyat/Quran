@@ -35,15 +35,31 @@ import {
     deleteTafsirCache,
     TAFSIR_TOTAL_MB,
 } from "./app.js";
+import {
+    getReciterList,
+    loadReciterSizes,
+    reciterSizeBytes,
+    subscribeReciterDl,
+    downloadReciters,
+    deleteReciter,
+    isReciterReady,
+    isReciterDownloadBusy,
+} from "./reciter-offline.js";
 import { swapText, swapBlock } from "./transitions.js";
 
 let SHEET_EL = null;
 let UNSUB_QCF4 = null;
 let UNSUB_TAFSIR = null;
+let UNSUB_RECITERS = null;
 let SHEET_OPEN = false;
 let _onBack = null;        // when set (opened from Settings), dismiss returns there
 // Per-row pending-confirm state: "delete" or null.
 const PENDING_CONFIRM = { mushaf: null, tafsir: null };
+// Reciter section: which (not-yet-downloaded) reciters are checked, per-reciter
+// delete confirm, and the last rendered shape-signature per reciter row.
+const RECITER_SELECTED = new Set();
+const RECITER_CONFIRM = {};   // id -> "delete" | undefined
+const RECITER_SIG = {};       // id -> last status|confirm|selected signature
 
 const ROW_DEFS = {
     mushaf: {
@@ -74,6 +90,158 @@ function ensurePanelFont() {
 }
 
 function fmtSize(mb) { return `≈ ${mb} ميجابايت`; }
+
+/* ============================================================ Reciter section
+ * A multi-select list (one row per reciter) with a live total + one download
+ * button — the only place in the offline panel that isn't all-or-nothing. Rows
+ * reuse the existing progress-bar / button tokens; per-reciter state comes from
+ * src/reciter-offline.js's pub/sub. */
+function fmtBytes(bytes) {
+    const b = Number(bytes) || 0;
+    if (b <= 0) return "…";
+    if (b >= 1004857600 /* ~0.94 GB */) return `${(b / 1073741824).toFixed(1)} جيجابايت`;
+    return `${Math.round(b / 1048576)} ميجابايت`;
+}
+
+const RECITER_CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`;
+
+function reciterRowHtml(info, st) {
+    const { id, name, bytes } = info;
+    const status = st?.status || "idle";
+
+    if (RECITER_CONFIRM[id] === "delete" && status === "done") {
+        return `
+          <div class="reciter-pick reciter-pick--confirm" data-reciter-id="${id}">
+            <span class="reciter-pick__name">حذف تلاوة ${name}؟</span>
+            <div class="reciter-pick__actions">
+              <button type="button" class="offline-btn offline-btn--danger" data-reciter-act="delete-confirm" data-reciter-id="${id}">حذف</button>
+              <button type="button" class="offline-btn offline-btn--ghost" data-reciter-act="delete-cancel" data-reciter-id="${id}">إلغاء</button>
+            </div>
+          </div>`;
+    }
+
+    if (status === "done") {
+        return `
+          <div class="reciter-pick reciter-pick--done" data-reciter-id="${id}">
+            <span class="reciter-pick__check" aria-hidden="true">${RECITER_CHECK}</span>
+            <span class="reciter-pick__name">${name}</span>
+            <button type="button" class="offline-btn offline-btn--ghost offline-btn--danger-text reciter-pick__del" data-reciter-act="delete" data-reciter-id="${id}">حذف</button>
+          </div>`;
+    }
+
+    if (status === "downloading") {
+        const pct = Math.max(0, Math.min(100, Number(st.pct) || 0));
+        return `
+          <div class="reciter-pick reciter-pick--busy" data-reciter-id="${id}">
+            <div class="reciter-pick__top">
+              <span class="reciter-pick__name">${name}</span>
+              <span class="reciter-pick__pct">${pct}%</span>
+            </div>
+            <div class="mushaf-download__bar"><div class="mushaf-download__fill" style="width:${pct}%"></div></div>
+            <span class="reciter-pick__msg t-text-swap">${st.message || ""}</span>
+          </div>`;
+    }
+
+    if (status === "queued") {
+        return `
+          <div class="reciter-pick reciter-pick--busy" data-reciter-id="${id}">
+            <span class="reciter-pick__name">${name}</span>
+            <span class="reciter-pick__hint">بالانتظار…</span>
+          </div>`;
+    }
+
+    if (status === "offline") {
+        return `
+          <div class="reciter-pick reciter-pick--warn" data-reciter-id="${id}">
+            <span class="reciter-pick__name">${name}</span>
+            <span class="reciter-pick__hint">بانتظار الاتصال</span>
+          </div>`;
+    }
+
+    if (status === "error") {
+        return `
+          <div class="reciter-pick reciter-pick--err" data-reciter-id="${id}">
+            <span class="reciter-pick__name">${name}</span>
+            <button type="button" class="offline-btn offline-btn--ghost" data-reciter-act="download-one" data-reciter-id="${id}">إعادة المحاولة</button>
+          </div>`;
+    }
+
+    // idle — selectable checkbox row
+    const selected = RECITER_SELECTED.has(id);
+    return `
+      <button type="button" class="reciter-pick reciter-pick--pick${selected ? " is-checked" : ""}" role="checkbox" aria-checked="${selected}" data-reciter-toggle="${id}">
+        <span class="reciter-pick__box" aria-hidden="true">${selected ? RECITER_CHECK : ""}</span>
+        <span class="reciter-pick__name">${name}</span>
+        <span class="reciter-pick__size">${fmtBytes(bytes)}</span>
+      </button>`;
+}
+
+function renderReciterRow(info, st) {
+    const listEl = SHEET_EL?.querySelector(".offline-reciters__list");
+    if (!listEl) return;
+    const id = info.id;
+    let slot = listEl.querySelector(`[data-reciter-row="${id}"]`);
+    const status = st?.status || "idle";
+    const sig = `${status}|${RECITER_CONFIRM[id] || ""}|${RECITER_SELECTED.has(id)}`;
+
+    if (slot && RECITER_SIG[id] === sig) {
+        if (status === "downloading") {
+            const pct = Math.max(0, Math.min(100, Number(st.pct) || 0));
+            const fill = slot.querySelector(".mushaf-download__fill");
+            if (fill) fill.style.width = `${pct}%`;
+            const pctEl = slot.querySelector(".reciter-pick__pct");
+            if (pctEl) pctEl.textContent = `${pct}%`;
+            swapText(slot.querySelector(".reciter-pick__msg"), st.message || "");
+        }
+        return;
+    }
+    RECITER_SIG[id] = sig;
+    if (!slot) {
+        slot = document.createElement("div");
+        slot.className = "reciter-pick-slot";
+        slot.setAttribute("data-reciter-row", id);
+        listEl.appendChild(slot);
+        slot.innerHTML = reciterRowHtml(info, st);
+        return;
+    }
+    swapBlock(slot, () => { slot.innerHTML = reciterRowHtml(info, st); });
+}
+
+function renderReciterFoot() {
+    const footEl = SHEET_EL?.querySelector(".offline-reciters__foot");
+    if (!footEl) return;
+    const list = getReciterList();
+    const pending = list.filter((r) => !isReciterReady(r.id));
+    const busy = isReciterDownloadBusy();
+
+    if (busy || !pending.length) { footEl.innerHTML = ""; return; }
+
+    let selBytes = 0;
+    for (const id of RECITER_SELECTED) if (!isReciterReady(id)) selBytes += reciterSizeBytes(id);
+    const n = [...RECITER_SELECTED].filter((id) => !isReciterReady(id)).length;
+    const label = n ? `تحميل المحدّد (${fmtBytes(selBytes)})` : "اختر قارئًا للتحميل";
+
+    footEl.innerHTML = `
+      <div class="offline-reciters__total">
+        <span class="offline-reciters__total-cap">المساحة المطلوبة</span>
+        <span class="offline-reciters__total-val">${n ? fmtBytes(selBytes) : "—"}</span>
+      </div>
+      <button type="button" class="offline-btn offline-btn--primary" data-reciter-act="download" ${n ? "" : "disabled"}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+        ${label}
+      </button>`;
+}
+
+function renderReciterSection(map) {
+    if (!SHEET_EL) return;
+    const list = getReciterList();
+    if (!list.length) return;
+    for (const info of list) {
+        const st = (map && map[info.id]) || (isReciterReady(info.id) ? { status: "done" } : { status: "idle" });
+        renderReciterRow(info, st);
+    }
+    renderReciterFoot();
+}
 
 function statusHtml(rowKey, state) {
     const def = ROW_DEFS[rowKey];
@@ -221,6 +389,14 @@ function buildSheet() {
             <div class="offline-row__desc">${ROW_DEFS.tafsir.desc}</div>
             <div class="offline-row__status"></div>
           </div>
+          <div class="offline-row offline-row--reciters" data-offline-reciters>
+            <div class="offline-row__head">
+              <div class="offline-row__title">القرّاء</div>
+            </div>
+            <div class="offline-row__desc">اختر القرّاء لتحميل تلاواتهم والاستماع بدون إنترنت.</div>
+            <div class="offline-reciters__list"></div>
+            <div class="offline-reciters__foot"></div>
+          </div>
         </div>
       </div>`;
     document.body.appendChild(wrap);
@@ -231,9 +407,49 @@ function buildSheet() {
     return wrap;
 }
 
+function rerenderReciter(id) {
+    const info = getReciterList().find((r) => r.id === id);
+    if (!info) return;
+    renderReciterRow(info, isReciterReady(id) ? { status: "done" } : { status: "idle" });
+    renderReciterFoot();
+}
+
+function onReciterClick(e) {
+    const toggleEl = e.target.closest("[data-reciter-toggle]");
+    if (toggleEl) {
+        const id = toggleEl.dataset.reciterToggle;
+        if (isReciterReady(id)) return;
+        if (RECITER_SELECTED.has(id)) RECITER_SELECTED.delete(id); else RECITER_SELECTED.add(id);
+        rerenderReciter(id);
+        return true;
+    }
+    const actEl = e.target.closest("[data-reciter-act]");
+    if (!actEl) return false;
+    const act = actEl.dataset.reciterAct;
+    const id = actEl.dataset.reciterId;
+
+    if (act === "download") {
+        const ids = [...RECITER_SELECTED].filter((x) => !isReciterReady(x));
+        if (!ids.length) return true;
+        RECITER_SELECTED.clear();
+        downloadReciters(ids); // emits queued state → the subscription re-renders
+        return true;
+    }
+    if (act === "download-one") { downloadReciters([id]); return true; }
+    if (act === "delete") { RECITER_CONFIRM[id] = "delete"; rerenderReciter(id); return true; }
+    if (act === "delete-cancel") { delete RECITER_CONFIRM[id]; rerenderReciter(id); return true; }
+    if (act === "delete-confirm") {
+        delete RECITER_CONFIRM[id];
+        deleteReciter(id).then(() => rerenderReciter(id));
+        return true;
+    }
+    return false;
+}
+
 function onSheetClick(e) {
     const closeEl = e.target.closest("[data-offline-close]");
     if (closeEl) { closeSheet(); return; }
+    if (onReciterClick(e)) return;
     const actEl = e.target.closest("[data-offline-act]");
     if (!actEl) return;
     const act = actEl.dataset.offlineAct;
@@ -279,6 +495,16 @@ function openSheet() {
     // Subscribe to live state — each subscription immediately fires with the current state.
     UNSUB_QCF4 = subscribeQcf4((st) => renderRow("mushaf", st));
     UNSUB_TAFSIR = subscribeTafsirDl((st) => renderRow("tafsir", st));
+    // Reciter section: render once with whatever sizes are known, then again
+    // when the (bundled) size manifest resolves so totals appear instantly.
+    UNSUB_RECITERS = subscribeReciterDl((map) => renderReciterSection(map));
+    loadReciterSizes().then(() => {
+        if (!SHEET_OPEN) return;
+        // Sizes aren't part of the row signature — force a rebuild so the
+        // placeholder "…" becomes the real size, and the foot total fills in.
+        for (const k in RECITER_SIG) delete RECITER_SIG[k];
+        renderReciterSection(null);
+    });
     document.addEventListener("keydown", onKeyDown);
 }
 
@@ -291,9 +517,14 @@ function closeSheet() {
     document.body.classList.remove("offline-sheet-open");
     UNSUB_QCF4?.(); UNSUB_QCF4 = null;
     UNSUB_TAFSIR?.(); UNSUB_TAFSIR = null;
+    UNSUB_RECITERS?.(); UNSUB_RECITERS = null;
     document.removeEventListener("keydown", onKeyDown);
     PENDING_CONFIRM.mushaf = null;
     PENDING_CONFIRM.tafsir = null;
+    // Reset reciter selection/confirm/sig so the next open starts clean.
+    RECITER_SELECTED.clear();
+    for (const k in RECITER_CONFIRM) delete RECITER_CONFIRM[k];
+    for (const k in RECITER_SIG) delete RECITER_SIG[k];
     // Returning from a Settings-launched open hands control back to Settings.
     const back = _onBack;
     _onBack = null;
