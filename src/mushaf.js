@@ -1374,26 +1374,71 @@ function onKeyDown(e) {
 
 function wirePageSwipe() {
     if (!PAGES_EL) return;
-    let startX = 0, startY = 0, tracking = false;
+    let startX = 0, startY = 0, tracking = false, axis = null; // axis: null | "h" | "v"
+
+    // Decide the gesture's dominant axis once the finger has moved a little.
+    // Small enough that vertical reading-scroll is never delayed; large enough
+    // not to trip on micro-jitter.
+    const AXIS_DECIDE_PX = 8;
+    // Fullscreen has its own (button) page navigation and is already vertically
+    // stable (no scroll at zoom 0) — leave it byte-identical; only normal mode
+    // needs this guard.
+    const inFullscreen = () => document.documentElement.classList.contains("mushaf-fs-open");
+
+    // Axis-lock: once a gesture is clearly HORIZONTAL (a page-flip), stop the
+    // document from scrolling vertically for the rest of it. That vertical
+    // drift — and the inertial momentum it leaves AFTER the finger lifts — is
+    // what jiggled the page vertically during the horizontal slide (the flip
+    // fires on touchend, so the finger is already up: a during-animation lock
+    // can't catch momentum; preventing it here at the source can). A clearly
+    // VERTICAL gesture is never prevented, so reading-scroll is untouched.
+    //
+    // Non-passive (needed for preventDefault), but installed ONLY while a touch
+    // is active — added on touchstart, removed on touchend/touchcancel — so the
+    // vertical fling/momentum that fires after release stays on the compositor
+    // fast path (no reading-scroll regression). Mirrors the install/remove
+    // pattern of the surah-dropdown scroll guard (installDdScrollGuards).
+    const onMove = (e) => {
+        if (!tracking || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        if (axis === null && (Math.abs(dx) > AXIS_DECIDE_PX || Math.abs(dy) > AXIS_DECIDE_PX)) {
+            axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+        }
+        if (axis === "h" && !inFullscreen() && e.cancelable) e.preventDefault();
+    };
+
+    const endTouch = () => {
+        tracking = false;
+        axis = null;
+        PAGES_EL.removeEventListener("touchmove", onMove);
+    };
+
     PAGES_EL.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         tracking = true;
+        axis = null;
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        PAGES_EL.addEventListener("touchmove", onMove, { passive: false });
     }, { passive: true });
 
     PAGES_EL.addEventListener("touchend", (e) => {
-        if (!tracking) return;
-        tracking = false;
+        if (!tracking) { endTouch(); return; }
         const t = e.changedTouches[0];
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
+        endTouch();
         if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
         // Direction (per user request — LTR-style mapping):
         //   dx > 0  →  finger moved LEFT→RIGHT  →  goNext (NEXT page, higher #)
         //   dx < 0  →  finger moved RIGHT→LEFT  →  goPrev (previous page)
         if (dx > 0) goNext(); else goPrev();
     }, { passive: true });
+
+    // Lost/cancelled touch (system gesture, multi-touch transition) — drop the
+    // move guard so it can't linger on the scroll path.
+    PAGES_EL.addEventListener("touchcancel", endTouch, { passive: true });
 }
 
 function showMushafLoader() {
