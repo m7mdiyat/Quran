@@ -758,6 +758,19 @@ function openTipFor(span, point) {
     const pageEl = span.closest(".mushaf-page");
     const pr = pageEl?.getBoundingClientRect()
         || { left: 0, right: window.innerWidth };
+    // Measure the tip at its NATURAL width — never against the `left` a PREVIOUS
+    // word's placement left on it. The card is position:absolute with a max-width
+    // but no explicit width/right, so its width (hence how many lines its meaning
+    // wraps to — its HEIGHT) is shrink-to-fit against the current `left`. A large
+    // stale `left` (the previous, more-rightward word when tapping a sequence
+    // right-to-left) shrinks the available width and inflates offsetHeight; since
+    // `top = inkTop − th − TIP_GAP` below, an over-tall `th` lands the card too
+    // HIGH, detached above its word — and the rAF re-place can't recover because
+    // its own computed `left` keeps the card squished. Resetting `left` first
+    // makes every tap measure the way the FIRST one already does correctly (its
+    // `left` is still auto). The real `left` is computed from this width and set
+    // at the end of place(), all before paint — so the reset is never visible.
+    tip.style.left = "0px";
     const tw = tip.offsetWidth, th = tip.offsetHeight;
     const cx = box.left + box.width / 2;
     const minL = Math.max(pr.left + TIP_MARGIN, 8);
