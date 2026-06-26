@@ -2855,20 +2855,6 @@ function normalizeQuran(raw) {
   };
 }
 
-function buildIndexSync() {
-  INDEX = [];
-  for (const s of QURAN.surahs) {
-    for (const a of s.ayahs) {
-      INDEX.push({
-        s: s.number,
-        a: a.numberInSurah,
-        textRaw: a.text,
-        textNorm: normArabic(a.text),
-      });
-    }
-  }
-}
-
 /**
  * Build the text search index without freezing the UI.
  * Uses requestIdleCallback when available, otherwise falls back to small setTimeout chunks.
