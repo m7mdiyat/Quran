@@ -28,11 +28,17 @@
 import { isApp } from "./app.js";
 import { surahAudio, audioUrl, timingsUrl } from "./surahAudio.js";
 
-/* Bump on any change to the cached asset SET so existing app users re-download
- * the corrected files; old caches are reclaimed by purgeStaleReciterCaches(). */
-const RECITER_CACHE_NAME = "reciter-audio-v1";
-const RECITER_READY_KEY = "m7_reciter_offline_v1";
-const STALE_RECITER_CACHES = [];
+/* Bump on any change to the cached asset SET *or its bytes* so existing app
+ * users re-download the corrected files; old caches are reclaimed by
+ * purgeStaleReciterCaches(). v2: audio re-encoded to mono 64 kbps (~half the
+ * size, same timing alignment). The cache name AND ready key move together —
+ * bumping only the cache would leave the ready map reporting "downloaded" while
+ * the new cache is empty, which would break offline playback. Bumping the ready
+ * key surfaces those reciters as not-downloaded so the smaller files re-fetch,
+ * and listing the old cache in STALE_RECITER_CACHES frees the user's storage. */
+const RECITER_CACHE_NAME = "reciter-audio-v2";
+const RECITER_READY_KEY = "m7_reciter_offline_v2";
+const STALE_RECITER_CACHES = ["reciter-audio-v1"];
 const SIZES_URL = "/reciter-audio-sizes.json";
 const SURAH_COUNT = 114;
 const CONCURRENCY = 3; // multi-MB (some 100MB+) bodies — keep peak memory sane
