@@ -4852,11 +4852,25 @@
       inset: 0;
       z-index: 2147483000; /* above app chrome; the splash (max int) is gone by now */
       opacity: 0;
-      transition: opacity .2s ease;
+      transition: opacity .3s ease;
       font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
       direction: rtl;
     }
     .tour--show { opacity: 1; }
+
+    /* Entrance: the card rises gently from just below while the whole overlay
+       fades in. The rise is a KEYFRAME (not a transition) so it fires
+       deterministically the instant .tour--show is added — no dependence on
+       before-change-style timing (which is why earlier transform-transition
+       attempts silently no-op'd). Opacity is the parent .tour fade above — one
+       mechanism for the entire overlay (dim + spotlight + card); the bubble
+       adds ONLY the transform, so nothing competes on opacity. tour.js commits
+       the bubble's final top/left before revealing, so the position transition
+       below has nothing to drag in from (0,0). */
+    @keyframes tourBubbleRise {
+      from { transform: translateY(18px); }
+      to   { transform: translateY(0); }
+    }
 
     .tour__spot {
       position: fixed;
@@ -4897,6 +4911,7 @@
       box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
     }
     .tour--show .tour__bubble {
+      animation: tourBubbleRise .44s cubic-bezier(0.16, 1, 0.3, 1) both;
       transition: top .3s cubic-bezier(0.16, 1, 0.3, 1), left .3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
@@ -4924,6 +4939,7 @@
 
     @media (prefers-reduced-motion: reduce) {
       .tour, .tour--show .tour__spot, .tour--show .tour__bubble { transition: none; }
+      .tour--show .tour__bubble { animation: none; }
     }
 
     /* ── App-only native-feel lockdown ──────────────────────────────

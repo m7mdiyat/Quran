@@ -168,7 +168,17 @@ function revealWhenSettled(lastKey, stable, frames) {
     const heldSteady = key === lastKey ? stable + 1 : 0;
     if ((heldSteady >= 2 && r.width > 1) || frames > 30) {
         place();
+        // Commit the bubble's FINAL top/left as the before-change style BEFORE
+        // revealing: the position transition (used by later steps) then has
+        // nothing to animate on this first reveal, so the card can't drag in
+        // from (0,0). The entrance rise itself is the tourBubbleRise keyframe,
+        // which fires on class-add regardless of this flush.
+        void _bubble.offsetHeight;
         _overlay.classList.add("tour--show");
+        try {
+            console.log("[tour] entrance fade-up revealed; bubble animation =",
+                getComputedStyle(_bubble).animationName);
+        } catch { }
         return;
     }
     requestAnimationFrame(() => revealWhenSettled(key, heldSteady, frames + 1));
