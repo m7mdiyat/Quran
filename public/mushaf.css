@@ -3404,6 +3404,20 @@ body.dark .gharib-word::before {
  * composited) and never shows this — so scope to the app. */
 html.is-app .gharib-word {
     transform: translateZ(0);
+    /* Reserve the compositing-layer backing store 2em past the box, in the SAME
+       style recalc that translateZ(0) promotes the word — so the overflowing
+       edge ink of long letters (final ـن bowl, leading ك flourish) is never
+       clipped to the layout box. The ::before normally holds this region, but
+       as an absolutely-positioned PSEUDO its box lays out ONE FRAME after the
+       promotion; on a flip-BACK re-decoration that gap clipped the tail for a
+       frame. A transparent box-shadow paints nothing and changes no layout — it
+       only enlarges the layer bounds, and it applies WITH the class (frame 0),
+       closing the gap. 2em (not 1em) because the spread is fixed-extent, unlike
+       the ::before whose ink-driven bounds follow the glyph: the ـن bowl's ink
+       overflows ≈1.33em, so 1em left ~25% clipped; 2em covers it with margin
+       (device-confirmed: 0% clip, no visible box). Can't touch the gold, halo,
+       molten fill, highlight, or tap. */
+    box-shadow: 0 0 0 2em transparent;
 }
 
 html.is-app .gharib-word::before {
@@ -3455,7 +3469,21 @@ html.is-app body.dark .gharib-word::before {
 body.dark .gharib-word::after {
     content: attr(data-ghc);
     position: absolute;
-    inset: 0;
+    /* The molten gradient is clipped to text but only PAINTS inside its box, so
+       grow the paint box 2em past the layout box (padding pulls the glyph back
+       into alignment) so the gold also covers the OVERFLOW ink of long letters —
+       the leading ك flourish of كَصَيِّبٍ, the ـن bowl — which otherwise showed bare
+       near-white base ink (a white/"cut" edge). background-origin:content-box
+       anchors the gradient to the ORIGINAL glyph box (restored by the padding),
+       so the body's molten mapping is byte-identical (no shading shift) and the
+       gradient's edge colour just extends into the overflow. Honoured under
+       background-clip:text on both WKWebView (app) and Blink (web) — device- and
+       Chrome-confirmed. The ::before halo is only a glow, never the gold surface,
+       so this is the only way to gild the edge. Web + app alike (the app's Part 1
+       box-shadow + filter halo stay app-only; this molten fix is shared). */
+    inset: -2em;
+    padding: 2em;
+    box-sizing: border-box;
     white-space: pre;
     pointer-events: none;
     color: transparent;
@@ -3470,6 +3498,14 @@ body.dark .gharib-word::after {
     background: linear-gradient(115deg, #e8b455 0%, #ffe3a3 38%, #dfa83e 68%, #f7cf82 100%);
     -webkit-background-clip: text;
     background-clip: text;
+    /* MUST come AFTER the `background` shorthand: the shorthand resets
+       background-origin to its initial padding-box, so a content-box set earlier
+       would be silently wiped — reverting to the gradient-remapping (blunt) box
+       and shifting the body's molten shading. Declared here it survives, anchoring
+       the gradient to the ORIGINAL glyph (content) box while the grown padding box
+       only extends the PAINT area into the overflow. (The old app-only rule dodged
+       this by being a separate block with no shorthand; the merge needs the order.) */
+    background-origin: content-box;
     /* Custom-prop-driven opacity (see the @property note) — keeps
        this layer off the compositor, which also keeps
        background-clip: text from leaking the gradient as a box. */

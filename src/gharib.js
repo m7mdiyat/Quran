@@ -377,6 +377,7 @@ export function gharibSavedWords() {
 
 let _onDecorateHook = null; // widget: ring rebuild (stage 5)
 let _onLearnHook = null;    // widget: counter pop (stage 4)
+let _edgeFixLogged = false; // one-time on-device marker for the 2em edge-clip fix
 
 /* "<key>@<vk>" → { w, m, s, a } — the tapped occurrence's own
  * entry, so the same word in two ayahs keeps its own meaning. */
@@ -521,6 +522,21 @@ function decoratePage(pageEl, pageData) {
             if (entriesFor(s, a).length) jsonAyahs++;
         }
         console.log(`[gharib] page ${PAGE_GHARIB.page}: json ayahs ${jsonAyahs} | located ayahs ${PAGE_GHARIB.ayahs.length} | ring segments (words) ${PAGE_GHARIB.keys.length}`);
+    }
+
+    // One-time on-device confirmation that both gharib edge fixes are live (app
+    // only): a Web Inspector run can verify the Part 1 backing-store reservation
+    // (box-shadow = 2em → ...64px) AND the Part 2 overflow-gold fix (::after
+    // background-origin = content-box, meaningful in dark theme). Either reading
+    // its default ("none" / "padding-box") means the bundle is stale.
+    if (!_edgeFixLogged && DEPS?.isApp?.()) {
+        _edgeFixLogged = true;
+        try {
+            const sample = pageEl.querySelector(".gharib-word");
+            if (sample) console.log(
+                "[gharib] edge fixes live; box-shadow =", getComputedStyle(sample).boxShadow,
+                "| ::after background-origin =", getComputedStyle(sample, "::after").backgroundOrigin);
+        } catch { }
     }
 
     // Park the tooltip in this root now (idempotent) so the first tap isn't the
