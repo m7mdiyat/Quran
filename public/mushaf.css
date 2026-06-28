@@ -198,30 +198,22 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Page footer (centered "صفحة N")
- * ============================================================ */
-.mushaf-page-footer {
-    text-align: center;
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
-    /* Arabic UI font (same family the app's other Arabic UI uses) — the
-       inherited body stack rendered "صفحة" in the system fallback with the
-       digit in Outfit, a visible mismatch. No letter-spacing: tracking
-       gaps cursive Arabic joins and read as broken type. */
-    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    letter-spacing: normal;
-}
-
-/* ============================================================
  * Page area + transitions (200ms for snappier feel)
  * ============================================================ */
 .mushaf-stage {
     position: relative;
     min-height: 320px;
+}
+
+/* Lock the normal-view page against horizontal finger-drag. A horizontal drag
+   in the band ABOVE the surah name was rubber-band-dragging the page side to
+   side on iOS: that band sits above PAGES_EL (where the JS swipe guard lives),
+   so nothing suppressed the native horizontal pan there. pan-y still allows
+   vertical reading-scroll and still delivers touch events to the JS swipe-flip
+   (so a deliberate flip snaps cleanly), but forbids native horizontal panning.
+   Normal view only — fullscreen keeps its own touch-action (manipulation). */
+.mushaf-root:not(.mushaf-root--fullscreen) .mushaf-stage {
+    touch-action: pan-y;
 }
 
 .mushaf-pages {
@@ -411,17 +403,6 @@ body.dark .mushaf-download {
     .mushaf-page--exit-to-left { animation: none !important; }
 }
 
-/* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
-[data-font-size="m"] .mushaf-page {
-    --font-size: 32px;
-    --line-gap: 6px;
-}
-
-[data-font-size="s"] .mushaf-page {
-    --font-size: 26px;
-    --line-gap: 4px;
-}
-
 /* ============================================================
  * Lines + words
  * ============================================================ */
@@ -517,23 +498,113 @@ body.dark .mushaf-ayah--playing {
 }
 
 /* ============================================================
- * On-screen page nav arrows
+ * Bottom page nav — a sleek ‹ N › row below the page (replaces the old
+ * side arrows). Mirrors the fullscreen overlay nav (.mushaf-fs__nav) but
+ * sits in-flow and uses the app's card tokens, so it lives inside the
+ * Mushaf card and tracks dark mode. The IDs mushafPrev / mushafNext are
+ * reused on these buttons, so all nav wiring + disabled states are unchanged.
+ * ============================================================ */
+.mushaf-bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+    margin-top: 16px;
+    /* Lift the row off the bottom edge — comfortable breathing room from the
+       card bottom (was ~13px; now ~36px with the card's own padding). */
+    margin-bottom: 24px;
+    /* LTR so the chevrons keep their visual order: ‹ (next/forward) on the
+       left, › (prev/back) on the right — pages advance leftward in RTL. */
+    direction: ltr;
+}
+
+/* #2 — kill the trailing gap below the page. The outer content <section>
+   (main > section.pt-14.pb-10) adds 40px of padding-bottom under the Mushaf
+   card; on top of the card's own bottom padding + the nav's ~36px lift, that
+   reads as a big empty band when scrolled to the bottom. Drop it in MUSHAF MODE
+   only (Tafsir / the website keep their breathing room) so the page ends
+   cleanly right after the ‹ N › row. */
+[data-app-mode="mushaf"] main > section.pt-14 {
+    padding-bottom: 0;
+}
+
+.mushaf-bottom-nav__page {
+    min-width: 34px;
+    text-align: center;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+
+.mushaf-bottom-nav__btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    color: var(--text);
+    cursor: pointer;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 180ms ease;
+}
+
+.mushaf-bottom-nav__btn svg {
+    width: 19px;
+    height: 19px;
+}
+
+.mushaf-bottom-nav__btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+.mushaf-bottom-nav__btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10);
+}
+
+.mushaf-bottom-nav__btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+    transform: none;
+    box-shadow: none;
+}
+
+body.dark .mushaf-bottom-nav__btn {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================================
+ * Responsive page nav. Phones + the APP use the bottom ‹ N › row (above).
+ * Wide WEB screens (≥768px and NOT the app) instead get floating side pills
+ * (vertically centered on the page edges) + a per-page "صفحة N" footer —
+ * easier to click with a mouse. The `html:not(.is-app)` guard forces the APP
+ * to ALWAYS keep the bottom row, even on a wide tablet (iPad). Both layouts'
+ * buttons share data-mushaf-nav, so handlers / disabled-state / swipe are one.
  * ============================================================ */
 .mushaf-nav {
+    display: none;   /* revealed only on wide web screens (media query below) */
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     width: 38px;
     height: 38px;
-    display: grid;
     place-items: center;
     border-radius: 999px;
     background: linear-gradient(180deg, var(--card), var(--card2));
     border: 1px solid var(--line);
     color: var(--text);
     cursor: pointer;
-    /* The button box itself never transitions or moves. Only the chevron
-       icon inside reacts on hover (see .mushaf-nav svg rules below). */
     transition: none;
     appearance: none;
     -webkit-appearance: none;
@@ -543,9 +614,7 @@ body.dark .mushaf-ayah--playing {
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-/* Hard-lock EVERY visual property of the box on every interactive state.
- * Position, scale, background, color, shadow, border, outline — all
- * pinned to the resting values. The button box is glued in place. */
+/* Hard-lock the box on every interactive state — only the chevron animates. */
 .mushaf-nav:hover,
 .mushaf-nav:focus,
 .mushaf-nav:focus-visible,
@@ -562,9 +631,6 @@ body.dark .mushaf-ayah--playing {
 .mushaf-nav svg {
     width: 18px;
     height: 18px;
-    /* The chevron is the ONLY thing that animates on hover. It scales up
-     * slightly so the button feels alive without the box itself moving.
-     * Eased with a cubic-bezier for a soft snap. */
     transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
     transform-origin: center;
 }
@@ -575,23 +641,34 @@ body.dark .mushaf-ayah--playing {
     transform: scale(1.18);
 }
 
-.mushaf-nav svg {
-    width: 18px;
-    height: 18px;
-}
-
-.mushaf-nav--prev {
-    right: -6px;
-}
-
-.mushaf-nav--next {
-    left: -6px;
-}
+.mushaf-nav--prev { right: -6px; }
+.mushaf-nav--next { left: -6px; }
 
 .mushaf-nav[disabled] {
     opacity: 0.3;
     cursor: default;
     pointer-events: none;
+}
+
+/* Per-page "صفحة N" footer — wide web only (phones show the number in the
+   bottom ‹ N › row). Hidden by default; revealed in the media query. */
+.mushaf-page-footer {
+    display: none;
+    text-align: center;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: normal;
+}
+
+@media (min-width: 768px) {
+    html:not(.is-app) .mushaf-nav { display: grid; }
+    html:not(.is-app) .mushaf-bottom-nav { display: none; }
+    html:not(.is-app) .mushaf-page-footer { display: block; }
 }
 
 /* ============================================================
@@ -1768,38 +1845,27 @@ body.dark .mushaf-toolbar__dropdown {
  * Mobile adjustments
  * ============================================================ */
 @media (max-width: 640px) {
-    /* Reduce padding on the mushaf root to maximise content width.
-       The class p-6 (24px) on .mushaf-root is overridden here. */
-    .mushaf-root {
-        padding: 12px 6px !important;
+    /* Maximise reading width on phones: trim the card's own side padding and
+       pull it 12px into the outer wrapper's px-4 gutter (keeping a ~7px margin
+       to the screen edge each side). This widens .mushaf-pages ~344→~376px on a
+       390px screen, so autoFitFontSize() — which fills the container — renders
+       the Madani text ~9% larger UNIFORMLY (no overflow: the densest line still
+       fits; no reflow: line breaks are data-driven). :not(--fullscreen) keeps
+       the negative margin off the position:fixed/inset:0 fullscreen root. */
+    .mushaf-root:not(.mushaf-root--fullscreen) {
+        padding: 12px 2px !important;
+        margin-inline: -12px;
     }
 
     .mushaf-page {
         padding: 4px 0;
     }
 
-    /* Font-size is now calculated dynamically by autoFitFontSize() in JS,
-       so we only set sensible CSS defaults as initial values.  The JS will
-       override --font-size on each .mushaf-page after measuring lines. */
-    [data-font-size="m"] .mushaf-page {
-        --font-size: 24px;
-    }
-
-    [data-font-size="s"] .mushaf-page {
-        --font-size: 20px;
-    }
-
-    .mushaf-nav {
-        width: 36px;
-        height: 36px;
-    }
-
-    .mushaf-nav--prev {
-        right: 2px;
-    }
-
-    .mushaf-nav--next {
-        left: 2px;
+    /* R1 trimmed the card's side padding to widen the PAGE; give the toolbar
+       its own inset so the gear/play group and the notes/lantern group don't
+       jam into the card corners — even, comfortable breathing room each side. */
+    .mushaf-toolbar {
+        padding-inline: 12px;
     }
 
     .mushaf-surah-header__name {
@@ -2587,12 +2653,18 @@ html.dark #searchPillActions .mushaf-surah-dropdown {
     touch-action: auto;
 }
 
-/* Zoom 1: text is scaled up beyond the viewport, so the user needs to
- * scroll to reach the rest of the page. Restores the auto-overflow
- * behavior — only at this level. */
+/* Zoom 1: text is scaled up beyond the viewport, so the user needs to scroll
+ * VERTICALLY to reach the rest of the page. overflow-x: hidden (was a blanket
+ * `overflow: auto`) kills the horizontal axis so the enlarged text can't be
+ * dragged/rubber-banded left-right — the content fits horizontally, so nothing
+ * clips. touch-action: pan-y belt-and-braces forbids the horizontal pan gesture
+ * (the fullscreen `* { manipulation }` rule otherwise re-allows it); the JS
+ * swipe-flip is unaffected (touch-action never blocks JS touch events). */
 .mushaf-root--fullscreen[data-fs-zoom="1"] {
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 body.dark .mushaf-root--fullscreen {
@@ -2608,11 +2680,10 @@ body.dark .mushaf-root--fullscreen {
 
 /* Hide the regular Mushaf chrome — fullscreen is verses only. The toolbar
  * (settings/play/font/surah/fullscreen button itself), the decorative
- * surah header inside the page, the page-N footer, and the side-arrow
- * nav buttons all disappear; the floating controls take over. */
+ * surah header inside the page, and the bottom page-nav row all disappear;
+ * the floating controls + overlay nav (.mushaf-fs__nav) take over. */
 .mushaf-root--fullscreen .mushaf-surah-header,
-.mushaf-root--fullscreen .mushaf-page-footer,
-.mushaf-root--fullscreen .mushaf-nav {
+.mushaf-root--fullscreen .mushaf-bottom-nav {
     display: none !important;
 }
 
@@ -2706,8 +2777,11 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
     min-height: 100dvh;
     /* Bottom padding leaves room for the nav arrows + page number row at
      * the very bottom (bottom: 16px + ~38px button = ~54px) plus a small
-     * breathing gap. Top padding clears the floating control row. */
-    padding: 56px 12px 80px;
+     * breathing gap. Top clears the floating controls; bottom reserves the
+     * (now-lower) nav row. NOTE: in the app the html.is-app rule further down
+     * overrides this with safe-area insets — THAT rule is what actually
+     * applies on device (this is just the website fallback). */
+    padding: 56px 8px 52px;
     display: flex;
     flex-direction: column;
 }
@@ -2947,7 +3021,7 @@ body.dark .mushaf-fs__page-num {
  * bottom edge. Same neutral pill aesthetic as the top overlay controls. */
 .mushaf-fs__nav {
     position: fixed;
-    bottom: 16px;
+    bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 1001;
@@ -3197,14 +3271,16 @@ html.is-app .mushaf-fs__settings-panel {
     right: auto;
 }
 
-/* Stage padding clears the floating control row + the bottom nav.
- * Bump both ends by the inset so verses don't slide behind chrome
- * once the controls move down with the status bar inset. */
+/* Stage padding clears the floating control row + the (now-lower) bottom nav.
+ * Side padding trimmed 12→8px to widen the reading column (autoFit fills it →
+ * ≈+2–3% larger text). The bottom reserve is cut 80→52px and the nav moved
+ * down (16→8px) — the page's vertical slack absorbs the slightly taller text
+ * while it still clears the home indicator. Insets keep verses off the chrome. */
 html.is-app .mushaf-root--fullscreen .mushaf-stage {
     padding-top: calc(56px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    padding-left: calc(12px + env(safe-area-inset-left, 0px));
-    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
 }
 
 html.is-app .mushaf-fs__page-num {
@@ -3212,7 +3288,7 @@ html.is-app .mushaf-fs__page-num {
 }
 
 html.is-app .mushaf-fs__nav {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 html.is-app .copy-toast {
