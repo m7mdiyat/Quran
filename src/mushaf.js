@@ -139,7 +139,6 @@ function qcf4IsReady() {
 const STORAGE = {
     MODE: "app_mode",
     LAST_PAGE: "mushaf_last_page",
-    FONT_SIZE: "mushaf_font_size",
     AUDIO_MODE: "mushaf_audio_mode",
     VOLUME: "mushaf_volume",
     SPEED: "mushaf_speed",
@@ -239,7 +238,6 @@ let AUDIO_MODE = "single";
 let AUDIO_VOLUME = 0.8;          // 0..1
 let AUDIO_SPEED = 1;             // 0.5..2
 let MUTED_PREV_VOLUME = 0.8;     // volume to restore when un-muting
-let FONT_SIZE = "m";             // "s" (صغير) | "m" (عادي, default) — old "l" is migrated to "m"
 let CURRENT_RECITER_LOCAL = null;
 
 /* Hover/long-press timers */
@@ -265,13 +263,6 @@ export function initMushaf(deps) {
     DEPS = deps;
 
     try {
-        const fs = localStorage.getItem(STORAGE.FONT_SIZE);
-        if (fs === "s" || fs === "m") FONT_SIZE = fs;
-        else if (fs === "l" || fs === "كبير") {
-            // Migration: old "l" (large) no longer exists — map to "m".
-            FONT_SIZE = "m";
-            localStorage.setItem(STORAGE.FONT_SIZE, "m");
-        }
         const am = localStorage.getItem(STORAGE.AUDIO_MODE);
         if (am === "single" || am === "continuous") AUDIO_MODE = am;
         // Volume + speed: prefer the shared 'audioVolume' / 'audioSpeed' keys
@@ -319,7 +310,6 @@ export function initMushaf(deps) {
     if (bootMode !== saved) {
         try { localStorage.setItem(STORAGE.MODE, bootMode); } catch { }
     }
-    document.documentElement.setAttribute("data-font-size", FONT_SIZE);
 
     document.querySelectorAll("[data-mode-toggle]").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -1150,13 +1140,6 @@ function buildShell() {
             <div class="mushaf-settings__row mushaf-settings__row--pills" data-settings-group="reciter"></div>
           </div>
           <div class="mushaf-settings__section">
-            <div class="mushaf-settings__label">حجم الخط</div>
-            <div class="mushaf-settings__row" data-settings-group="font-size">
-              <button type="button" class="mushaf-settings__chip" data-val="m">عادي</button>
-              <button type="button" class="mushaf-settings__chip" data-val="s">صغير</button>
-            </div>
-          </div>
-          <div class="mushaf-settings__section">
             <div class="mushaf-settings__label">طريقة التشغيل</div>
             <div class="mushaf-settings__row" data-settings-group="audio-mode">
               <button type="button" class="mushaf-settings__chip" data-val="single">آية واحدة</button>
@@ -1237,9 +1220,21 @@ function buildShell() {
       <div class="mushaf-loader" id="mushafLoader">
         <div class="mushaf-spinner"></div>
       </div>
-      <button type="button" class="mushaf-nav mushaf-nav--prev" id="mushafPrev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
+      <!-- Side page-nav pills — wide WEB screens only (hidden on phones + the
+           app via CSS, which use the bottom ‹ N › row instead). Same
+           data-mushaf-nav hooks as the bottom buttons → one handler set. -->
+      <button type="button" class="mushaf-nav mushaf-nav--prev" data-mushaf-nav="prev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
       <div class="mushaf-pages" id="mushafPages"></div>
-      <button type="button" class="mushaf-nav mushaf-nav--next" id="mushafNext" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
+      <button type="button" class="mushaf-nav mushaf-nav--next" data-mushaf-nav="next" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
+    </div>
+
+    <!-- Bottom page nav: ‹ N › — forward (‹, next) left, back (›, prev) right.
+         Phones + app use this; wide web screens use the side pills instead.
+         data-mushaf-nav drives both layouts via one handler set (wireNav). -->
+    <div class="mushaf-bottom-nav" dir="ltr">
+      <button type="button" class="mushaf-bottom-nav__btn mushaf-bottom-nav__btn--next" id="mushafNext" data-mushaf-nav="next" aria-label="الصفحة التالية">${ICONS.chevronLeft}</button>
+      <span class="mushaf-bottom-nav__page" id="mushafPageLabel"></span>
+      <button type="button" class="mushaf-bottom-nav__btn mushaf-bottom-nav__btn--prev" id="mushafPrev" data-mushaf-nav="prev" aria-label="الصفحة السابقة">${ICONS.chevronRight}</button>
     </div>
 
     <!-- Ayah menu: مختصر التفاسير quick-view -->
@@ -1340,8 +1335,10 @@ let FS_FONT_LOCK = false;
  * ============================================================ */
 
 function wireNav() {
-    NAV_PREV?.addEventListener("click", () => goPrev());
-    NAV_NEXT?.addEventListener("click", () => goNext());
+    // Both layouts (side pills on wide web, bottom ‹ N › row on phones/app)
+    // carry data-mushaf-nav, so one handler set drives whichever is visible.
+    document.querySelectorAll('[data-mushaf-nav="prev"]').forEach((b) => b.addEventListener("click", () => goPrev()));
+    document.querySelectorAll('[data-mushaf-nav="next"]').forEach((b) => b.addEventListener("click", () => goNext()));
 }
 
 function goPrev() {
@@ -1372,72 +1369,59 @@ function onKeyDown(e) {
     else if (e.key === "Escape") { closeAyahMenu(); closeMukhtasarCard(); }
 }
 
+/* Swipe to flip — clean INSTANT SLIDE (the transform-only @keyframe in
+ * renderPage). On touchend, a clearly-horizontal gesture past the distance
+ * threshold OR a fast flick fires goNext/goPrev → the soft slide. RTL: finger
+ * right → next, left → prev. Axis-locked so vertical reading-scroll is never
+ * hijacked; preventDefault on horizontal moves stops native scroll mid-swipe.
+ * JS-driven, so it coexists with the app-wide `touch-action: pan-y` drift fix.
+ *
+ * NOTE: we deliberately do NOT finger-track the page. Real-time dragging of full
+ * Quran pages (heavy QCF4 text + gharib gold decoration) couldn't stay
+ * glitch-free / 60fps in the WebView and caused cut-off/snap, basmala and lag
+ * regressions. The instant slide is rock-solid and standard for a reading app. */
 function wirePageSwipe() {
     if (!PAGES_EL) return;
-    let startX = 0, startY = 0, tracking = false, axis = null; // axis: null | "h" | "v"
+    const AXIS_DECIDE_PX = 8;       // commit to an axis after this much movement
+    const FLICK_VELOCITY = 0.45;    // px/ms — a fast flick flips even if short of the threshold
+    let startX = 0, startY = 0, lastX = 0, lastT = 0, vx = 0, tracking = false, axis = null;
 
-    // Decide the gesture's dominant axis once the finger has moved a little.
-    // Small enough that vertical reading-scroll is never delayed; large enough
-    // not to trip on micro-jitter.
-    const AXIS_DECIDE_PX = 8;
-    // Fullscreen has its own (button) page navigation and is already vertically
-    // stable (no scroll at zoom 0) — leave it byte-identical; only normal mode
-    // needs this guard.
-    const inFullscreen = () => document.documentElement.classList.contains("mushaf-fs-open");
-
-    // Axis-lock: once a gesture is clearly HORIZONTAL (a page-flip), stop the
-    // document from scrolling vertically for the rest of it. That vertical
-    // drift — and the inertial momentum it leaves AFTER the finger lifts — is
-    // what jiggled the page vertically during the horizontal slide (the flip
-    // fires on touchend, so the finger is already up: a during-animation lock
-    // can't catch momentum; preventing it here at the source can). A clearly
-    // VERTICAL gesture is never prevented, so reading-scroll is untouched.
-    //
-    // Non-passive (needed for preventDefault), but installed ONLY while a touch
-    // is active — added on touchstart, removed on touchend/touchcancel — so the
-    // vertical fling/momentum that fires after release stays on the compositor
-    // fast path (no reading-scroll regression). Mirrors the install/remove
-    // pattern of the surah-dropdown scroll guard (installDdScrollGuards).
     const onMove = (e) => {
         if (!tracking || e.touches.length !== 1) return;
-        const dx = e.touches[0].clientX - startX;
-        const dy = e.touches[0].clientY - startY;
+        const x = e.touches[0].clientX, y = e.touches[0].clientY;
+        const dx = x - startX, dy = y - startY;
         if (axis === null && (Math.abs(dx) > AXIS_DECIDE_PX || Math.abs(dy) > AXIS_DECIDE_PX)) {
             axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
         }
-        if (axis === "h" && !inFullscreen() && e.cancelable) e.preventDefault();
+        if (axis === "h") {
+            if (e.cancelable) e.preventDefault();          // stop native scroll during a horizontal swipe
+            const now = e.timeStamp || performance.now();
+            if (now > lastT) vx = (x - lastX) / (now - lastT);
+            lastX = x; lastT = now;
+        }
     };
 
-    const endTouch = () => {
-        tracking = false;
-        axis = null;
-        PAGES_EL.removeEventListener("touchmove", onMove);
-    };
+    const endTouch = () => { tracking = false; axis = null; PAGES_EL.removeEventListener("touchmove", onMove); };
 
     PAGES_EL.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
-        tracking = true;
-        axis = null;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
+        tracking = true; axis = null;
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+        lastX = startX; lastT = e.timeStamp || performance.now(); vx = 0;
         PAGES_EL.addEventListener("touchmove", onMove, { passive: false });
     }, { passive: true });
 
     PAGES_EL.addEventListener("touchend", (e) => {
         if (!tracking) { endTouch(); return; }
         const t = e.changedTouches[0];
-        const dx = t.clientX - startX;
-        const dy = t.clientY - startY;
+        const dx = t.clientX - startX, dy = t.clientY - startY;
         endTouch();
-        if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return;
-        // Direction (per user request — LTR-style mapping):
-        //   dx > 0  →  finger moved LEFT→RIGHT  →  goNext (NEXT page, higher #)
-        //   dx < 0  →  finger moved RIGHT→LEFT  →  goPrev (previous page)
-        if (dx > 0) goNext(); else goPrev();
+        if (Math.abs(dx) < Math.abs(dy)) return;            // vertical → reading scroll, not a flip
+        const flick = Math.abs(vx) > FLICK_VELOCITY;         // a fast short swipe still flips
+        if (Math.abs(dx) < SWIPE_THRESHOLD && !flick) return;
+        if (dx > 0) goNext(); else goPrev();                 // RTL: finger right → next, left → prev
     }, { passive: true });
 
-    // Lost/cancelled touch (system gesture, multi-touch transition) — drop the
-    // move guard so it can't linger on the scroll path.
     PAGES_EL.addEventListener("touchcancel", endTouch, { passive: true });
 }
 
@@ -1457,7 +1441,6 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
         applyTargetHighlight({ noScroll });
         return;
     }
-    try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
 
     try {
         showMushafLoader();
@@ -1490,45 +1473,44 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
         hideMushafLoader();
 
         renderPage(data, direction);
-        CURRENT_PAGE = p;
-        updateNavDisabledState();
-        prefetchAdjacent(p);
-        applyTargetHighlight({ noScroll });
-
-        if (CURRENT_TARGET_VERSE) {
-            const [s, a] = CURRENT_TARGET_VERSE.split(":").map(Number);
-            LAST_VIEWED_AYAH = { s, a };
-        } else {
-            // Last viewed = first verse of the target surah on this page,
-            // falling back to the first verse on the page.
-            const fv = findFirstVerseKeyForSurah(data, TARGET_SURAH) || findFirstVerseKey(data);
-            if (fv) {
-                const [s, a] = fv.split(":").map(Number);
-                LAST_VIEWED_AYAH = { s, a };
-            }
-        }
-        syncSurahSelectLabel();
-        // Resume hook (app only on the receiving side — no-op on the website).
-        // Saves the current Mushaf position; openMushafAtAyah/openMushafAtPage
-        // both funnel through here, so this single call covers all paths.
-        if (LAST_VIEWED_AYAH) {
-            try {
-                DEPS?.recordResume?.({
-                    mode: "mushaf",
-                    surah: LAST_VIEWED_AYAH.s,
-                    ayah: LAST_VIEWED_AYAH.a,
-                    page: CURRENT_PAGE,
-                });
-            } catch { }
-        }
+        commitPageState(p, data, { noScroll });
     } catch (e) {
         console.error("Mushaf goToPage error:", e);
     }
 }
 
+/* Post-render page bookkeeping: current page #, nav disabled-state, prefetch,
+ * target highlight, resume position. Shared by goToPage (instant/animated swap)
+ * and the flip-drag's commit, so a finger-completed flip updates exactly the
+ * same state as a button/swipe flip. */
+function commitPageState(p, data, { noScroll = false } = {}) {
+    CURRENT_PAGE = p;
+    try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
+    updateNavDisabledState();
+    prefetchAdjacent(p);
+    applyTargetHighlight({ noScroll });
+    if (CURRENT_TARGET_VERSE) {
+        const [s, a] = CURRENT_TARGET_VERSE.split(":").map(Number);
+        LAST_VIEWED_AYAH = { s, a };
+    } else {
+        // Last viewed = first verse of the target surah on this page, falling
+        // back to the first verse on the page.
+        const fv = findFirstVerseKeyForSurah(data, TARGET_SURAH) || findFirstVerseKey(data);
+        if (fv) { const [s, a] = fv.split(":").map(Number); LAST_VIEWED_AYAH = { s, a }; }
+    }
+    syncSurahSelectLabel();
+    if (LAST_VIEWED_AYAH) {
+        try {
+            DEPS?.recordResume?.({ mode: "mushaf", surah: LAST_VIEWED_AYAH.s, ayah: LAST_VIEWED_AYAH.a, page: CURRENT_PAGE });
+        } catch { }
+    }
+}
+
 function updateNavDisabledState() {
-    if (NAV_PREV) NAV_PREV.disabled = CURRENT_PAGE <= 1;
-    if (NAV_NEXT) NAV_NEXT.disabled = CURRENT_PAGE >= TOTAL_PAGES;
+    // Toggle BOTH layouts' buttons (side pills + bottom row) via the shared hook.
+    const prevDisabled = CURRENT_PAGE <= 1, nextDisabled = CURRENT_PAGE >= TOTAL_PAGES;
+    document.querySelectorAll('[data-mushaf-nav="prev"]').forEach((b) => { b.disabled = prevDisabled; });
+    document.querySelectorAll('[data-mushaf-nav="next"]').forEach((b) => { b.disabled = nextDisabled; });
 }
 
 function prefetchAdjacent(p) {
@@ -1571,166 +1553,142 @@ function findFirstVerseKeyForSurah(data, surahId) {
  * Non-target surahs are tagged with data-surah; CSS dims them.
  * ============================================================ */
 
-function renderPage(data, direction = "none") {
-    if (!PAGES_EL) return;
-
-    // The card/menu anchor to ayah elements in the outgoing page — drop them.
-    closeMukhtasarCard();
-
-    ensureFontDeclared(data.font);
-    for (const line of data.lines) {
-        for (const w of line.words) {
-            if (w.font && !DECLARED_FONTS.has(w.font)) ensureFontDeclared(w.font);
-        }
-    }
-
-    const newPage = document.createElement("div");
-    newPage.className = "mushaf-page";
-    newPage.dataset.page = String(data.page);
-    if (TARGET_SURAH) newPage.dataset.targetSurah = String(TARGET_SURAH);
-
-    // Pre-scan: identify the *first verse key* of each surah on this page,
-    // so we know exactly where to inject the clean surah header.
-    const firstVerseKeyPerSurah = new Map();
-    for (const line of data.lines) {
-        for (const w of line.words) {
-            if (!w.verse_key) continue;
-            const [sStr] = w.verse_key.split(":");
-            const sId = Number(sStr);
-            if (!firstVerseKeyPerSurah.has(sId)) {
-                firstVerseKeyPerSurah.set(sId, w.verse_key);
-            }
-        }
-    }
-
-    let renderedSurahHeaderFor = new Set();
-    let pendingBismillah = null; // bismillah-line waiting for the next surah header
-
-    for (let li = 0; li < data.lines.length; li++) {
-        const line = data.lines[li];
-        const first = line.words?.[0];
-        const isSurahHeaderLine = first?.type === "surah_header";
-        const isBismillahLine = first?.type === "bismillah";
-
-        // Skip QCF4 ornamental surah_header lines entirely.
-        if (isSurahHeaderLine) continue;
-
-        // Buffer bismillah; we emit it AFTER the next surah header.
-        if (isBismillahLine) {
-            pendingBismillah = line;
-            continue;
-        }
-
-        const firstVerseInLine = line.words.find((w) => w.verse_key)?.verse_key;
-        if (firstVerseInLine) {
-            const [sStr] = firstVerseInLine.split(":");
-            const sId = Number(sStr);
-
-            const isFirstVerseOfSurahOnPage = firstVerseKeyPerSurah.get(sId) === firstVerseInLine;
-            const isContinuationFirstSurah = renderedSurahHeaderFor.size === 0;
-
-            if (!renderedSurahHeaderFor.has(sId) && (isFirstVerseOfSurahOnPage || isContinuationFirstSurah)) {
-                const headerEl = buildSurahHeader(sId);
-                // Mark the header as a CONTINUATION when the surah's first
-                // verse on this page is not ayah 1 — i.e., the surah was
-                // already in progress on the previous page. Used by the
-                // fullscreen CSS (app-only) to suppress this "out-of-nowhere"
-                // surah name, since the printed Mushaf only shows a surah
-                // name at the actual start. Real surah-starts (ayah 1 lands
-                // on this page) are left unmarked and continue to render.
-                const firstVerseOnPage = firstVerseKeyPerSurah.get(sId);
-                if (!firstVerseOnPage || !firstVerseOnPage.endsWith(":1")) {
-                    headerEl.classList.add("mushaf-surah-header--continuation");
-                }
-                newPage.appendChild(headerEl);
-                renderedSurahHeaderFor.add(sId);
-
-                // Emit pending bismillah after the header.
-                if (pendingBismillah) {
-                    newPage.appendChild(buildLineElement(pendingBismillah, sId));
-                    pendingBismillah = null;
-                }
+/* Build a page's DOM only — surah headers, bismillah, verse lines, per-page
+ * footer. Pure: no append, no wiring, no animation, no page-state. `targetSurah`
+ * decides which surah is "active" (others dim); it defaults to the global so
+ * renderPage is unchanged, but the flip-drag passes the NEIGHBOUR's own target
+ * so the dragged-in page looks right before it's committed. (It temporarily
+ * swaps the global TARGET_SURAH for the synchronous build so the existing
+ * buildLineElement/buildSurahHeader dimming reads the right target.) */
+function buildPageElement(data, targetSurah = TARGET_SURAH) {
+    const prevTarget = TARGET_SURAH;
+    TARGET_SURAH = targetSurah;
+    try {
+        ensureFontDeclared(data.font);
+        for (const line of data.lines) {
+            for (const w of line.words) {
+                if (w.font && !DECLARED_FONTS.has(w.font)) ensureFontDeclared(w.font);
             }
         }
 
-        // Determine the surah this line belongs to (for data-surah tagging).
-        const lineSurahId = firstVerseInLine ? Number(firstVerseInLine.split(":")[0]) : null;
-        newPage.appendChild(buildLineElement(line, lineSurahId));
+        const newPage = document.createElement("div");
+        newPage.className = "mushaf-page";
+        newPage.dataset.page = String(data.page);
+        if (TARGET_SURAH) newPage.dataset.targetSurah = String(TARGET_SURAH);
+
+        // Pre-scan: the *first verse key* of each surah on this page → where the
+        // clean surah header is injected.
+        const firstVerseKeyPerSurah = new Map();
+        for (const line of data.lines) {
+            for (const w of line.words) {
+                if (!w.verse_key) continue;
+                const sId = Number(w.verse_key.split(":")[0]);
+                if (!firstVerseKeyPerSurah.has(sId)) firstVerseKeyPerSurah.set(sId, w.verse_key);
+            }
+        }
+
+        const renderedSurahHeaderFor = new Set();
+        let pendingBismillah = null; // bismillah-line waiting for the next surah header
+
+        for (let li = 0; li < data.lines.length; li++) {
+            const line = data.lines[li];
+            const first = line.words?.[0];
+            if (first?.type === "surah_header") continue;          // skip QCF4 ornamental header lines
+            if (first?.type === "bismillah") { pendingBismillah = line; continue; } // emit AFTER the header
+
+            const firstVerseInLine = line.words.find((w) => w.verse_key)?.verse_key;
+            if (firstVerseInLine) {
+                const sId = Number(firstVerseInLine.split(":")[0]);
+                const isFirstVerseOfSurahOnPage = firstVerseKeyPerSurah.get(sId) === firstVerseInLine;
+                const isContinuationFirstSurah = renderedSurahHeaderFor.size === 0;
+                if (!renderedSurahHeaderFor.has(sId) && (isFirstVerseOfSurahOnPage || isContinuationFirstSurah)) {
+                    const headerEl = buildSurahHeader(sId);
+                    // CONTINUATION when the surah's first verse on this page isn't
+                    // ayah 1 — fullscreen CSS suppresses this "out-of-nowhere" name.
+                    const firstVerseOnPage = firstVerseKeyPerSurah.get(sId);
+                    if (!firstVerseOnPage || !firstVerseOnPage.endsWith(":1")) {
+                        headerEl.classList.add("mushaf-surah-header--continuation");
+                    }
+                    newPage.appendChild(headerEl);
+                    renderedSurahHeaderFor.add(sId);
+                    if (pendingBismillah) {
+                        newPage.appendChild(buildLineElement(pendingBismillah, sId));
+                        pendingBismillah = null;
+                    }
+                }
+            }
+
+            const lineSurahId = firstVerseInLine ? Number(firstVerseInLine.split(":")[0]) : null;
+            newPage.appendChild(buildLineElement(line, lineSurahId));
+        }
+
+        // Per-page footer "صفحة N" (wide web only; CSS hides it on phones/app).
+        const footer = document.createElement("div");
+        footer.className = "mushaf-page-footer";
+        footer.textContent = `صفحة ${Number(data.page).toLocaleString("ar-EG")}`;
+        newPage.appendChild(footer);
+
+        return newPage;
+    } finally {
+        TARGET_SURAH = prevTarget;
     }
+}
 
-    // Page-number footer — Arabic-Indic digits to match the page's own
-    // ayah numerals (٦٠٤ max, so no grouping separators ever appear).
-    const footer = document.createElement("div");
-    footer.className = "mushaf-page-footer";
-    footer.textContent = `صفحة ${Number(data.page).toLocaleString("ar-EG")}`;
-    newPage.appendChild(footer);
-
-    // --- Page swap with @keyframes fade animation ---
-    const old = ACTIVE_PAGE_EL;
-    PAGES_EL.appendChild(newPage);
-
-    if (direction !== "none" && old) {
-        // Soft horizontal slide (transform-only). RTL: NEXT (goNext → "left") →
-        // the new page enters from the LEFT while the old exits to the RIGHT;
-        // PREV (goPrev → "right") → the opposite. Both move together.
-        const next = direction === "left";
-        const enterCls = next ? "mushaf-page--enter-from-left" : "mushaf-page--enter-from-right";
-        const exitCls = next ? "mushaf-page--exit-to-right" : "mushaf-page--exit-to-left";
-
-        // Rapid taps: drop any pages still sliding out from an earlier swap so
-        // they can't stack — keep only `old` (sliding out) + `newPage` (sliding in).
-        PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => {
-            if (p !== old && p !== newPage) p.remove();
-        });
-
-        // Clip the sliding pages to the container ONLY while animating; the
-        // static reading state keeps overflow:visible so gharib glows bleed past
-        // the page edge unclipped (see .mushaf-pages CSS). A shared, debounced
-        // timer survives rapid swipes (resets each swap).
-        PAGES_EL.classList.add("mushaf-pages--animating");
-        clearTimeout(PAGES_ANIM_TIMER);
-        PAGES_ANIM_TIMER = setTimeout(
-            () => PAGES_EL?.classList.remove("mushaf-pages--animating"), 480);
-        // New page slides in (stays in flow → keeps the stage height); drop the
-        // class once it lands so it sits at rest.
-        newPage.classList.add(enterCls);
-        newPage.addEventListener("animationend", () => newPage.classList.remove(enterCls), { once: true });
-        // Old page slides out (absolute, overlapping) and is removed when done.
-        old.classList.add(exitCls);
-        old.addEventListener("animationend", () => old.remove(), { once: true });
-        // Safety fallback in case animationend doesn't fire
-        setTimeout(() => { if (old.parentNode) old.remove(); }, 480);
-    } else {
-        // No animation needed (initial load or direct navigation) — make sure
-        // the static state isn't left clipped by a prior transition.
-        clearTimeout(PAGES_ANIM_TIMER);
-        PAGES_EL.classList.remove("mushaf-pages--animating");
-        if (old) old.remove();
-    }
-
+/* Wire interactions + size + announce a freshly-placed page as the active one.
+ * Used by renderPage (instant/animated swap) AND the flip-drag (on commit), so
+ * a dragged-in page gets the exact same wiring as a normally-rendered one. */
+function activatePage(newPage, data) {
     ACTIVE_PAGE_EL = newPage;
+    // Bottom-nav ‹ N › label (the per-page footer is built into the DOM above).
+    const pageLabel = document.getElementById("mushafPageLabel");
+    if (pageLabel) pageLabel.textContent = Number(data.page).toLocaleString("ar-EG");
     wireAyahInteractions(newPage);
     if (AUDIO_VERSE) highlightAyah(AUDIO_VERSE, "playing");
-    // Fire the event AFTER autoFit finishes (its internal document.fonts
-    // .ready is async). Fullscreen reads --font-size in its page-rendered
-    // handler and needs the auto-fit value, not the CSS default.
+    // Fire the event AFTER autoFit finishes (its document.fonts.ready is async).
+    // Fullscreen reads --font-size in its page-rendered handler.
     const fitPromise = autoFitFontSize();
     const dispatch = () => {
         try {
             PAGES_EL?.dispatchEvent(new CustomEvent("mushaf:page-rendered", {
                 bubbles: true,
-                // `data` (the QCF4 page JSON) rides along for the gharib
-                // module — its per-word vocalized `text` fields are what
-                // the word matcher runs against (src/gharib.js).
                 detail: { page: data.page, el: newPage, data },
             }));
         } catch { }
     };
-    if (fitPromise && typeof fitPromise.then === "function") {
-        fitPromise.then(dispatch, dispatch);
+    if (fitPromise && typeof fitPromise.then === "function") fitPromise.then(dispatch, dispatch);
+    else dispatch();
+}
+
+function renderPage(data, direction = "none") {
+    if (!PAGES_EL) return;
+    closeMukhtasarCard(); // card/menu anchor to ayahs in the outgoing page — drop them
+    const newPage = buildPageElement(data);
+    const old = ACTIVE_PAGE_EL;
+    PAGES_EL.appendChild(newPage);
+
+    if (direction !== "none" && old) {
+        // Soft horizontal slide (transform-only). RTL: NEXT (goNext → "left") →
+        // new enters from the LEFT, old exits to the RIGHT; PREV → the opposite.
+        const next = direction === "left";
+        const enterCls = next ? "mushaf-page--enter-from-left" : "mushaf-page--enter-from-right";
+        const exitCls = next ? "mushaf-page--exit-to-right" : "mushaf-page--exit-to-left";
+        // Rapid taps: drop any pages still sliding from an earlier swap.
+        PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => { if (p !== old && p !== newPage) p.remove(); });
+        PAGES_EL.classList.add("mushaf-pages--animating");
+        clearTimeout(PAGES_ANIM_TIMER);
+        PAGES_ANIM_TIMER = setTimeout(() => PAGES_EL?.classList.remove("mushaf-pages--animating"), 480);
+        newPage.classList.add(enterCls);
+        newPage.addEventListener("animationend", () => newPage.classList.remove(enterCls), { once: true });
+        old.classList.add(exitCls);
+        old.addEventListener("animationend", () => old.remove(), { once: true });
+        setTimeout(() => { if (old.parentNode) old.remove(); }, 480);
     } else {
-        dispatch();
+        clearTimeout(PAGES_ANIM_TIMER);
+        PAGES_EL.classList.remove("mushaf-pages--animating");
+        if (old) old.remove();
     }
+
+    activatePage(newPage, data);
 }
 
 function buildSurahHeader(surahId) {
@@ -1860,12 +1818,45 @@ function applyTargetHighlight({ noScroll = false } = {}) {
     setTimeout(() => els.forEach((el) => el.classList.remove("mushaf-ayah--target")), 4000);
 }
 
+/* ============================================================
+ * Uniform page sizing (autoFit)
+ *
+ * Every Madani page renders at ONE shared font-size so pages don't jump
+ * big/small as you flip. The size fits the GLOBAL densest line (the widest
+ * single line seen anywhere in the Mushaf) into the container: the densest
+ * page just fits, and every sparser page renders at the SAME size with
+ * natural side margins — never enlarged past the shared size, never
+ * overflowing.
+ *
+ * Why a ratio, not a fixed px: a line's natural width scales linearly with
+ * font-size, so ρ = (line width ÷ font-size) is a device- and container-
+ * independent property of the glyphs. We track the max ρ across pages
+ * (MUSHAF_MAX_RATIO) and derive the px size at render time from the LIVE
+ * container width — uniform on any screen, and the widest line can never
+ * overflow. (Earlier this fit each page to its OWN widest line, so a page's
+ * size depended on its densest line → big/small variance page-to-page.)
+ *
+ * Madani layout is untouched: which words sit on which line is fixed by the
+ * page data (+ .mushaf-line nowrap), so font-size can't reflow a line.
+ * ============================================================ */
+const FIT_SAFETY = 0.98;    // 2% margin for anti-aliasing / sub-pixel rounding
+const FIT_MAX_PX = 38;      // cap so it can't get gigantic on wide desktop monitors
+const FIT_RATIO_MIN = 4;    // sane band — reject degenerate measurements (a real
+const FIT_RATIO_MAX = 30;   // full Mushaf line is only ~10–14× its font-size)
+let MUSHAF_MAX_RATIO = 0;   // max (widest-line width ÷ font-size) seen this session
+
 function autoFitFontSize() {
     if (!ACTIVE_PAGE_EL || !PAGES_EL) return Promise.resolve();
 
-    // Reset to CSS default so we can measure the natural unscaled width
+    // Reset to CSS default so we measure the line at a known base size.
     ACTIVE_PAGE_EL.style.removeProperty('--font-size');
-    const containerWidth = PAGES_EL.clientWidth - 16; // 8px padding each side
+    // Side gutter the widest line must stay inside. Normal view keeps 16px
+    // (the page reserves ~8px×2). Fullscreen is an immersive, padding-less
+    // column, so it reclaims down to 2px — letting the text fill more of the
+    // width (its remaining empty space is vertical/centering, which a
+    // width-pinned, nowrap line can't use without overflowing dense pages).
+    const gutter = ACTIVE_PAGE_EL.closest('.mushaf-root--fullscreen') ? 2 : 16;
+    const containerWidth = PAGES_EL.clientWidth - gutter;
     if (containerWidth <= 0) return Promise.resolve();
 
     return document.fonts.ready.then(() => {
@@ -1884,21 +1875,38 @@ function autoFitFontSize() {
             const width = line.scrollWidth;
             if (width > maxLineWidth) maxLineWidth = width;
         });
+        if (maxLineWidth <= 0) return;
 
-        if (maxLineWidth > 0) {
-            const currentFontSizeStr = window.getComputedStyle(ACTIVE_PAGE_EL).getPropertyValue('--font-size');
-            const baseFontSize = parseFloat(currentFontSizeStr) || 32;
+        const baseFontSize =
+            parseFloat(window.getComputedStyle(ACTIVE_PAGE_EL).getPropertyValue('--font-size')) || 32;
 
-            // Scale to fit exactly, minus 2% for anti-aliasing safety margin
-            const scale = (containerWidth / maxLineWidth) * 0.98;
+        // ρ for this page's widest line: width per 1px of font-size.
+        const ratio = maxLineWidth / baseFontSize;
 
-            let newSize = baseFontSize * scale;
-
-            // Limit maximum font size so it doesn't get gigantic on wide desktop monitors
-            if (newSize > 38) newSize = 38;
-
-            ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
+        // Grow the global densest-line ratio — but NOT while the fullscreen
+        // wrap-zoom ([data-fs-zoom]) is active: there the lines are
+        // display:inline / wrapped, so their scrollWidth is meaningless and
+        // would poison the shared size. (FS_FONT_LOCK no longer guards this —
+        // its deps are never called — so the skip lives here.) The sane band
+        // rejects any other stray measurement; a smaller ρ never wins, so the
+        // max converges to the true full-line ratio regardless.
+        if (ratio >= FIT_RATIO_MIN && ratio <= FIT_RATIO_MAX &&
+            ratio > MUSHAF_MAX_RATIO &&
+            !ACTIVE_PAGE_EL.closest('[data-fs-zoom]')) {
+            MUSHAF_MAX_RATIO = ratio;
         }
+
+        // Uniform size = fit the GLOBAL densest line to the container. Until
+        // the first valid global sample exists, fall back to this page's own
+        // ratio (matches the old behaviour for that single first render).
+        const denom = MUSHAF_MAX_RATIO || ratio;
+        let newSize = (containerWidth / denom) * FIT_SAFETY;
+        if (newSize > FIT_MAX_PX) newSize = FIT_MAX_PX;
+        // Round to a stable 0.5px step so sub-pixel ratio noise between
+        // renders can't make otherwise-identical pages look different.
+        newSize = Math.round(newSize * 2) / 2;
+
+        ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
     });
 }
 
@@ -4079,10 +4087,6 @@ function handleSettingsChip(chip) {
         }
         // Push to Tafsir so its listening-mode flag + chip stay in sync.
         DEPS?.onAudioModeChanged?.(AUDIO_MODE);
-    } else if (group === "font-size") {
-        FONT_SIZE = (val === "s") ? "s" : "m";
-        try { localStorage.setItem(STORAGE.FONT_SIZE, FONT_SIZE); } catch { }
-        document.documentElement.setAttribute("data-font-size", FONT_SIZE);
     } else if (group === "repeat") {
         DEPS?.setRepeatPref?.(val === "inf" ? Infinity : Number(val));
     }
@@ -4107,9 +4111,6 @@ function syncSettingsUI() {
     });
     document.querySelectorAll('[data-settings-group="audio-mode"] .mushaf-settings__chip').forEach((c) => {
         c.setAttribute("aria-checked", c.dataset.val === AUDIO_MODE ? "true" : "false");
-    });
-    document.querySelectorAll('[data-settings-group="font-size"] .mushaf-settings__chip').forEach((c) => {
-        c.setAttribute("aria-checked", c.dataset.val === FONT_SIZE ? "true" : "false");
     });
     // Repeat row: reflect the saved preference. Also hide the entire
     // section whenever audio-mode is "continuous" — the repeat-ayah toggle
