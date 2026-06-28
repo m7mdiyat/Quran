@@ -180,7 +180,7 @@ function onPanelClosed() {
 function isBackgroundTarget(t) {
     if (!(t instanceof Element)) return false;
     return !t.closest(
-        ".mushaf-ayah, .mushaf-surah-header, .mushaf-nav," +
+        ".mushaf-ayah, .mushaf-surah-header, .mushaf-bottom-nav," +
         " .mushaf-fs__close, .mushaf-fs__font-btn, .mushaf-fs__settings-btn," +
         " .mushaf-fs__settings-panel, .mushaf-fs__nav, .mushaf-toolbar," +
         " .mushaf-ayah-menu, .mushaf-mukhtasar"
