@@ -39,6 +39,19 @@
               && navigator.userAgent.indexOf("Android") !== -1);
         if (!inApp) return;
         document.documentElement.classList.add("is-app");
+        // Resume-reload safety (iOS). When the app is backgrounded, WKWebView
+        // can be purged under memory pressure and RELOADED on resume. With the
+        // default scroll restoration ("auto") the WebView re-applies the old
+        // (scrolled-down) position at first paint — and a position:fixed element
+        // laid out on an already-scrolled WKWebView document anchors to the
+        // DOCUMENT, not the viewport (the same fixed-on-scrolled-document bug
+        // documented elsewhere in this file). That makes the full-screen
+        // #m7-splash cover render off-position / cut off. Hand scroll control to
+        // the app: every (re)load now starts at 0 so the splash always covers
+        // the viewport correctly; the app restores the reading position itself
+        // (resume.js) AFTER the splash, behind it — so no flash, no jump.
+        // App-only: the website keeps auto restoration for normal back/forward.
+        try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch (e) { }
         // App: lock the viewport so the WebView feels native — kill double-tap
         // zoom AND pinch-zoom (maximum-scale=1 + user-scalable=no) while keeping
         // the edge-to-edge safe-area layout (viewport-fit=cover). Runs only
@@ -220,18 +233,51 @@
 }
 </script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://tafsir-api-317751773286.me-central1.run.app" crossorigin>
   <link rel="dns-prefetch" href="https://tafsir-api-317751773286.me-central1.run.app">
   <!-- Preload local font to prevent FOUT (Flash of Unstyled Text) -->
   <link rel="preload" href="/MeQuran.ttf" as="font" type="font/ttf" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Outfit:wght@300;400;600;700;800&display=swap"
-    rel="stylesheet">
 
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/mushaf.css">
+
+  <!-- IBM Plex Sans Arabic — BUNDLED locally (public/fonts/, Arabic subset, the
+       weights the panels + mushaf footer use) so it's instant + offline on a
+       FRESH install with NO FOUT. The id is the same one every panel's
+       ensurePanelFont() checks, so they skip injecting the old remote Google-
+       Fonts <link> (which, loaded later, would override these and bring the
+       first-install flash back). app.js force-loads the weights at boot. -->
+  <style id="offlinePanelFont">
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/ibm-plex-arabic-400.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/ibm-plex-arabic-500.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/ibm-plex-arabic-600.woff2") format("woff2"); }
+    @font-face { font-family: "IBM Plex Sans Arabic"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/ibm-plex-arabic-700.woff2") format("woff2"); }
+  </style>
+
+  <!-- Amiri (Arabic fallback after MeQuran) + Outfit (Latin / UI) — BUNDLED
+       locally (public/fonts/, the EXACT subsets Google Fonts serves) so they
+       load instantly, work fully offline, and add NO render-blocking network
+       request on cold start. Replaces the old remote fonts.googleapis.com
+       stylesheet. unicode-range is preserved verbatim, so the browser still
+       fetches only the subset a glyph actually needs. Outfit 300 was dropped
+       (zero uses in the CSS). Used on first paint, so font-display:swap loads
+       them immediately — no document.fonts.load() force-load needed. -->
+  <style id="heroFonts">
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/amiri-400-arabic.woff2") format("woff2"); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/amiri-400-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/amiri-400-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/amiri-700-arabic.woff2") format("woff2"); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/amiri-700-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Amiri"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/amiri-700-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/outfit-400-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/outfit-400-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/outfit-600-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/outfit-600-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/outfit-700-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/outfit-700-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 800; font-display: swap; src: url("/fonts/outfit-800-latinext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+    @font-face { font-family: "Outfit"; font-style: normal; font-weight: 800; font-display: swap; src: url("/fonts/outfit-800-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  </style>
 
   <style>
     @font-face {
@@ -323,10 +369,13 @@
 
     /* App only: no rubber-band bounce on the page scroller — the bounce
      * dragged the sticky header (the whole top area) off-screen during
-     * hard scrolls, and exposed the overscroll area behind the page. */
+     * hard scrolls, and exposed the overscroll area behind the page. Both
+     * axes: the X bounce let the Mushaf page wobble side-to-side on a
+     * horizontal drag above the surah name (a region above PAGES_EL's swipe
+     * guard). overscroll-behavior:none kills that horizontal rubber-band. */
     html.is-app,
     html.is-app body {
-      overscroll-behavior-y: none;
+      overscroll-behavior: none;
     }
 
     body {
@@ -427,6 +476,13 @@
       letter-spacing: .3px;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+
+    /* The theme toggle is WEB-ONLY now: in the app, dark/light lives in the
+       Settings sheet, so the top-bar button is hidden there. The inline head
+       script sets html.is-app synchronously before first paint (no flash). On
+       the website (no is-app) it stays — keeping theme switching reachable
+       without an app-only Settings panel. */
+    html.is-app #themeToggle { display: none; }
 
     /* Hover styles are the visual INVERSE of the normal styles (dark in
      * light mode, light in dark mode). On touch devices :hover sticks
@@ -1963,6 +2019,58 @@
       background: #22d3ee;
     }
 
+    /* Abdul Basit - Emerald */
+    .audio-player-wrapper.reciter-abdulbasit .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-abdulbasit .audio-main-btn:hover {
+      background: rgba(5, 150, 105, 0.12);
+      border-color: rgba(5, 150, 105, 0.35);
+      color: #059669;
+    }
+
+    .reciter-abdulbasit .audio-reciter-name { color: #059669; }
+    body.dark .reciter-abdulbasit .audio-reciter-name { color: #34d399; }
+    .reciter-abdulbasit .audio-slider::-webkit-slider-thumb { background: #059669; }
+    body.dark .reciter-abdulbasit .audio-slider::-webkit-slider-thumb { background: #34d399; }
+
+    /* Husary - Violet */
+    .audio-player-wrapper.reciter-husary .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-husary .audio-main-btn:hover {
+      background: rgba(124, 58, 237, 0.12);
+      border-color: rgba(124, 58, 237, 0.35);
+      color: #7c3aed;
+    }
+
+    .reciter-husary .audio-reciter-name { color: #7c3aed; }
+    body.dark .reciter-husary .audio-reciter-name { color: #a78bfa; }
+    .reciter-husary .audio-slider::-webkit-slider-thumb { background: #7c3aed; }
+    body.dark .reciter-husary .audio-slider::-webkit-slider-thumb { background: #a78bfa; }
+
+    /* Minshawi - Teal */
+    .audio-player-wrapper.reciter-minshawi .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-minshawi .audio-main-btn:hover {
+      background: rgba(13, 148, 136, 0.12);
+      border-color: rgba(13, 148, 136, 0.35);
+      color: #0d9488;
+    }
+
+    .reciter-minshawi .audio-reciter-name { color: #0d9488; }
+    body.dark .reciter-minshawi .audio-reciter-name { color: #2dd4bf; }
+    .reciter-minshawi .audio-slider::-webkit-slider-thumb { background: #0d9488; }
+    body.dark .reciter-minshawi .audio-slider::-webkit-slider-thumb { background: #2dd4bf; }
+
+    /* Maher Al-Muaiqly - Indigo */
+    .audio-player-wrapper.reciter-maher .audio-main-btn.playing,
+    .audio-player-wrapper.reciter-maher .audio-main-btn:hover {
+      background: rgba(79, 70, 229, 0.12);
+      border-color: rgba(79, 70, 229, 0.35);
+      color: #4f46e5;
+    }
+
+    .reciter-maher .audio-reciter-name { color: #4f46e5; }
+    body.dark .reciter-maher .audio-reciter-name { color: #818cf8; }
+    .reciter-maher .audio-slider::-webkit-slider-thumb { background: #4f46e5; }
+    body.dark .reciter-maher .audio-slider::-webkit-slider-thumb { background: #818cf8; }
+
     /* Audio Seek Row */
 
     .audio-seek-row {
@@ -3267,7 +3375,7 @@
      * theme color" highlight. Gating hover to @media (hover: hover) ensures
      * only true pointer devices (mouse, trackpad) get hover effects; touch
      * never sticks. Same pattern as .theme-toggle:hover above.
-     * Covers all three header buttons — #notesMenuBtn reuses .offline-menu-btn. */
+     * The remaining header button (#settingsMenuBtn) reuses .offline-menu-btn. */
     @media (hover: hover) {
       .offline-menu-btn:hover,
       .feedback-menu-btn:hover {
@@ -3321,15 +3429,169 @@
       .gharib-saved-btn__flame { animation: none; }
     }
 
+    /* ====================================================================
+     * App-download banner — WEBSITE ONLY (built/injected by src/app-banner.js,
+     * which app.js imports only in the `else` of isApp(); it never renders in
+     * the installed app). Slim dismissible bar that slides up from the bottom
+     * on mobile web. RTL: app icon + text lead (right edge), CTA then × trail
+     * (left edge). Hidden in Mushaf fullscreen so it can't overlap that mode's
+     * bottom page-nav. These rules live only here (the inline block is the sole
+     * home for app-component CSS — styles.css is Tailwind, mushaf.css is Mushaf).
+     * ==================================================================== */
+    .m7-app-banner {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 950;
+      transform: translateY(110%);
+      opacity: 0;
+      transition: transform .42s cubic-bezier(.22, 1, .36, 1), opacity .42s ease;
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 10px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      background: rgba(247, 251, 255, .82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -8px 28px rgba(15, 23, 42, .12);
+      will-change: transform, opacity;
+    }
+
+    .m7-app-banner--in {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .m7-app-banner__inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 64rem; /* matches the header's max-w-5xl container */
+      margin: 0 auto;
+      padding: 10px 14px;
+    }
+
+    .m7-app-banner__icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .18);
+    }
+    .m7-app-banner__icon img { width: 100%; height: 100%; display: block; }
+
+    .m7-app-banner__text {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+    .m7-app-banner__title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .m7-app-banner__sub {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .m7-app-banner__cta {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      color: #fff;
+      background: linear-gradient(135deg, #1d8fff, #1976d2);
+      box-shadow: 0 4px 10px rgba(29, 143, 255, .28);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .m7-app-banner__cta svg { width: 15px; height: 15px; }
+    @media (hover: hover) {
+      .m7-app-banner__cta:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(29, 143, 255, .34);
+      }
+    }
+
+    .m7-app-banner__close {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease;
+    }
+    .m7-app-banner__close svg { width: 16px; height: 16px; }
+    @media (hover: hover) {
+      .m7-app-banner__close:hover {
+        background: rgba(15, 23, 42, .06);
+        color: var(--text);
+      }
+    }
+
+    /* Dark theme — match the app's dark header surface. */
+    body.dark .m7-app-banner {
+      background: rgba(24, 28, 34, .92);
+      border-top-color: rgba(148, 163, 184, .22);
+      box-shadow: 0 -8px 28px rgba(0, 0, 0, .4);
+    }
+    body.dark .m7-app-banner__close:hover {
+      background: rgba(148, 163, 184, .16);
+    }
+
+    /* Immersive Mushaf fullscreen sets html.mushaf-fs-open — hide the banner
+       there so it never overlaps that mode's bottom page-nav controls. */
+    html.mushaf-fs-open .m7-app-banner { display: none; }
+
+    /* Reduced motion: appear in place, no slide. */
+    @media (prefers-reduced-motion: reduce) {
+      .m7-app-banner { transition: none; }
+    }
+
     /* Backdrop + centered card */
     .offline-sheet {
       position: fixed;
       inset: 0;
-      z-index: 1000;
+      /* Above the Mushaf fullscreen overlay (1000) + its re-anchored floating
+         lantern/circles (1001) and the gharib tip (2100), so a sheet opened by
+         a lantern tap INSIDE fullscreen paints over everything. */
+      z-index: 2200;
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      /* Respect the status-bar safe area at the TOP (and the home-indicator at
+         the bottom) using the app's canonical inset chain — otherwise a tall
+         centered card (e.g. the offline page with the reciter list expanded)
+         reaches its max-height and its top edge lands at the 16px padding,
+         OVER the status bar. max(env, --m7-statusbar-height) handles the
+         Android-14 WebView quirk where env() reports 0. */
+      padding:
+        calc(max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) + 12px)
+        16px
+        calc(env(safe-area-inset-bottom, 0px) + 16px);
       font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
       direction: rtl;
     }
@@ -3341,28 +3603,80 @@
        position:fixed lock is the one iOS WKWebView honours — matches
        body.mushaf-fs-open; sheet-scroll-lock.js pins/restores the scroll
        offset so the page never jumps. */
-    body.offline-sheet-open {
-      position: fixed;
-      left: 0;
-      right: 0;
-      width: 100%;
-      overflow: hidden;
+    /* body.offline-sheet-open / body.mushaf-coach-open carry NO positioning. The
+       scroll-lock is behavioral (sheet-scroll-lock.js preventDefaults touchmove),
+       so the body stays in normal flow and nothing re-anchors. These classes are
+       markers for the shared .sheet-scrim, the lock observer, and the rule below. */
+
+    /* Hide the page (root) scrollbar while a sheet/guide is open — the page is
+       locked anyway, and its bar showed at the screen's right edge over the dim.
+       :has() reaches the root scroller (html) from the body marker class. */
+    html:has(> body.offline-sheet-open),
+    html:has(> body.mushaf-coach-open) {
+      scrollbar-width: none;            /* Firefox */
     }
+    html:has(> body.offline-sheet-open)::-webkit-scrollbar,
+    html:has(> body.mushaf-coach-open)::-webkit-scrollbar {
+      display: none;                    /* WebKit / iOS */
+      width: 0;
+    }
+
+    /* Shared backdrop scrim — ONE blurred dim surface behind every sheet,
+       driven by body.offline-sheet-open. It stays put while panels swap (on a
+       hop the body class toggles off+on synchronously, which the browser
+       coalesces → no fade, no dip), and fades only when the first sheet opens
+       or the last one closes. Promoted to its own layer so the viewport blur is
+       rasterized ONCE and only opacity animates — no per-frame re-blur. This
+       kills both the close/open jank (each sheet used to animate its own
+       backdrop-filter) and the cross-fade blur dip on inner Settings hops. */
+    .sheet-scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 2199;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .24s ease, visibility 0s linear .24s;
+      transform: translateZ(0);
+      will-change: opacity;
+    }
+    body.offline-sheet-open .sheet-scrim {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity .24s ease, visibility 0s;
+    }
+    @media (prefers-reduced-motion: reduce) { .sheet-scrim { transition: none; } }
 
     .offline-sheet__backdrop {
       position: absolute;
       inset: 0;
-      background: rgba(15, 23, 42, .42);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      animation: offline-sheet-fade 180ms ease forwards;
+      /* Dim + blur now live on the shared .sheet-scrim (one continuous surface
+         across panel swaps). This element is just the click-to-close catcher. */
+      background: transparent;
+      /* The page must not be draggable under the (position:fixed) dim while a
+         panel is up — iOS WKWebView wouldn't repaint the fixed overlay at the new
+         offset, leaving the scrolled-in bottom undimmed/detached. touch-action:
+         none refuses the scroll gesture here (the card keeps its own and scrolls). */
+      touch-action: none;
     }
 
     .offline-sheet__card {
       position: relative;
       width: min(440px, 100%);
-      max-height: calc(100vh - 32px);
+      /* Match the sheet's safe-area padding so the card never exceeds the safe
+         region (top status bar + bottom home indicator), no matter how tall its
+         content gets — this is what keeps the top from creeping over the bars. */
+      max-height: calc(100vh - 28px - max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)) - env(safe-area-inset-bottom, 0px));
       overflow: auto;
+      /* The scroll-lock no longer freezes the page via CSS (it preventDefaults
+         touchmove), so contain this card's own scroll here — it must never chain
+         out to the page behind it. */
+      overscroll-behavior: contain;
+      scrollbar-width: none;        /* Firefox: no scrollbar line */
+      -ms-overflow-style: none;     /* old Edge */
       background: rgba(247, 251, 255, .96);
       border: 1px solid rgba(15, 23, 42, .08);
       border-radius: 22px;
@@ -3370,6 +3684,7 @@
       box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
       animation: offline-sheet-pop 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
+    .offline-sheet__card::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
     body.dark .offline-sheet__card {
       background: rgba(35, 41, 51, .98);
@@ -3381,6 +3696,44 @@
     @keyframes offline-sheet-pop {
       from { opacity: 0; transform: translateY(8px) scale(.98) }
       to { opacity: 1; transform: translateY(0) scale(1) }
+    }
+
+    /* Smooth open/close for the collection + notes sheets. The overlay stays
+       display:flex and fades as a whole (visibility-gated); the card adds a
+       gentle scale — so BOTH directions animate with plain CSS transitions, no
+       display:none snap. Overrides the base pop/fade keyframes. */
+    .offline-sheet--smooth {
+      display: flex;
+      visibility: hidden;
+      pointer-events: none;
+      transition: visibility 0s linear .28s;
+    }
+    .offline-sheet--smooth.offline-sheet--open {
+      visibility: visible;
+      pointer-events: auto;
+      transition: visibility 0s;
+    }
+    /* Blur fades on the BACKDROP itself (static blur + its own opacity) — NOT
+       via the overlay's opacity. A backdrop-filter inside an opacity-animating
+       ancestor blends wrong: it snaps in at the end. Fading the backdrop's own
+       opacity is compositor-cheap AND blends the blur in smoothly. And because
+       two sheets crossing over (sub-panel <-> Settings) overlap their fades,
+       the blurred surface never drops out between them — no flash. */
+    /* The blurred dim is the shared .sheet-scrim now; the sheet animates only
+       its CARD (transform + opacity — compositor-cheap, no backdrop-filter in
+       the animation path, so open/close no longer janks). */
+    .offline-sheet--smooth .offline-sheet__card {
+      animation: none;
+      opacity: 0;
+      transform: translateY(8px) scale(0.96);
+      transition: opacity .2s ease, transform .26s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .offline-sheet--smooth.offline-sheet--open .offline-sheet__card {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .offline-sheet--smooth .offline-sheet__card { transition: none; }
     }
 
     .offline-sheet__close {
@@ -3409,6 +3762,23 @@
     }
 
     body.dark .offline-sheet__close:hover { background: rgba(148, 163, 184, .24); }
+
+    /* Change 1c — keep the offline panel's back/close button reachable while a
+       tall (expanded) card scrolls. The pin is a 0-height STICKY anchor at the
+       card's content top (the card is the scroller); the absolute close button
+       positions within it, so it stays put as content scrolls beneath. The card
+       already respects the status-bar safe area, so the pinned button sits below
+       the status bar too. Only the offline sheet wraps its button in a pin. */
+    .offline-sheet__pin {
+      position: sticky;
+      top: 0;
+      height: 0;
+      z-index: 6;
+    }
+    .offline-sheet__pin .offline-sheet__close {
+      top: -10px;
+      left: -10px;
+    }
 
     .offline-sheet__head { text-align: center; margin-bottom: 18px; padding-top: 4px; }
 
@@ -3609,7 +3979,7 @@
 
     .offline-btn--primary {
       width: 100%;
-      background: linear-gradient(135deg, #1d8fff, #1976d2);
+      background: #1d8fff;
       color: #ffffff;
       box-shadow: 0 4px 10px rgba(29, 143, 255, .26);
     }
@@ -3639,6 +4009,280 @@
 
     .offline-btn--danger-text { color: #b91c1c; }
     body.dark .offline-btn--danger-text { color: #fecaca; }
+
+    /* ---------- Offline reciter download (app-only) — multi-select list inside
+       the offline panel. Reuses .offline-btn + .mushaf-download__bar tokens. ---------- */
+    .offline-row--reciters .offline-row__desc { margin-bottom: 10px; }
+    .offline-reciters__list { display: flex; flex-direction: column; gap: 6px; }
+    .reciter-pick-slot { display: block; }
+
+    .reciter-pick {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 11px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, .035);
+      border: 1px solid rgba(15, 23, 42, .06);
+      font-family: inherit;
+      text-align: right;
+      color: var(--text, #0b1326);
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    body.dark .reciter-pick { background: rgba(148, 163, 184, .08); border-color: rgba(148, 163, 184, .14); color: #e2e8f0; }
+
+    .reciter-pick--pick { cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+    .reciter-pick--pick:hover { background: rgba(15, 23, 42, .06); }
+    body.dark .reciter-pick--pick:hover { background: rgba(148, 163, 184, .14); }
+    .reciter-pick--pick.is-checked { border-color: rgba(29, 143, 255, .5); background: rgba(29, 143, 255, .08); }
+    body.dark .reciter-pick--pick.is-checked { border-color: rgba(29, 143, 255, .55); background: rgba(29, 143, 255, .14); }
+
+    .reciter-pick__box {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      border-radius: 6px;
+      border: 1.6px solid rgba(15, 23, 42, .25);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    body.dark .reciter-pick__box { border-color: rgba(148, 163, 184, .4); }
+    .reciter-pick--pick.is-checked .reciter-pick__box { background: #1d8fff; border-color: #1d8fff; }
+    .reciter-pick__box svg { width: 13px; height: 13px; }
+
+    .reciter-pick__name { flex: 1; font-size: 13.5px; font-weight: 600; }
+    .reciter-pick__size {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted, #64748b);
+      font-variant-numeric: tabular-nums;
+      background: rgba(15, 23, 42, .05);
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+    body.dark .reciter-pick__size { background: rgba(148, 163, 184, .14); }
+
+    .reciter-pick__check {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      color: #10b981;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .reciter-pick__check svg { width: 18px; height: 18px; }
+    .reciter-pick--done { border-color: rgba(16, 185, 129, .3); background: rgba(16, 185, 129, .07); }
+    body.dark .reciter-pick--done { border-color: rgba(16, 185, 129, .28); background: rgba(16, 185, 129, .1); }
+    .reciter-pick__del { padding: 5px 10px; font-size: 12px; }
+
+    /* downloading / queued → vertical; error / warn → inline */
+    .reciter-pick--busy, .reciter-pick--confirm { flex-direction: column; align-items: stretch; gap: 7px; }
+    .reciter-pick__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .reciter-pick--busy .mushaf-download__bar { margin: 0; }
+    .reciter-pick__pct { font-size: 12px; font-weight: 700; color: var(--muted, #64748b); font-variant-numeric: tabular-nums; }
+    .reciter-pick__msg { font-size: 11.5px; font-weight: 600; color: var(--muted, #64748b); min-height: 1.4em; transition: opacity .25s ease; }
+    .reciter-pick__hint { font-size: 12px; font-weight: 600; color: var(--muted, #64748b); }
+    .reciter-pick--warn { justify-content: space-between; }
+    .reciter-pick--warn { border-color: rgba(245, 158, 11, .25); }
+    .reciter-pick--err { justify-content: space-between; border-color: rgba(239, 68, 68, .25); }
+    .reciter-pick--err .reciter-pick__name { color: #b91c1c; }
+    body.dark .reciter-pick--err .reciter-pick__name { color: #fca5a5; }
+    .reciter-pick--confirm { border-color: rgba(245, 158, 11, .25); background: rgba(245, 158, 11, .08); }
+    body.dark .reciter-pick--confirm { background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .3); }
+    .reciter-pick__actions { display: flex; gap: 6px; }
+    .reciter-pick__actions .offline-btn { padding: 7px 12px; font-size: 12px; }
+
+    .offline-reciters__foot:not(:empty) { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .offline-reciters__total { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .offline-reciters__total-cap { font-size: 12.5px; font-weight: 600; color: var(--muted, #64748b); }
+    .offline-reciters__total-val { font-size: 14px; font-weight: 800; color: var(--text, #0b1326); font-variant-numeric: tabular-nums; }
+    body.dark .offline-reciters__total-val { color: #e2e8f0; }
+    .offline-reciters__foot .offline-btn--primary[disabled] { opacity: .5; cursor: default; box-shadow: none; transform: none; }
+
+    /* ---------- Transitions.dev "Accordion" (EXACT) — collapses the القرّاء
+       section into a single header tab. Mechanism: grid-template-rows 0fr↔1fr
+       (no JS height measuring) + chevron scaleY flip. ---------- */
+    :root {
+      /* slower + smoother reveal (Change 1b) — gentle, premium feel */
+      --acc-expand: 440ms;
+      --acc-collapse: 420ms;
+      --acc-chevron: 320ms;
+      --acc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .t-acc-panel {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-panel {
+      grid-template-rows: 1fr;
+      transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-panel-inner {
+      overflow: hidden;
+      opacity: 0;
+      filter: blur(2px);
+      transition:
+        opacity var(--acc-collapse) var(--acc-ease),
+        filter var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-panel-inner {
+      opacity: 1;
+      filter: blur(0);
+      transition:
+        opacity var(--acc-expand) var(--acc-ease),
+        filter var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-chevron {
+      display: inline-flex;
+      transform: scaleY(1);
+      transform-origin: center;
+      transition: transform var(--acc-chevron) var(--acc-ease);
+    }
+    .t-acc-chevron path { vector-effect: non-scaling-stroke; }
+    .t-acc[data-open="true"] .t-acc-chevron {
+      transform: scaleY(-1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron {
+        transition: none !important;
+      }
+    }
+    /* App adaptation (colors/spacing only — animation untouched). Collapsed, the
+       القرّاء card reads like the التدبّر/التفسير cards: title + chevron row, a
+       subtitle, and a blue CTA button. The CTA is its own grid-collapse so it
+       gives way to the reciter list as the panel expands (Change 1a). */
+    .t-acc-head {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: none;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      font-family: inherit;
+      color: inherit;
+      text-align: right;
+    }
+    .t-acc-head__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .t-acc-head .offline-row__desc { margin: 0; }
+    .t-acc-chevron { color: var(--muted, #64748b); }
+    .t-acc-chevron svg { width: 16px; height: 16px; display: block; }
+
+    /* CTA shown collapsed, collapses (height + fade) as the list expands. */
+    .t-acc-cta {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-cta {
+      grid-template-rows: 0fr;
+      transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+    }
+    .t-acc-cta__inner {
+      overflow: hidden;
+      padding-top: 12px;
+      opacity: 1;
+      transition: opacity var(--acc-collapse) var(--acc-ease);
+    }
+    .t-acc[data-open="true"] .t-acc-cta__inner { opacity: 0; pointer-events: none; }
+    .t-acc-cta__btn { width: 100%; }
+    /* small breathing room above the revealed reciter list */
+    .offline-row--reciters .t-acc-panel-inner { padding-top: 6px; }
+    @media (prefers-reduced-motion: reduce) {
+      .t-acc-cta, .t-acc-cta__inner { transition: none !important; }
+    }
+
+    /* ---------- Settings hub (app-only) — link rows + toggles inside the
+       .offline-sheet shell. Rows echo .offline-row; the switch uses the site's
+       slate track / blue accent so it reads as native chrome. ---------- */
+    .settings-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      text-align: right;
+      background: rgba(255, 255, 255, .7);
+      border: 1px solid rgba(15, 23, 42, .08);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--text, #0b1326);
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    body.dark .settings-row {
+      background: rgba(255, 255, 255, .04);
+      border-color: rgba(148, 163, 184, .14);
+      color: #e2e8f0;
+    }
+    @media (hover: hover) {
+      .settings-row--link:hover { background: rgba(15, 23, 42, .05); }
+      body.dark .settings-row--link:hover { background: rgba(148, 163, 184, .1); }
+    }
+
+    .settings-row__icon {
+      flex: 0 0 auto;
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, rgba(29, 143, 255, .15), rgba(29, 143, 255, .05));
+      color: #1d8fff;
+    }
+    .settings-row__icon svg { width: 20px; height: 20px; }
+
+    .settings-row__text { flex: 1 1 auto; min-width: 0; }
+    .settings-row__title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .settings-row__desc {
+      font-size: 12px; font-weight: 500; line-height: 1.5;
+      color: var(--muted, #64748b); margin-top: 2px;
+    }
+    .settings-row__chevron { flex: 0 0 auto; color: #94a3b8; display: inline-flex; }
+    .settings-row__chevron svg { width: 18px; height: 18px; display: block; }
+
+    /* Modern minimal switch (RTL: rests right when OFF, slides left when ON). */
+    .settings-switch {
+      flex: 0 0 auto;
+      position: relative;
+      width: 46px; height: 28px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .16);
+      transition: background .2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    body.dark .settings-switch { background: rgba(148, 163, 184, .28); }
+
+    .settings-switch__thumb {
+      position: absolute;
+      top: 3px; right: 3px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .3);
+      transition: transform .2s cubic-bezier(0.34, 1.36, 0.64, 1);
+    }
+
+    .settings-row--toggle[aria-checked="true"] .settings-switch { background: #1d8fff; }
+    .settings-row--toggle[aria-checked="true"] .settings-switch__thumb { transform: translateX(-18px); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .settings-switch, .settings-switch__thumb { transition: none; }
+    }
 
     /* ---------- Feedback section (app-only, inside offline sheet) ---------- */
     .feedback-section {
@@ -3765,18 +4409,24 @@
       font-variant-numeric: tabular-nums;
     }
     body.dark .notes-editor__counter { color: #64748b; }
+    /* Change 4 — stack the editor buttons full-width: حفظ primary on top,
+       إلغاء a full-width quiet/secondary button below it (neutral, NOT red —
+       cancelling here is non-destructive). حذف (only when editing an existing
+       note) sits between them. Clear primary → secondary hierarchy. */
     .notes-editor__actions {
-      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;
-      justify-content: flex-end;
+      display: flex; flex-direction: column; gap: 8px; margin-top: 4px;
     }
-    .notes-editor__actions .offline-btn { min-width: 90px; }
+    .notes-editor__actions .offline-btn { width: 100%; min-width: 0; }
+    .notes-editor__actions [data-note-close] { color: var(--muted, #64748b); font-weight: 700; }
+    body.dark .notes-editor__actions [data-note-close] { color: #94a3b8; }
     .notes-editor__hint {
       font-size: 11.5px; color: #94a3b8; text-align: center; margin-top: 6px;
     }
     body.dark .notes-editor__hint { color: #64748b; }
 
     /* --- Notes list (sheet contents) --- */
-    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; padding-inline-end: 2px; }
+    .notes-list { display: flex; flex-direction: column; gap: 10px; max-height: 56vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; padding-inline-end: 2px; }
+    .notes-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
     .notes-list__row {
       background: rgba(15, 23, 42, .04); border: 1px solid rgba(15, 23, 42, .06);
       border-radius: 14px; padding: 12px; cursor: pointer;
@@ -3821,6 +4471,32 @@
      * gold (static — calm). Removing a row forgets the word (gharibForget).
      * ==================================================================== */
 
+    /* The card is vertically centred in the shared .offline-sheet shell; that
+       pure centre felt a touch top-heavy, so bias the centring point downward a
+       little via asymmetric wrapper padding — NOT a transform (which would fight
+       the --smooth entry translate) and NOT extra height (which would grow both
+       edges). The backdrop is absolute inset:0, so padding never shrinks it. */
+    #gharibSavedSheet {
+      padding-top: 64px;
+    }
+
+    /* The collection holds short word rows — keep the card compact and narrow,
+       well under the default 440px sheet. */
+    #gharibSavedSheet .offline-sheet__card {
+      width: min(300px, 90vw);
+      max-height: min(76vh, 520px);
+      padding: 18px 18px 14px;
+      border-radius: 20px;
+      /* Fixed header + internally-scrolling list: a flex column that never
+         scrolls itself (overrides the base .offline-sheet__card overflow:auto)
+         — the head stays put and only the word list scrolls, in its own region. */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #gharibSavedSheet .offline-sheet__head { margin-bottom: 12px; flex-shrink: 0; }
+    #gharibSavedSheet .offline-sheet__title { font-size: 16px; }
+
     /* Head logo → the bare lantern itself (no square box), warm gold body +
        lit flame. It IS the غريب emblem, so it stands alone as the header mark. */
     #gharibSavedSheet .offline-sheet__icon {
@@ -3831,12 +4507,12 @@
       color: #c4a052;
     }
     body.dark #gharibSavedSheet .offline-sheet__icon { color: #d9b266; }
-    #gharibSavedSheet .offline-sheet__icon svg { width: 58px; height: 58px; }
+    #gharibSavedSheet .offline-sheet__icon svg { width: 40px; height: 40px; }
     #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #e3a338; stroke: none; }
     body.dark #gharibSavedSheet .offline-sheet__icon .gharib-saved-btn__flame { fill: #f0c069; }
 
-    /* "التدبر" in the panel's description — picked out in the lantern's own
-       warm gold (same palette as the flame above). */
+    /* The highlighted word in the panel's intro — picked out in the lantern's
+       own warm gold (same palette as the flame above). */
     .gharib-saved-tadabbur { color: #e3a338; font-weight: 700; }
     body.dark .gharib-saved-tadabbur { color: #f0c069; }
 
@@ -3922,16 +4598,71 @@
     .gharib-saved-confirm__actions { display: flex; gap: 8px; }
     .gharib-saved-confirm__actions .offline-btn { min-width: 92px; }
 
+    /* The scrolling word list + its custom gold scroll-rail, side by side. This
+       wrap takes the list's old place in the card's flex column (fills the
+       remaining height, min-height:0 so the LIST scrolls, not the card), with
+       the rail sitting flush beside it and matching its height. */
+    .gharib-saved-listwrap {
+      display: flex;
+      gap: 7px;
+      flex: 0 1 auto;
+      min-height: 0;
+      margin-top: 2px;
+    }
+
     /* Scrollable list of revealed words. */
     .gharib-saved-list {
       display: flex;
       flex-direction: column;
       gap: 9px;
-      max-height: 58vh;
+      /* Scroll INTERNALLY — the card no longer scrolls. flex:1 fills the wrap;
+         min-height:0 lets it shrink below its content so the overflow is
+         contained here, not on the whole panel. */
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
-      padding-inline-end: 2px;
-      margin-top: 2px;
+      overscroll-behavior: contain;
+      scrollbar-width: none;        /* Firefox: no scrollbar line */
+      -ms-overflow-style: none;     /* old Edge */
+      /* Mirror the rail (3px) + wrap gap (7px) = 10px on the OPPOSITE side (left,
+         which is inline-end in this RTL panel) so the rows stay centred in the
+         card instead of being pulled left by the right-hand rail. */
+      padding-inline-end: 10px;
     }
+    /* Hidden native scrollbar (still scrollable) — the gold rail replaces it. */
+    .gharib-saved-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+    /* Custom scroll-progress rail — a thin translucent track with a gold thumb
+       whose size = visible/total and position = scroll fraction (native-feel,
+       small thumb ⇒ more words below). Replaces the hidden native scrollbar;
+       purely indicative (no pointer events). Hidden until the list actually
+       scrolls. Reuses the lantern/count-chip gold — no new colour. */
+    .gharib-saved-scroll {
+      position: relative;
+      flex: 0 0 auto;
+      align-self: stretch;          /* match the list's height = track height */
+      width: 3px;
+      border-radius: 999px;
+      background: rgba(176, 138, 60, .14);
+      opacity: 0;                   /* shown only when scrollable (.is-active) */
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .gharib-saved-scroll.is-active { opacity: 1; }
+    .gharib-saved-scroll__thumb {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      min-height: 22px;
+      border-radius: 999px;
+      background: #e3a338;          /* solid lantern gold — no gradient */
+      /* height transitions smoothly when the list changes; transform (scroll
+         position) is set per-rAF and must NOT transition, or the thumb lags. */
+      transition: height .15s ease;
+    }
+    body.dark .gharib-saved-scroll { background: rgba(240, 192, 105, .12); }
+    body.dark .gharib-saved-scroll__thumb { background: #f0c069; }
 
     .gharib-saved-row {
       position: relative;
@@ -4091,6 +4822,104 @@
     body.dark .m7-tip__close:hover { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; }
     .m7-tip__close svg { width: 13px; height: 13px; }
 
+    /* ── First-launch guided tour (app only). The dim is the spotlight's huge
+       box-shadow spread, so the .tour layer itself is just a transparent tap-
+       catcher; the bubble reuses the .m7-tip glass/slate look. ── */
+    .tour {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000; /* above app chrome; the splash (max int) is gone by now */
+      opacity: 0;
+      transition: opacity .3s ease;
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      direction: rtl;
+    }
+    .tour--show { opacity: 1; }
+
+    /* Entrance: the card rises gently from just below while the whole overlay
+       fades in. The rise is a KEYFRAME (not a transition) so it fires
+       deterministically the instant .tour--show is added — no dependence on
+       before-change-style timing (which is why earlier transform-transition
+       attempts silently no-op'd). Opacity is the parent .tour fade above — one
+       mechanism for the entire overlay (dim + spotlight + card); the bubble
+       adds ONLY the transform, so nothing competes on opacity. tour.js commits
+       the bubble's final top/left before revealing, so the position transition
+       below has nothing to drag in from (0,0). */
+    @keyframes tourBubbleRise {
+      from { transform: translateY(18px); }
+      to   { transform: translateY(0); }
+    }
+
+    .tour__spot {
+      position: fixed;
+      top: 0; left: 0; width: 0; height: 0;
+      border-radius: 14px;
+      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+      outline: 2px solid rgba(255, 255, 255, 0.85);
+      outline-offset: 0;
+      pointer-events: none; /* taps fall through to .tour → advance */
+    }
+    body.dark .tour__spot {
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58);
+      outline-color: rgba(255, 255, 255, 0.55);
+    }
+    /* Transition only once shown, so the first placement doesn't fly in from 0,0. */
+    .tour--show .tour__spot {
+      transition:
+        top .3s cubic-bezier(0.16, 1, 0.3, 1), left .3s cubic-bezier(0.16, 1, 0.3, 1),
+        width .3s cubic-bezier(0.16, 1, 0.3, 1), height .3s cubic-bezier(0.16, 1, 0.3, 1),
+        border-radius .3s ease;
+    }
+
+    .tour__bubble {
+      position: fixed;
+      top: 0; left: 0;
+      max-width: min(300px, calc(100vw - 24px));
+      background: #f8fafc;
+      color: #334155;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 14px;
+      padding: 12px 14px 10px;
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.08);
+    }
+    body.dark .tour__bubble {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.16);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    .tour--show .tour__bubble {
+      animation: tourBubbleRise .44s cubic-bezier(0.16, 1, 0.3, 1) both;
+      transition: top .3s cubic-bezier(0.16, 1, 0.3, 1), left .3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tour__text { font-size: 13.5px; font-weight: 600; line-height: 1.75; }
+    .tour__actions {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-top: 10px;
+    }
+    .tour__skip {
+      border: 0; background: transparent; color: #64748b;
+      font: inherit; font-size: 13px; font-weight: 600;
+      padding: 6px 4px; cursor: pointer; border-radius: 8px;
+    }
+    .tour__skip:hover { color: #334155; }
+    body.dark .tour__skip { color: #94a3b8; }
+    body.dark .tour__skip:hover { color: #e2e8f0; }
+    .tour__next {
+      border: 0; border-radius: 10px; cursor: pointer;
+      background: #1d8fff; color: #fff;
+      font: inherit; font-size: 13px; font-weight: 700;
+      padding: 7px 18px;
+      box-shadow: 0 2px 8px rgba(29, 143, 255, 0.3);
+    }
+    @media (hover: hover) { .tour__next:hover { background: #0f7ae6; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tour, .tour--show .tour__spot, .tour--show .tour__bubble { transition: none; }
+      .tour--show .tour__bubble { animation: none; }
+    }
+
     /* ── App-only native-feel lockdown ──────────────────────────────
        Gated to html.is-app (set before first paint by the head script),
        so the website is completely unaffected. This inline copy loads last,
@@ -4106,7 +4935,13 @@
          input (surah search, ayah number, AI question, feedback form). */
     html.is-app,
     html.is-app body {
-      touch-action: manipulation;
+      /* pan-y pinch-zoom (was `manipulation`) — forbids native HORIZONTAL page
+         panning app-wide, killing the WKWebView left/right rubber-band drift
+         that `overscroll-behavior` alone didn't suppress on the root document.
+         Vertical scroll + pinch-zoom stay; native range sliders (volume/speed)
+         and the JS Mushaf swipe-flip are unaffected (their drags aren't page
+         pans). No native horizontal scrollers exist to break. */
+      touch-action: pan-y pinch-zoom;
     }
     html.is-app,
     html.is-app * {
@@ -4834,7 +5669,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-Dc8giRqb.js"></script>
+  <script type="module" crossorigin src="/assets/index-B-yaaiDB.js"></script>
 </head>
 
 <body>
@@ -4849,6 +5684,8 @@
        fade-out lifecycle on it; the inline timer below is a last-resort
        escape if app JS never boots. display:none on the website. -->
   <div id="m7-splash" aria-hidden="true"></div>
+  <!-- One shared blurred dim behind every sheet; shown via body.offline-sheet-open. -->
+  <div class="sheet-scrim" aria-hidden="true"></div>
   <script>
     (function () {
       if (!document.getElementById("m7-splash")) return;
@@ -4862,42 +5699,15 @@
   <!-- Minimal top bar (frozen — position:fixed via CSS, Fix 5) -->
   <header class="site-header top-0 z-40 border-b border-black/5">
     <div class="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-2">
-      <!-- App-only action buttons (offline downloads + feedback). Empty wrapper
-           on the website — both buttons start display:none and are revealed by
-           their respective panel modules behind isApp(). -->
+      <!-- App-only settings hub (offline downloads + feedback + toggles live
+           inside its sheet). Empty wrapper on the website — the button starts
+           display:none and settings-panel.js reveals it behind isApp(). -->
       <div class="header-app-actions">
-        <button id="offlineMenuBtn" type="button" class="offline-menu-btn"
-          style="display:none;" aria-label="التحميل لاستخدام التطبيق بدون إنترنت">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m0 0l-2.25-2.25M12 16.5l2.25-2.25"/>
-          </svg>
-        </button>
-        <button id="feedbackMenuBtn" type="button" class="feedback-menu-btn"
-          style="display:none;" aria-label="إرسال ملاحظة">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/>
-          </svg>
-        </button>
-        <button id="notesMenuBtn" type="button" class="offline-menu-btn"
-          style="display:none;" aria-label="تدبرياتي">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3Z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
-          </svg>
-        </button>
-        <!-- غريب القرآن saved-words collection (app only). The lantern echoes
-             the in-Mushaf فانوس; its flame stays warmly lit in every state. -->
-        <button id="gharibSavedBtn" type="button" class="offline-menu-btn gharib-saved-btn"
-          style="display:none;" aria-label="كلمات غريب القرآن المحفوظة">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M10.7 3.2a1.55 1.55 0 0 1 2.6 0"/>
-            <path d="M9.1 6.6c.3-1.7 1.4-2.6 2.9-2.6s2.6.9 2.9 2.6"/>
-            <path d="M8.3 6.6h7.4"/>
-            <path d="M9.2 6.6l-.5 7.2a1.3 1.3 0 0 0 1.3 1.4h4a1.3 1.3 0 0 0 1.3-1.4l-.5-7.2"/>
-            <path class="gharib-saved-btn__flame" d="M12.4 7.4c-1.4 1.7-2.4 2.9-2.4 4.4a2 2 0 0 0 4 0c0-1-.4-1.9-1-2.9.2.7.1 1.2-.2 1.6.5-1.2.3-2.3-.4-3.1z"/>
-            <path d="M10.4 15.2l-.6 2.9M13.6 15.2l.6 2.9"/>
-            <path d="M9.6 18.1h4.8"/>
+        <button id="settingsMenuBtn" type="button" class="offline-menu-btn"
+          style="display:none;" aria-label="إعدادات">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
       </div>
@@ -5127,9 +5937,9 @@
               <div class="mt-6">
                 <div id="tafsirComparePanel" class="mt-6 hidden" aria-hidden="true">
                   <div class="rounded-3xl border border-slate-900/10 bg-white/60 p-5">
-                    <div class="compare-header-row flex items-center justify-between gap-3 flex-wrap"
+                    <div class="compare-header-row flex items-center justify-between gap-2 flex-wrap"
                       style="cursor: pointer;">
-                      <div class="text-sm font-extrabold text-slate-700 flex items-center gap-2">
+                      <div class="text-xs font-extrabold text-slate-700 flex items-center gap-2">
                         <span>مقارنة بين التفاسير</span>
                         <svg id="compareToggleIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                           stroke-width="2.5" stroke="currentColor"
@@ -5139,8 +5949,10 @@
                       </div>
                       <div class="flex items-center gap-2">
                         <button type="button" id="compareWritePauseBtn"
+                          style="min-width: 5rem; text-align: center;"
                           class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition">إيقاف</button>
                         <button type="button" id="compareStopBtn"
+                          style="min-width: 5rem; text-align: center;"
                           class="hidden px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إيقاف</button>
                         <button type="button" id="compareCloseBtn"
                           class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-slate-900/5 hover:bg-slate-900/10 transition">إغلاق</button>

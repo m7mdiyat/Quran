@@ -1,0 +1,76 @@
+{
+  "generated": "static",
+  "base": "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/surah",
+  "reciters": {
+    "alijaber": {
+      "audio": 727429537,
+      "timings": 50378,
+      "total": 727479915,
+      "files": 228,
+      "missing": 0
+    },
+    "shuraim": {
+      "audio": 522669608,
+      "timings": 49383,
+      "total": 522718991,
+      "files": 228,
+      "missing": 0
+    },
+    "ayoub": {
+      "audio": 920529970,
+      "timings": 51139,
+      "total": 920581109,
+      "files": 228,
+      "missing": 0
+    },
+    "qasim": {
+      "audio": 585126088,
+      "timings": 287718,
+      "total": 585413806,
+      "files": 228,
+      "missing": 0
+    },
+    "dosari": {
+      "audio": 743492918,
+      "timings": 50379,
+      "total": 743543297,
+      "files": 228,
+      "missing": 0
+    },
+    "luhaidan": {
+      "audio": 729792627,
+      "timings": 252774,
+      "total": 730045401,
+      "files": 228,
+      "missing": 0
+    },
+    "abdulbasit": {
+      "audio": 892977267,
+      "timings": 253374,
+      "total": 893230641,
+      "files": 228,
+      "missing": 0
+    },
+    "husary": {
+      "audio": 1232943552,
+      "timings": 255462,
+      "total": 1233199014,
+      "files": 228,
+      "missing": 0
+    },
+    "minshawi": {
+      "audio": 829603994,
+      "timings": 253138,
+      "total": 829857132,
+      "files": 228,
+      "missing": 0
+    },
+    "maher": {
+      "audio": 601307042,
+      "timings": 251035,
+      "total": 601558077,
+      "files": 228,
+      "missing": 0
+    }
+  }
+}

@@ -198,30 +198,22 @@ body.dark .mode-toggle__knob {
 }
 
 /* ============================================================
- * Page footer (centered "صفحة N")
- * ============================================================ */
-.mushaf-page-footer {
-    text-align: center;
-    margin-top: 18px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
-    /* Arabic UI font (same family the app's other Arabic UI uses) — the
-       inherited body stack rendered "صفحة" in the system fallback with the
-       digit in Outfit, a visible mismatch. No letter-spacing: tracking
-       gaps cursive Arabic joins and read as broken type. */
-    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--muted);
-    letter-spacing: normal;
-}
-
-/* ============================================================
  * Page area + transitions (200ms for snappier feel)
  * ============================================================ */
 .mushaf-stage {
     position: relative;
     min-height: 320px;
+}
+
+/* Lock the normal-view page against horizontal finger-drag. A horizontal drag
+   in the band ABOVE the surah name was rubber-band-dragging the page side to
+   side on iOS: that band sits above PAGES_EL (where the JS swipe guard lives),
+   so nothing suppressed the native horizontal pan there. pan-y still allows
+   vertical reading-scroll and still delivers touch events to the JS swipe-flip
+   (so a deliberate flip snaps cleanly), but forbids native horizontal panning.
+   Normal view only — fullscreen keeps its own touch-action (manipulation). */
+.mushaf-root:not(.mushaf-root--fullscreen) .mushaf-stage {
+    touch-action: pan-y;
 }
 
 .mushaf-pages {
@@ -359,44 +351,56 @@ body.dark .mushaf-download {
     inset: 0;
 }
 
-/* Keyframe fade: 0% → 100% opacity — guaranteed to run */
-@keyframes mushafFadeIn {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
+/* ============================================================
+ * Page-turn: soft horizontal slide (replaces the cross-fade). The new page
+ * slides in from one side while the old page slides out the other — they move
+ * together so it reads as one page replacing another. transform: translateX
+ * ONLY (GPU-friendly; no layout/opacity/shadow/blur), so it stays light on
+ * low-end devices. RTL: NEXT (forward) → new enters from the LEFT, old exits to
+ * the RIGHT (the strip sweeps right); PREV → the opposite. Direction is set by
+ * goNext()→"left" / goPrev()→"right" in renderPage().
+ *
+ * The new page stays in normal flow (so .mushaf-pages keeps its height and the
+ * stage doesn't collapse) and slides via transform; the OLD page is taken
+ * absolute + inset:0 (overlapping) and slides out. .mushaf-pages--animating
+ * clips the overflow only for the duration of the slide.
+ * ============================================================ */
+:root {
+    --mushaf-slide-dur: 420ms;
+    --mushaf-slide-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes mushafFadeOut {
-    from {
-        opacity: 1;
-    }
+@keyframes mushafSlideInFromLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes mushafSlideInFromRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes mushafSlideOutToRight { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes mushafSlideOutToLeft { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
-    to {
-        opacity: 0;
-    }
+.mushaf-page--enter-from-left {
+    animation: mushafSlideInFromLeft var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--enter-from-right {
+    animation: mushafSlideInFromRight var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--exit-to-right {
+    position: absolute;
+    inset: 0;
+    animation: mushafSlideOutToRight var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
+}
+.mushaf-page--exit-to-left {
+    position: absolute;
+    inset: 0;
+    animation: mushafSlideOutToLeft var(--mushaf-slide-dur) var(--mushaf-slide-ease) both;
+    will-change: transform;
 }
 
-.mushaf-page--fade-in {
-    animation: mushafFadeIn 250ms ease-out both;
-}
-
-.mushaf-page--fade-out {
-    animation: mushafFadeOut 200ms ease-in both;
-}
-
-/* Font size presets — only "m" (عادي, default) and "s" (صغير) now. */
-[data-font-size="m"] .mushaf-page {
-    --font-size: 32px;
-    --line-gap: 6px;
-}
-
-[data-font-size="s"] .mushaf-page {
-    --font-size: 26px;
-    --line-gap: 4px;
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-page--enter-from-left,
+    .mushaf-page--enter-from-right,
+    .mushaf-page--exit-to-right,
+    .mushaf-page--exit-to-left { animation: none !important; }
 }
 
 /* ============================================================
@@ -423,6 +427,16 @@ body.dark .mushaf-download {
        (distorted). A viewport-relative clamp keeps it compact and
        proportional like the printed Mushaf on any device. */
     font-size: clamp(18px, 4vw, 28px);
+    /* The bismillah is a single ornamental glyph dominated by a long, thin,
+       near-horizontal stroke. On Windows/Chrome at browser zoom >100%, the
+       effective size is fractional and DirectWrite's hinting grid-fits that
+       hairline off the device-pixel rows, breaking it into torn/jagged
+       segments (macOS CoreText renders it as a soft continuous line, so Mac is
+       unaffected, and it's clean at exactly 100%). geometricPrecision tells
+       Blink to skip hinting-driven grid-snapping and rasterize the outline at
+       sub-pixel precision with smooth AA, like Mac — visually identical at
+       100% on Mac/phone (at most imperceptibly softer), robust under zoom. */
+    text-rendering: geometricPrecision;
 }
 
 .mushaf-ayah {
@@ -484,23 +498,113 @@ body.dark .mushaf-ayah--playing {
 }
 
 /* ============================================================
- * On-screen page nav arrows
+ * Bottom page nav — a sleek ‹ N › row below the page (replaces the old
+ * side arrows). Mirrors the fullscreen overlay nav (.mushaf-fs__nav) but
+ * sits in-flow and uses the app's card tokens, so it lives inside the
+ * Mushaf card and tracks dark mode. The IDs mushafPrev / mushafNext are
+ * reused on these buttons, so all nav wiring + disabled states are unchanged.
+ * ============================================================ */
+.mushaf-bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+    margin-top: 16px;
+    /* Lift the row off the bottom edge — comfortable breathing room from the
+       card bottom (was ~13px; now ~36px with the card's own padding). */
+    margin-bottom: 24px;
+    /* LTR so the chevrons keep their visual order: ‹ (next/forward) on the
+       left, › (prev/back) on the right — pages advance leftward in RTL. */
+    direction: ltr;
+}
+
+/* #2 — kill the trailing gap below the page. The outer content <section>
+   (main > section.pt-14.pb-10) adds 40px of padding-bottom under the Mushaf
+   card; on top of the card's own bottom padding + the nav's ~36px lift, that
+   reads as a big empty band when scrolled to the bottom. Drop it in MUSHAF MODE
+   only (Tafsir / the website keep their breathing room) so the page ends
+   cleanly right after the ‹ N › row. */
+[data-app-mode="mushaf"] main > section.pt-14 {
+    padding-bottom: 0;
+}
+
+.mushaf-bottom-nav__page {
+    min-width: 34px;
+    text-align: center;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+
+.mushaf-bottom-nav__btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    color: var(--text);
+    cursor: pointer;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 180ms ease;
+}
+
+.mushaf-bottom-nav__btn svg {
+    width: 19px;
+    height: 19px;
+}
+
+.mushaf-bottom-nav__btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+.mushaf-bottom-nav__btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10);
+}
+
+.mushaf-bottom-nav__btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+    transform: none;
+    box-shadow: none;
+}
+
+body.dark .mushaf-bottom-nav__btn {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================================
+ * Responsive page nav. Phones + the APP use the bottom ‹ N › row (above).
+ * Wide WEB screens (≥768px and NOT the app) instead get floating side pills
+ * (vertically centered on the page edges) + a per-page "صفحة N" footer —
+ * easier to click with a mouse. The `html:not(.is-app)` guard forces the APP
+ * to ALWAYS keep the bottom row, even on a wide tablet (iPad). Both layouts'
+ * buttons share data-mushaf-nav, so handlers / disabled-state / swipe are one.
  * ============================================================ */
 .mushaf-nav {
+    display: none;   /* revealed only on wide web screens (media query below) */
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     width: 38px;
     height: 38px;
-    display: grid;
     place-items: center;
     border-radius: 999px;
     background: linear-gradient(180deg, var(--card), var(--card2));
     border: 1px solid var(--line);
     color: var(--text);
     cursor: pointer;
-    /* The button box itself never transitions or moves. Only the chevron
-       icon inside reacts on hover (see .mushaf-nav svg rules below). */
     transition: none;
     appearance: none;
     -webkit-appearance: none;
@@ -510,9 +614,7 @@ body.dark .mushaf-ayah--playing {
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-/* Hard-lock EVERY visual property of the box on every interactive state.
- * Position, scale, background, color, shadow, border, outline — all
- * pinned to the resting values. The button box is glued in place. */
+/* Hard-lock the box on every interactive state — only the chevron animates. */
 .mushaf-nav:hover,
 .mushaf-nav:focus,
 .mushaf-nav:focus-visible,
@@ -529,9 +631,6 @@ body.dark .mushaf-ayah--playing {
 .mushaf-nav svg {
     width: 18px;
     height: 18px;
-    /* The chevron is the ONLY thing that animates on hover. It scales up
-     * slightly so the button feels alive without the box itself moving.
-     * Eased with a cubic-bezier for a soft snap. */
     transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
     transform-origin: center;
 }
@@ -542,23 +641,34 @@ body.dark .mushaf-ayah--playing {
     transform: scale(1.18);
 }
 
-.mushaf-nav svg {
-    width: 18px;
-    height: 18px;
-}
-
-.mushaf-nav--prev {
-    right: -6px;
-}
-
-.mushaf-nav--next {
-    left: -6px;
-}
+.mushaf-nav--prev { right: -6px; }
+.mushaf-nav--next { left: -6px; }
 
 .mushaf-nav[disabled] {
     opacity: 0.3;
     cursor: default;
     pointer-events: none;
+}
+
+/* Per-page "صفحة N" footer — wide web only (phones show the number in the
+   bottom ‹ N › row). Hidden by default; revealed in the media query. */
+.mushaf-page-footer {
+    display: none;
+    text-align: center;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: normal;
+}
+
+@media (min-width: 768px) {
+    html:not(.is-app) .mushaf-nav { display: grid; }
+    html:not(.is-app) .mushaf-bottom-nav { display: none; }
+    html:not(.is-app) .mushaf-page-footer { display: block; }
 }
 
 /* ============================================================
@@ -1335,6 +1445,79 @@ body.dark .mushaf-settings__row--pills .mushaf-settings__chip[aria-checked="true
 }
 
 /* ============================================================
+ * Reciter picker — 4 default chips + a "+ المزيد" chip (same pill style) that
+ * smoothly reveals the rest as more identical chips. One consistent chip
+ * family; the reveal uses the accordion grid-rows 0fr↔1fr grow + blur/opacity
+ * fade (no separate panel, no morphing). Used in Tafsir, Mushaf, fullscreen.
+ * ============================================================ */
+.reciter-pick-group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.reciter-pick-group__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.reciter-pick-group__rest {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reciter-pick-group[data-open="true"] .reciter-pick-group__rest {
+    grid-template-rows: 1fr;
+}
+.reciter-pick-group__rest-inner {
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    opacity: 0;
+    filter: blur(2px);
+    transition:
+        opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+        filter 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reciter-pick-group[data-open="true"] .reciter-pick-group__rest-inner {
+    opacity: 1;
+    filter: blur(0);
+}
+/* (3b) Fill rows efficiently: chips grow to take the available width so there
+ * are no awkward trailing gaps, and the toggle flows with its chips. */
+.reciter-pick-group .mushaf-settings__chip { flex: 1 1 auto; }
+/* Exactly one toggle shows per state: "+ المزيد" collapsed, "− أقل" expanded
+ * (the latter lives inside the collapsible, so it's hidden when collapsed). */
+.reciter-pick-group[data-open="true"] .reciter-more--more { display: none; }
+/* (3a) Subtle, tasteful color-coding on the toggle only. */
+.reciter-more--more {
+    color: #047857;
+    background: rgba(16, 185, 129, .1);
+    border-color: rgba(16, 185, 129, .32);
+}
+.reciter-more--more:hover { background: rgba(16, 185, 129, .16); }
+body.dark .reciter-more--more {
+    color: #6ee7b7;
+    background: rgba(16, 185, 129, .14);
+    border-color: rgba(16, 185, 129, .3);
+}
+.reciter-more--less {
+    color: #b91c1c;
+    background: rgba(239, 68, 68, .09);
+    border-color: rgba(239, 68, 68, .28);
+}
+.reciter-more--less:hover { background: rgba(239, 68, 68, .15); }
+body.dark .reciter-more--less {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, .13);
+    border-color: rgba(239, 68, 68, .3);
+}
+@media (prefers-reduced-motion: reduce) {
+    .reciter-pick-group__rest, .reciter-pick-group__rest-inner { transition: none !important; }
+}
+
+/* ============================================================
  * Floating playback bar (Fix 1b)
  *   - sits below the mushaf page content
  *   - frosted-glass card, hairline border, low elevation
@@ -1662,38 +1845,27 @@ body.dark .mushaf-toolbar__dropdown {
  * Mobile adjustments
  * ============================================================ */
 @media (max-width: 640px) {
-    /* Reduce padding on the mushaf root to maximise content width.
-       The class p-6 (24px) on .mushaf-root is overridden here. */
-    .mushaf-root {
-        padding: 12px 6px !important;
+    /* Maximise reading width on phones: trim the card's own side padding and
+       pull it 12px into the outer wrapper's px-4 gutter (keeping a ~7px margin
+       to the screen edge each side). This widens .mushaf-pages ~344→~376px on a
+       390px screen, so autoFitFontSize() — which fills the container — renders
+       the Madani text ~9% larger UNIFORMLY (no overflow: the densest line still
+       fits; no reflow: line breaks are data-driven). :not(--fullscreen) keeps
+       the negative margin off the position:fixed/inset:0 fullscreen root. */
+    .mushaf-root:not(.mushaf-root--fullscreen) {
+        padding: 12px 2px !important;
+        margin-inline: -12px;
     }
 
     .mushaf-page {
         padding: 4px 0;
     }
 
-    /* Font-size is now calculated dynamically by autoFitFontSize() in JS,
-       so we only set sensible CSS defaults as initial values.  The JS will
-       override --font-size on each .mushaf-page after measuring lines. */
-    [data-font-size="m"] .mushaf-page {
-        --font-size: 24px;
-    }
-
-    [data-font-size="s"] .mushaf-page {
-        --font-size: 20px;
-    }
-
-    .mushaf-nav {
-        width: 36px;
-        height: 36px;
-    }
-
-    .mushaf-nav--prev {
-        right: 2px;
-    }
-
-    .mushaf-nav--next {
-        left: 2px;
+    /* R1 trimmed the card's side padding to widen the PAGE; give the toolbar
+       its own inset so the gear/play group and the notes/lantern group don't
+       jam into the card corners — even, comfortable breathing room each side. */
+    .mushaf-toolbar {
+        padding-inline: 12px;
     }
 
     .mushaf-surah-header__name {
@@ -2481,12 +2653,18 @@ html.dark #searchPillActions .mushaf-surah-dropdown {
     touch-action: auto;
 }
 
-/* Zoom 1: text is scaled up beyond the viewport, so the user needs to
- * scroll to reach the rest of the page. Restores the auto-overflow
- * behavior — only at this level. */
+/* Zoom 1: text is scaled up beyond the viewport, so the user needs to scroll
+ * VERTICALLY to reach the rest of the page. overflow-x: hidden (was a blanket
+ * `overflow: auto`) kills the horizontal axis so the enlarged text can't be
+ * dragged/rubber-banded left-right — the content fits horizontally, so nothing
+ * clips. touch-action: pan-y belt-and-braces forbids the horizontal pan gesture
+ * (the fullscreen `* { manipulation }` rule otherwise re-allows it); the JS
+ * swipe-flip is unaffected (touch-action never blocks JS touch events). */
 .mushaf-root--fullscreen[data-fs-zoom="1"] {
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 body.dark .mushaf-root--fullscreen {
@@ -2502,11 +2680,10 @@ body.dark .mushaf-root--fullscreen {
 
 /* Hide the regular Mushaf chrome — fullscreen is verses only. The toolbar
  * (settings/play/font/surah/fullscreen button itself), the decorative
- * surah header inside the page, the page-N footer, and the side-arrow
- * nav buttons all disappear; the floating controls take over. */
+ * surah header inside the page, and the bottom page-nav row all disappear;
+ * the floating controls + overlay nav (.mushaf-fs__nav) take over. */
 .mushaf-root--fullscreen .mushaf-surah-header,
-.mushaf-root--fullscreen .mushaf-page-footer,
-.mushaf-root--fullscreen .mushaf-nav {
+.mushaf-root--fullscreen .mushaf-bottom-nav {
     display: none !important;
 }
 
@@ -2517,12 +2694,11 @@ body.dark .mushaf-root--fullscreen {
 .mushaf-root--fullscreen .mushaf-toolbar {
     position: fixed;
     top: 12px;
-    /* Tightly clustered with font + settings, no gap between them.
-     * RTL right-to-left order: font (12) → play (48) → settings (84),
-     * each with a 4px gap. Literal `right` so the toolbar's own
+    /* Play sits in the LEFT group: X(left 12) · settings(left 48) · play(left
+     * 84) — each 32px + a 4px gap. Literal `left` so the toolbar's own
      * direction:ltr can't shift it. */
-    right: 48px;
-    left: auto;
+    left: 84px;
+    right: auto;
     z-index: 1001;
     background: transparent !important;
     border: 0 !important;
@@ -2542,15 +2718,13 @@ body.dark .mushaf-root--fullscreen {
     display: none !important;
 }
 
-/* In fullscreen the toolbar sits near the right edge (right: 48px), so the
- * default `left: 0` anchor on the play-button volume/speed dropdown makes
- * the 220px panel overflow to the right of the viewport — only the leftmost
- * "1x" pill stays visible. Anchor to the right edge of the play wrap so it
- * opens LEFTWARD into the screen instead, sliding under the empty space
- * between the play button and the floating settings/font controls. */
+/* The play wrap now sits in the LEFT group (left: 84px), so anchor its
+ * volume/speed dropdown to the wrap's LEFT edge and let it open RIGHTWARD into
+ * the screen (the default). Anchoring it right would push the 220px panel off
+ * the left edge. */
 .mushaf-root--fullscreen .mushaf-toolbar__dropdown--volume {
-    left: auto !important;
-    right: 0 !important;
+    left: 0 !important;
+    right: auto !important;
 }
 
 /* Re-style the existing play button to match the overlay aesthetic. */
@@ -2603,8 +2777,11 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
     min-height: 100dvh;
     /* Bottom padding leaves room for the nav arrows + page number row at
      * the very bottom (bottom: 16px + ~38px button = ~54px) plus a small
-     * breathing gap. Top padding clears the floating control row. */
-    padding: 56px 12px 80px;
+     * breathing gap. Top clears the floating controls; bottom reserves the
+     * (now-lower) nav row. NOTE: in the app the html.is-app rule further down
+     * overrides this with safe-area insets — THAT rule is what actually
+     * applies on device (this is just the website fallback). */
+    padding: 56px 8px 52px;
     display: flex;
     flex-direction: column;
 }
@@ -2655,9 +2832,9 @@ body.dark .mushaf-fs__close:hover {
 .mushaf-fs__settings-btn {
     position: fixed;
     top: 12px;
-    /* font(12)+32+4 = 48 (play) → play+32+4 = 84 (settings) */
-    right: 84px;
-    left: auto;
+    /* LEFT group: X(12) → settings(48) → play(84), 32px + 4px gaps. */
+    left: 48px;
+    right: auto;
     z-index: 1001;
     width: 32px;
     height: 32px;
@@ -2776,14 +2953,14 @@ body.dark .mushaf-fs__font-btn:hover {
     position: fixed;
     z-index: 1002;
     top: 52px;
-    /* Right edge of panel aligned with right edge of the settings button
-     * (84px from viewport's right). Panel extends LEFTWARD from there.
-     * max-width keeps it inside the viewport on narrow phones. Literal
-     * `right` so direction inheritance can't shift it. */
-    right: 84px;
-    left: auto;
+    /* Left edge of panel aligned with the settings button's left edge (48px
+     * from the viewport's left); the panel extends RIGHTWARD from there.
+     * max-width keeps it inside the viewport on narrow phones. Literal `left`
+     * so direction inheritance can't shift it. */
+    left: 48px;
+    right: auto;
     min-width: 220px;
-    max-width: calc(100vw - 96px);     /* 84 (anchor) + 12 (gutter on far side) */
+    max-width: calc(100vw - 60px);     /* 48 (anchor) + 12 (gutter on far side) */
     /* SOLID white, not var(--card): the light --card is rgba(255,255,255,.82)
      * and the Quran text bled through, making the panel hard to read.
      * (Dark theme already overrides with solid #2a313b below.) */
@@ -2844,7 +3021,7 @@ body.dark .mushaf-fs__page-num {
  * bottom edge. Same neutral pill aesthetic as the top overlay controls. */
 .mushaf-fs__nav {
     position: fixed;
-    bottom: 16px;
+    bottom: 8px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 1001;
@@ -3054,7 +3231,8 @@ body.mushaf-fs-open {
  * ============================================================ */
 html.is-app .mushaf-root--fullscreen .mushaf-toolbar {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(48px + env(safe-area-inset-right, 0px));
+    left: calc(84px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
 html.is-app .mushaf-fs__close {
@@ -3064,7 +3242,8 @@ html.is-app .mushaf-fs__close {
 
 html.is-app .mushaf-fs__settings-btn {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(84px + env(safe-area-inset-right, 0px));
+    left: calc(48px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
 html.is-app .mushaf-fs__font-btn {
@@ -3072,26 +3251,36 @@ html.is-app .mushaf-fs__font-btn {
     right: calc(12px + env(safe-area-inset-right, 0px));
 }
 
-/* The gharib lantern — fourth circle in the row (see its base
- * fullscreen rule near the end of the gharib block). */
+/* The gharib lantern — middle of the RIGHT group: notes(84) · lantern(48) · +(12). */
 html.is-app .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
     top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(120px + env(safe-area-inset-right, 0px));
+    right: calc(48px + env(safe-area-inset-right, 0px));
+}
+
+/* The notes lamp — leftmost of the RIGHT group (right: 84px). It needs the
+ * SAME safe-area top bias as the other cluster buttons; without this override
+ * it kept the base top:12px and sat too high. */
+html.is-app .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    right: calc(84px + env(safe-area-inset-right, 0px));
 }
 
 html.is-app .mushaf-fs__settings-panel {
     top: calc(52px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    right: calc(84px + env(safe-area-inset-right, 0px));
+    left: calc(48px + env(safe-area-inset-left, 0px));
+    right: auto;
 }
 
-/* Stage padding clears the floating control row + the bottom nav.
- * Bump both ends by the inset so verses don't slide behind chrome
- * once the controls move down with the status bar inset. */
+/* Stage padding clears the floating control row + the (now-lower) bottom nav.
+ * Side padding trimmed 12→8px to widen the reading column (autoFit fills it →
+ * ≈+2–3% larger text). The bottom reserve is cut 80→52px and the nav moved
+ * down (16→8px) — the page's vertical slack absorbs the slightly taller text
+ * while it still clears the home indicator. Insets keep verses off the chrome. */
 html.is-app .mushaf-root--fullscreen .mushaf-stage {
     padding-top: calc(56px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
-    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    padding-left: calc(12px + env(safe-area-inset-left, 0px));
-    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
 }
 
 html.is-app .mushaf-fs__page-num {
@@ -3099,7 +3288,7 @@ html.is-app .mushaf-fs__page-num {
 }
 
 html.is-app .mushaf-fs__nav {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 html.is-app .copy-toast {
@@ -3247,7 +3436,7 @@ body.gharib-off .gharib-word {
        the @property note above) — NOT keyframed directly, so the
        pseudo isn't promoted and the halo isn't clipped to a box. */
     opacity: calc(var(--gh-on, 1) * var(--gw-hb, 0.7));
-    animation: gw-halo 6.8s ease-in-out infinite;
+    animation: gw-halo 4.5s ease-in-out 1 forwards;
     /* Gold → white recolour when the word is learned. These
        interpolate independently of the breath. */
     transition: text-shadow 0.7s ease, filter 0.7s ease, color 0.7s ease;
@@ -3275,6 +3464,38 @@ body.dark .gharib-word::before {
    drop-shadows bloom that result outward (wide soft falloff).
    Light theme = deep saturated amber against the white page;
    dark theme = bright pale gold. */
+/* iOS/WKWebView only: pin each gharib word to a STABLE GPU layer. The glow
+ * ::before uses filter: blur()+drop-shadow() (the app path below) which
+ * composites the word, and isolation:isolate GPU-rasterises its whole stacking
+ * context — so the word's box is pixel-snapped. Tapping a SECOND gharib word
+ * recolours its ::before (gold → settled, via --settling) WHILE the first
+ * word's tooltip (a persistent will-change:transform layer, hosted in
+ * .mushaf-root) is still open over the region; WKWebView then re-snaps the
+ * re-rasterised word to a different sub-pixel row, rendering it a hair ABOVE
+ * its line — the proven تمنى→ألقى case (تمنى is fine because its own
+ * --settling re-snap happens BEFORE its tip opens). No layout reflow is
+ * involved: the tap only swaps cosmetic classes and repositions the
+ * root-hosted tip. A constant translateZ(0) fixes the layer's position so a
+ * re-raster can no longer move it. Web uses text-shadow (no filter, word not
+ * composited) and never shows this — so scope to the app. */
+html.is-app .gharib-word {
+    transform: translateZ(0);
+    /* Reserve the compositing-layer backing store 2em past the box, in the SAME
+       style recalc that translateZ(0) promotes the word — so the overflowing
+       edge ink of long letters (final ـن bowl, leading ك flourish) is never
+       clipped to the layout box. The ::before normally holds this region, but
+       as an absolutely-positioned PSEUDO its box lays out ONE FRAME after the
+       promotion; on a flip-BACK re-decoration that gap clipped the tail for a
+       frame. A transparent box-shadow paints nothing and changes no layout — it
+       only enlarges the layer bounds, and it applies WITH the class (frame 0),
+       closing the gap. 2em (not 1em) because the spread is fixed-extent, unlike
+       the ::before whose ink-driven bounds follow the glyph: the ـن bowl's ink
+       overflows ≈1.33em, so 1em left ~25% clipped; 2em covers it with margin
+       (device-confirmed: 0% clip, no visible box). Can't touch the gold, halo,
+       molten fill, highlight, or tap. */
+    box-shadow: 0 0 0 2em transparent;
+}
+
 html.is-app .gharib-word::before {
     color: #f0a428;
     text-shadow: none;
@@ -3302,8 +3523,14 @@ html.is-app body.dark .gharib-word::before {
    merely brightens and softens around the (always dark, always
    readable) letters. */
 @keyframes gw-halo {
-    0%, 100% { --gw-hb: 0.6; }
-    50%      { --gw-hb: 1; }
+    /* One non-reversing bloom: quick ease-in-out rise to peak at 25%,
+       then a long ease-out settle to a LIT rest (0.8 — not the old 0.6
+       floor), held static by `forwards`. Monotonic up then down, so the
+       gold never dims-then-brightens: one rise, one slow fall to a lit
+       rest. */
+    0%   { --gw-hb: 0.6; animation-timing-function: ease-in-out; }
+    25%  { --gw-hb: 0.85; animation-timing-function: ease-out; }
+    100% { --gw-hb: 0.8; }
 }
 
 /* DARK THEME ONLY — molten ink: a gold gradient clipped THROUGH
@@ -3318,7 +3545,21 @@ html.is-app body.dark .gharib-word::before {
 body.dark .gharib-word::after {
     content: attr(data-ghc);
     position: absolute;
-    inset: 0;
+    /* The molten gradient is clipped to text but only PAINTS inside its box, so
+       grow the paint box 2em past the layout box (padding pulls the glyph back
+       into alignment) so the gold also covers the OVERFLOW ink of long letters —
+       the leading ك flourish of كَصَيِّبٍ, the ـن bowl — which otherwise showed bare
+       near-white base ink (a white/"cut" edge). background-origin:content-box
+       anchors the gradient to the ORIGINAL glyph box (restored by the padding),
+       so the body's molten mapping is byte-identical (no shading shift) and the
+       gradient's edge colour just extends into the overflow. Honoured under
+       background-clip:text on both WKWebView (app) and Blink (web) — device- and
+       Chrome-confirmed. The ::before halo is only a glow, never the gold surface,
+       so this is the only way to gild the edge. Web + app alike (the app's Part 1
+       box-shadow + filter halo stay app-only; this molten fix is shared). */
+    inset: -2em;
+    padding: 2em;
+    box-sizing: border-box;
     white-space: pre;
     pointer-events: none;
     color: transparent;
@@ -3333,17 +3574,31 @@ body.dark .gharib-word::after {
     background: linear-gradient(115deg, #e8b455 0%, #ffe3a3 38%, #dfa83e 68%, #f7cf82 100%);
     -webkit-background-clip: text;
     background-clip: text;
+    /* MUST come AFTER the `background` shorthand: the shorthand resets
+       background-origin to its initial padding-box, so a content-box set earlier
+       would be silently wiped — reverting to the gradient-remapping (blunt) box
+       and shifting the body's molten shading. Declared here it survives, anchoring
+       the gradient to the ORIGINAL glyph (content) box while the grown padding box
+       only extends the PAINT area into the overflow. (The old app-only rule dodged
+       this by being a separate block with no shorthand; the merge needs the order.) */
+    background-origin: content-box;
     /* Custom-prop-driven opacity (see the @property note) — keeps
        this layer off the compositor, which also keeps
        background-clip: text from leaking the gradient as a box. */
     opacity: calc(var(--gh-on, 1) * var(--gw-x, 1) * var(--gw-ib, 0.4));
-    animation: gw-ink 6.8s ease-in-out infinite;
-    animation-delay: -2.7s; /* offset ~40% of the period from the halo */
+    animation: gw-ink 4.5s ease-in-out 1 forwards;
+    /* No phase offset now: the old -1.19s lead desynced two SYMMETRIC
+       breaths for a continuous shade-shift. Under the asymmetric one-shot
+       bloom that lead would start the ink PAST its 25% peak (no bloom), so
+       the molten ink now blooms/settles in lockstep with the halo. */
 }
 
 @keyframes gw-ink {
-    0%, 100% { --gw-ib: 0.42; }
-    50%      { --gw-ib: 0.72; }
+    /* Same one-shot bloom shape as gw-halo: quick rise to peak at 25%,
+       long ease-out settle to a lit rest (0.57), held by `forwards`. */
+    0%   { --gw-ib: 0.42; animation-timing-function: ease-in-out; }
+    25%  { --gw-ib: 0.62; animation-timing-function: ease-out; }
+    100% { --gw-ib: 0.57; }
 }
 
 /* Learned: the halo keeps breathing but recolours gold → WHITE,
@@ -3400,6 +3655,34 @@ html.is-app body.dark .gharib-word--settled::before {
         blur(0.05em)
         drop-shadow(0 0 0.16em rgba(244, 248, 255, 0.95))
         drop-shadow(0 0 0.42em rgba(230, 238, 250, 0.55));
+}
+
+/* Tap-to-settle. When a word is learned mid-breath, src/gharib.js
+   settleKey() adds --settling (gharib.js:707, fires on the FIRST tap
+   only). Stop the one-shot breath right there and EASE the halo opacity
+   to its calm rest value over ~0.5s — instead of snapping, or running on
+   to the end of the cycle. The recolor transitions (text-shadow / filter
+   / color, 0.7s) are re-listed verbatim so the gold→white/black handover
+   is byte-for-byte unchanged; --gw-hb is the only addition. Once it lands
+   the pseudo is fully static: no animation, no further repaint. The
+   transition firing as the animation is removed is the same mechanism the
+   file already uses for --gh-on / --gw-x (registered @property custom
+   props interpolate); if an engine ever skips it, the word still ends
+   correctly static at 0.6, just without the ease. */
+.gharib-word--settling::before {
+    animation: none;
+    --gw-hb: 0.8; /* the LIT rest — same value the natural one-shot bloom settles to */
+    transition:
+        text-shadow 0.7s ease,
+        filter 0.7s ease,
+        color 0.7s ease,
+        --gw-hb 0.5s ease-out;
+}
+/* The dark-theme molten ink also stops here; it fades out on its own via
+   --gw-x → 0 (the 0.8s ease on .gharib-word), so no opacity ease is
+   needed — just end the loop so nothing keeps repainting. */
+.gharib-word--settling::after {
+    animation: none;
 }
 
 /* After the toggle's fade-out settles (src/gharib.js adds this
@@ -3521,71 +3804,30 @@ body.dark .gharib-tip::after {
     border-color: rgba(240, 192, 105, 0.18);
 }
 
-/* Long-press lantern explainer — same card family, smaller. */
-.gharib-tip--explain {
-    max-width: min(240px, calc(100vw - 24px));
-    padding: 0.4rem 0.7rem;
-    font-size: 0.8rem;
-    line-height: 1.65;
+/* Shared card text + "تم" button — used by the first-use spotlight coachmark
+   (.mushaf-coach__card; see the coach block below). */
+.gharib-hint__text {
+    line-height: 1.7;
+    color: #334155;
 }
-
-/* The explainer lives on <body> (position:fixed + z-index:2100 from
-   the base .gharib-tip), NOT inside the lamp. The lamp sits in the
-   backdrop-filtered .mushaf-root.glass, and ANY change to a glass
-   descendant on hover (a child appearing, the old z-index lift) forces
-   the backdrop-filter to repaint, which jitters the glass contents —
-   the lamp "jumped". A body-level card touches nothing inside the glass,
-   and z-index:2100 already floats it above the page (same as the meaning
-   tip), so the lamp-lift cure is gone. src/gharib.js anchors it under
-   the lamp each time it opens (left/top/--tip-ax). */
-.gharib-tip.gharib-tip--explain {
-    text-align: right;
-    cursor: default;
-    /* ── Transitions.dev "Modal open / close" port — opacity + scale
-       0.96 with a distinct is-closing state (src/gharib.js swaps
-       is-open → is-closing on hover-out, then drops is-closing after
-       --modal-close-dur). ── */
-    --modal-open-dur: 250ms;
-    --modal-close-dur: 150ms;
-    --modal-scale: 0.96;
-    --modal-scale-close: 0.96;
-    --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
-    transform-origin: center;
-    transform: scale(var(--modal-scale));
-    opacity: 0;
-    visibility: visible;   /* opacity-gated (overrides .gharib-tip's hidden) */
-    pointer-events: none;
-    will-change: transform, opacity;
-    transition:
-        transform var(--modal-open-dur) var(--modal-ease),
-        opacity   var(--modal-open-dur) var(--modal-ease);
+body.dark .gharib-hint__text {
+    color: #d6dae1;
 }
-
-.gharib-tip.gharib-tip--explain.is-open {
-    transform: scale(1);
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.gharib-tip.gharib-tip--explain.is-closing {
-    transform: scale(var(--modal-scale-close));
-    opacity: 0;
-    pointer-events: none;
-    transition:
-        transform var(--modal-close-dur) var(--modal-ease),
-        opacity   var(--modal-close-dur) var(--modal-ease);
-}
-
-.gharib-tip--explain b {
-    display: block;
-    font-size: 0.72rem;
+.gharib-hint__done {
+    align-self: flex-end;          /* RTL: sit at the end (left) */
+    margin-top: 0.6rem;
+    border: 0;
+    border-radius: 10px;
+    background: #1d8fff;
+    color: #fff;
+    font: inherit;
     font-weight: 700;
-    color: #a87718;
-    margin-bottom: 1px;
+    padding: 6px 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(29, 143, 255, 0.32);
 }
-
-body.dark .gharib-tip--explain b {
-    color: #f0c069;
+@media (hover: hover) {
+    .gharib-hint__done:hover { background: #0f7ae6; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3593,11 +3835,66 @@ body.dark .gharib-tip--explain b {
     .gharib-tip.is-open {
         transition: none;
     }
-    .gharib-tip.gharib-tip--explain,
-    .gharib-tip.gharib-tip--explain.is-open,
-    .gharib-tip.gharib-tip--explain.is-closing {
-        transition: none !important;
-    }
+}
+
+/* ── First-use spotlight coachmark (app only) ──────────────
+   Dim overlay + circular spotlight on a toolbar button + a card. Hosted on
+   <body> as position:fixed inset:0 (like .sheet-scrim) so the dim covers the
+   WHOLE viewport — it can't live in .mushaf-root, whose .glass backdrop-filter
+   stacking context would trap it behind the header (the top bar would stay
+   bright). The dim is the spot's huge box-shadow spread; the card reuses
+   .gharib-hint__text / .gharib-hint__done. */
+.mushaf-coach {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;           /* top-level coachmark, above all app chrome */
+    opacity: 0;
+    transition: opacity 0.26s ease;
+    /* Refuse scroll gestures on the dim while a guide is up — the page must not
+       be draggable under this fixed overlay (iOS WKWebView wouldn't repaint it at
+       the new offset → undimmed/detached bottom). */
+    touch-action: none;
+}
+.mushaf-coach.is-open {
+    opacity: 1;
+}
+.mushaf-coach__spot {
+    position: absolute;
+    border-radius: 50%;
+    /* Order matters: earlier shadows paint ON TOP, so the rim + halo come first
+       and the 9999px dim spread comes LAST (behind them). */
+    box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.92),     /* crisp rim */
+        0 0 24px 7px rgba(255, 255, 255, 0.26),  /* soft halo */
+        0 0 0 9999px rgba(15, 23, 42, 0.46);     /* the dim, everywhere but the circle */
+    pointer-events: none;
+}
+body.dark .mushaf-coach__spot {
+    box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.6),
+        0 0 24px 7px rgba(255, 255, 255, 0.16),
+        0 0 0 9999px rgba(0, 0, 0, 0.6);
+}
+.mushaf-coach__card {
+    position: absolute;
+    max-width: min(290px, calc(100vw - 28px));
+    padding: 0.78rem 0.9rem 0.66rem;
+    font-size: 0.82rem;
+    text-align: right;
+    background: #f8fafc;                       /* clean slate-white, matches the tour card */
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(15, 23, 42, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+body.dark .mushaf-coach__card {
+    background: #232a36;
+    border-color: rgba(148, 163, 184, 0.18);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.46), 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-coach { transition: none; }
 }
 
 /* ── Illumination counter widget (فانوس + badge + ring) ─────
@@ -3955,7 +4252,7 @@ body.dark .gharib-badge__dot {
     display: flex !important;
     position: fixed;
     top: 12px;
-    right: 120px;
+    right: 48px;
     left: auto;
     z-index: 1001;
     width: 32px;
@@ -3972,6 +4269,154 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #gharibLamp {
 }
 
 .mushaf-root--fullscreen #gharibLamp .gharib-lamp__icon {
+    width: 17px;
+    height: 17px;
+}
+
+/* ── Notes lantern-sibling (app only) — a circular twin of the gharib
+   lamp, sitting next to it in the toolbar. Same 40×40 transparent
+   button, 20px icon and grey body; a thin STATIC ring lends the
+   lantern's circular silhouette (no progress segments), and the count
+   badge is the notes blue (the noted-ayah dot colour) so it never reads
+   as the lamp's gold metric. ── */
+.notes-lamp {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 2px;
+    color: #6b7280;
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    font: inherit;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.dark .notes-lamp { color: #9ca3af; }
+
+/* Opt out of the site-wide button:hover lift (same as #gharibLamp). */
+#mushafNotesLamp:hover { transform: none; }
+
+/* Normal (flex) toolbar order — notes LEFT, lantern to its RIGHT, both just
+ * left of the surah selector, matching the fullscreen cluster. Enforced with
+ * `order` (NOT DOM insertion order): the notes lamp is often inserted before
+ * the gharib lamp exists — decoratePage() returns early on the first page while
+ * the lazy gharib.json loads, so the lamp builds a beat later — which left the
+ * DOM order unreliable (notes fell back to the toolbar end). In fullscreen both
+ * lamps are position:fixed, so `order` is simply ignored there. */
+.mushaf-toolbar > #mushafNotesLamp { order: 1; margin-inline-end: -6px; } /* tighten the notes↔lantern gap (12px → ~4px) */
+.mushaf-toolbar > #gharibLamp { order: 2; }
+.mushaf-toolbar > #mushafSurahWrap { order: 3; }
+
+/* Left button group order (LTR toolbar → ascending = left→right): settings ·
+ * play · fullscreen. fullscreen moved to the far-right END of the group (was
+ * settings · fullscreen · play). CSS order only — DOM untouched; values stay
+ * below the lamps (1/2/3) so the group keeps its place on the left. Normal
+ * toolbar only; the fullscreen-view buttons are a separate component. */
+.mushaf-toolbar > #mushafSettingsWrap { order: -2; }
+.mushaf-toolbar > #mushafPlayWrap { order: -1; }
+.mushaf-toolbar > #mushafFullscreenBtn { order: 0; }
+
+.notes-lamp__ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.notes-lamp__ring circle {
+    fill: none;
+    stroke: rgba(130, 134, 142, 0.30);
+    stroke-width: 2;
+}
+
+body.dark .notes-lamp__ring circle {
+    stroke: rgba(170, 178, 190, 0.24);
+}
+
+.notes-lamp__icon {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Count badge — same geometry + entrance as .gharib-badge, the notes blue. */
+.notes-lamp__badge {
+    position: absolute;
+    top: -4px;
+    right: -6px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.notes-lamp__badge[data-open="true"] {
+    animation: gharib-badge-slide-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notes-lamp__badge[data-open="false"] {
+    display: none;
+}
+
+.notes-lamp__badge-dot {
+    display: block;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4.5px;
+    border-radius: 9px;
+    /* The exact noted-ayah dot blue (.mushaf-ayah--has-note .mushaf-end::after)
+       — one unified "notes blue" shared by the marker and this count badge. */
+    background: #2A52C8;
+    color: #fff;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(42, 82, 200, 0.35);
+}
+
+body.dark .notes-lamp__badge-dot {
+    background: #2A52C8;   /* same notes blue in BOTH themes (no lighter variant) */
+    color: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Fullscreen: the notes lamp is the LEFTMOST of the RIGHT group —
+   notes(84) · lantern(48) · +(12), reading left to right. Exempted from
+   the toolbar children-hide rule (ID specificity + later in the file)
+   and re-anchored to match. ── */
+.mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    display: flex !important;
+    position: fixed;
+    top: 12px;
+    right: 84px;
+    left: auto;
+    z-index: 1001;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.10);
+}
+
+body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
+    background: rgba(45, 51, 60, 0.86);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.mushaf-root--fullscreen #mushafNotesLamp .notes-lamp__icon {
     width: 17px;
     height: 17px;
 }
