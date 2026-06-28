@@ -1175,7 +1175,10 @@ body.dark .ayah-grid-btn:hover span {
    last, so it wins the cascade); this mirrors it into the linked sheet. */
 html.is-app,
 html.is-app body {
-  touch-action: manipulation;
+  /* pan-y pinch-zoom (was `manipulation`): kills the app-wide horizontal
+     rubber-band drift while keeping vertical scroll, pinch-zoom, sliders and
+     the Mushaf swipe-flip. Mirrors index.html. */
+  touch-action: pan-y pinch-zoom;
 }
 /* No rubber-band bounce on the page scroller — the bounce dragged the
    sticky header off-screen and exposed the overscroll area behind the
