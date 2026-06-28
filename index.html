@@ -394,10 +394,13 @@
 
     /* App only: no rubber-band bounce on the page scroller — the bounce
      * dragged the sticky header (the whole top area) off-screen during
-     * hard scrolls, and exposed the overscroll area behind the page. */
+     * hard scrolls, and exposed the overscroll area behind the page. Both
+     * axes: the X bounce let the Mushaf page wobble side-to-side on a
+     * horizontal drag above the surah name (a region above PAGES_EL's swipe
+     * guard). overscroll-behavior:none kills that horizontal rubber-band. */
     html.is-app,
     html.is-app body {
-      overscroll-behavior-y: none;
+      overscroll-behavior: none;
     }
 
     body {
@@ -4957,7 +4960,13 @@
          input (surah search, ayah number, AI question, feedback form). */
     html.is-app,
     html.is-app body {
-      touch-action: manipulation;
+      /* pan-y pinch-zoom (was `manipulation`) — forbids native HORIZONTAL page
+         panning app-wide, killing the WKWebView left/right rubber-band drift
+         that `overscroll-behavior` alone didn't suppress on the root document.
+         Vertical scroll + pinch-zoom stay; native range sliders (volume/speed)
+         and the JS Mushaf swipe-flip are unaffected (their drags aren't page
+         pans). No native horizontal scrollers exist to break. */
+      touch-action: pan-y pinch-zoom;
     }
     html.is-app,
     html.is-app * {
