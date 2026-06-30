@@ -144,9 +144,16 @@ export function closeFullscreen() {
 
 /* ============================================================ Events ==== */
 
-function onPageRendered() {
-    updatePageNum();
-    updateNavButtons();
+function onPageRendered(e) {
+    // Use the page the render ANNOUNCED (e.detail.page) — it is the page whose
+    // DOM was just made active, so the number always matches what's on screen.
+    // Reading the global CURRENT_PAGE here was the bug: mushaf.js dispatches this
+    // event from renderPage()→activatePage(), which runs BEFORE commitPageState()
+    // writes CURRENT_PAGE, so the global still held the PREVIOUS page (the
+    // off-by-one / "moved back but the number went up" symptom).
+    const page = e?.detail?.page;
+    updatePageNum(page);
+    updateNavButtons(page);
     updateSurahName();
 }
 
@@ -354,9 +361,9 @@ function removeControls() {
     _chromeWrap?.remove(); _chromeWrap = null;
 }
 
-function updateNavButtons() {
+function updateNavButtons(page) {
     if (!_navWrap) return;
-    const cur = _deps?.getCurrentPageNum?.() || 0;
+    const cur = resolvePageNum(page);
     const total = _deps?.totalPages || 604;
     // Mapping is flipped: --prev button = forward (next page),
     // --next button = backward (previous page).
@@ -430,12 +437,21 @@ function saveLevel(n) {
 
 /* ============================================================ Page num == */
 
-function updatePageNum() {
+// `page` (optional) is the authoritative page from a page-rendered event; it
+// always matches the visible DOM. Without it (initial open / window resize, when
+// no flip is in flight so the global is stable) we fall back to the live global.
+function updatePageNum(page) {
     if (!_navWrap) return;
     const slot = _navWrap.querySelector("[data-fs-nav-page]");
     if (!slot) return;
-    const cur = _deps?.getCurrentPageNum?.() || 0;
+    const cur = resolvePageNum(page);
     slot.textContent = cur ? toArabicDigits(cur) : "";
+}
+
+function resolvePageNum(page) {
+    const n = Number(page);
+    if (Number.isFinite(n) && n > 0) return n;
+    return _deps?.getCurrentPageNum?.() || 0;
 }
 
 function toArabicDigits(n) {

@@ -200,6 +200,20 @@ let DEPS = null;
 let MUSHAF_MODE = false;
 let PANEL_OPEN = false;
 let CURRENT_PAGE = 0;
+// Page-flip sequencing (fixes the fullscreen page-number drift under rapid
+// front/back flipping). goToPage() is async (awaits page fetch + font bytes),
+// but CURRENT_PAGE is only written at the very END (commitPageState). Two
+// globals keep rapid navigations honest:
+//   NAV_TARGET — the page the user is HEADING to, set synchronously at the top
+//                of goToPage (before any await). goPrev/goNext chain from this,
+//                not from the async-lagged CURRENT_PAGE, so a fast back→fwd→back
+//                computes each target from real intent instead of a stale base.
+//   NAV_GEN    — bumped per goToPage; a navigation whose generation has been
+//                superseded by a newer one ABORTS before render/commit, so
+//                overlapping fetch/font promises can never render out of order.
+// Invariant once everything settles: CURRENT_PAGE === NAV_TARGET.
+let NAV_TARGET = 0;
+let NAV_GEN = 0;
 let CURRENT_TARGET_VERSE = null;  // "s:a" — initial highlight on next render
 let TARGET_SURAH = null;          // surah id whose ayahs render at full opacity
 let CURRENT_PAGE_DATA = null;     // live page data of the active page (for the fullscreen title)
@@ -1337,18 +1351,24 @@ function wireNav() {
 }
 
 function goPrev() {
-    if (CURRENT_PAGE <= 1) return;
+    // Base off NAV_TARGET (live intent), not CURRENT_PAGE — under rapid flips
+    // CURRENT_PAGE lags behind the async commit, so basing on it would compute
+    // the wrong page (or the same page twice). Fall back to CURRENT_PAGE before
+    // the first navigation has set an intent.
+    const base = NAV_TARGET || CURRENT_PAGE;
+    if (base <= 1) return;
     CURRENT_TARGET_VERSE = null;
-    const target = CURRENT_PAGE - 1;
+    const target = base - 1;
     goToPage(target, { direction: "right" });
     history.pushState({ mushaf: true, page: target }, "", `/read/page/${target}`);
     updateMushafSeo({ page: target });
 }
 
 function goNext() {
-    if (CURRENT_PAGE >= TOTAL_PAGES) return;
+    const base = NAV_TARGET || CURRENT_PAGE;
+    if (base >= TOTAL_PAGES) return;
     CURRENT_TARGET_VERSE = null;
-    const target = CURRENT_PAGE + 1;
+    const target = base + 1;
     goToPage(target, { direction: "left" });
     history.pushState({ mushaf: true, page: target }, "", `/read/page/${target}`);
     updateMushafSeo({ page: target });
@@ -1431,6 +1451,11 @@ function hideMushafLoader() {
 }
 
 async function goToPage(p, { direction = "none", noScroll = false } = {}) {
+    // Stamp intent + generation SYNCHRONOUSLY, before the first await, so a
+    // swipe fired while this one is still loading already sees the new target
+    // and supersedes this generation.
+    NAV_TARGET = p;
+    const myGen = ++NAV_GEN;
     await ensureMetaLoaded();
     if (p === CURRENT_PAGE && ACTIVE_PAGE_EL) {
         applyTargetHighlight({ noScroll });
@@ -1440,6 +1465,12 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
     try {
         showMushafLoader();
         const data = await fetchPage(p);
+
+        // Superseded while fetching — bail before mutating any shared global
+        // (TARGET_SURAH below) or loading fonts for a page we'll never show.
+        // Hide the loader defensively in case the surviving navigation took the
+        // "already here" early-return path and never manages it.
+        if (myGen !== NAV_GEN) { hideMushafLoader(); return; }
 
         // If there's no explicit target verse, the target surah is the
         // first surah present on the page.
@@ -1461,11 +1492,20 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
         const fontsReady = await loadPageFontsWithRetry([...neededFonts]);
         if (!fontsReady) {
             hideMushafLoader();
+            // Couldn't reach p — drop intent back to reality (only if no newer
+            // navigation has taken over) so the next flip chains from where we
+            // actually are, not the page we failed to load.
+            if (myGen === NAV_GEN) NAV_TARGET = CURRENT_PAGE;
             console.error(`Mushaf: fonts for page ${p} failed to load; skipping render to avoid tofu.`);
             return;
         }
 
         hideMushafLoader();
+
+        // A newer navigation superseded this one while it was loading — abort so
+        // overlapping fetch/font promises can never render or commit out of
+        // order (the stale page would scramble CURRENT_PAGE + the page number).
+        if (myGen !== NAV_GEN) return;
 
         renderPage(data, direction);
         commitPageState(p, data, { noScroll, direction });
