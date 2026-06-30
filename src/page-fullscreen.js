@@ -50,6 +50,7 @@ let _settingsBtn = null;
 let _settingsPanel = null;
 let _settingsOpen = false;
 let _navWrap = null;
+let _surahName = null;
 let _fontLevel = 0;
 let _savedScrollY = 0;
 
@@ -134,6 +135,11 @@ export function closeFullscreen() {
     document.body.style.top = "";
     window.scrollTo(0, _savedScrollY);
     removeControls();
+    // Re-size the page for the NORMAL box NOW (synchronously, class already
+    // dropped) — otherwise it keeps its big fullscreen font in the small normal
+    // box → bottom cut off until the next flip re-fit. A forced layout inside
+    // fitMushafPageBox makes the chrome heights correct in this same frame.
+    try { _deps?.refitFont?.(); } catch { }
 }
 
 /* ============================================================ Events ==== */
@@ -141,6 +147,20 @@ export function closeFullscreen() {
 function onPageRendered() {
     updatePageNum();
     updateNavButtons();
+    updateSurahName();
+}
+
+/* Subtle floating surah name (fullscreen chrome). Updated per page; the gentle fade-in
+ * replays only when the name actually changes (re-adding the --in class restarts the
+ * keyframe). The surah comes from mushaf.js's live TARGET_SURAH via the dep. */
+function updateSurahName() {
+    if (!_surahName) return;
+    const name = _deps?.getCurrentSurahName?.() || "";
+    if (name === _surahName.textContent) return;
+    _surahName.textContent = name;
+    _surahName.classList.remove("mushaf-fs__surah-name--in");
+    void _surahName.offsetWidth;   // reflow so the fade-in can replay
+    _surahName.classList.add("mushaf-fs__surah-name--in");
 }
 
 function onKeyDown(e) {
@@ -306,14 +326,22 @@ function injectControls() {
     // The wrapper is a plain static box — its position:fixed children stay
     // viewport-anchored (opacity makes a stacking context, not a
     // containing block).
+    // Subtle floating surah name — top-center, between the two control clusters. Replaces
+    // the inline in-page surah header (hidden in fullscreen) so a surah-start page keeps the
+    // EXACT same geometry; this label lives in the fixed chrome and never shifts the page.
+    _surahName = document.createElement("div");
+    _surahName.className = "mushaf-fs__surah-name";
+
     _chromeWrap = document.createElement("div");
     _chromeWrap.className = "mushaf-fs__chrome";
     _chromeWrap.appendChild(_closeBtn);
     _chromeWrap.appendChild(_fontBtn);
     _chromeWrap.appendChild(_settingsBtn);
+    _chromeWrap.appendChild(_surahName);
     _chromeWrap.appendChild(_navWrap);
     _rootEl.appendChild(_chromeWrap);
     updateNavButtons();
+    updateSurahName();
 }
 
 function removeControls() {
@@ -321,6 +349,7 @@ function removeControls() {
     _fontBtn?.remove(); _fontBtn = null;
     _settingsBtn?.remove(); _settingsBtn = null;
     _navWrap?.remove(); _navWrap = null;
+    _surahName?.remove(); _surahName = null;
     _settingsPanel?.remove(); _settingsPanel = null;
     _chromeWrap?.remove(); _chromeWrap = null;
 }

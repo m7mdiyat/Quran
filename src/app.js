@@ -27,8 +27,6 @@ const el = (id) => document.getElementById(id);
 const API_BASE = import.meta.env.VITE_API_BASE || "https://tafsir-api-317751773286.me-central1.run.app";
 const TAFSIR_API_URL = `${API_BASE}/ai`;
 export const API_ROOT = API_BASE.replace(/\/$/, "");
-const COMPARE_API_URL = `${API_ROOT}/compare`;
-const COMPARE_STREAM_URL = `${API_ROOT}/ai/stream`;
 
 /** ✅ GCS Audio Base URL for Quran recitations */
 export const AUDIO_BASE = "https://storage.googleapis.com/recitations-bucket-data/audio/";
@@ -480,7 +478,6 @@ const TAFSIR_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 let TAFSIR_REQUEST_ID = 0;
 let SECONDARY_TAFSIR_ABORT = null; // AbortController for background phase
 let EN_MAP = null; // {"s":{"a":"text"}}
-const TAFSIR_ENTRY_CACHE = new WeakMap();
 let API_WARMED_UP = false; // Track if API has been warmed up
 
 // Compare writing animation state
@@ -646,14 +643,6 @@ function cleanAiText(text = "") {
   t = t.replace(/\bjson\b"?/gi, "");
   t = t.replace(/[ \t]{2,}/g, " ").trim();
   return t;
-}
-
-function trimForCompare(text, maxChars = Number.POSITIVE_INFINITY) {
-  const raw = String(text || "").trim();
-  if (!raw) return "";
-  if (!Number.isFinite(maxChars) || maxChars <= 0) return raw;
-  if (raw.length <= maxChars) return raw;
-  return raw.slice(0, maxChars).trimEnd();
 }
 
 function getCompareCache(ayahKey) {
@@ -1142,8 +1131,6 @@ try {
   if (savedReciter && RECITERS[savedReciter]) CURRENT_RECITER = savedReciter;
 } catch { }
 
-const audioPlayIcon = el("audioPlayIcon");
-const audioPauseIcon = el("audioPauseIcon");
 const audioVolumeSlider = el("audioVolumeSlider");
 const audioVolumeDown = el("audioVolumeDown");
 const audioVolumeUp = el("audioVolumeUp");
@@ -2314,28 +2301,6 @@ function filterTextByLanguage(text = "", mode = "any") {
   return lines.join("\n");
 }
 
-function formatAiParagraphs(text = "", mode = "any") {
-  const cleaned = filterTextByLanguage(cleanAiText(text), mode);
-  if (!cleaned) return "";
-  const parts = cleaned.split(/\n+/).map((p) => p.trim()).filter(Boolean);
-  return parts.map((p) => `<p class="ai-paragraph">${formatAiInline(p)}</p>`).join("");
-}
-
-function splitAiParagraphs(text = "", mode = "any") {
-  const cleaned = filterTextByLanguage(cleanAiText(text), mode);
-  if (!cleaned) return [];
-  const chunks = cleaned.split(/\n+/).map((p) => p.trim()).filter(Boolean);
-  const out = [];
-  for (const chunk of chunks) {
-    const sentences = chunk.match(/[^.!؟?\u06D4]+[.!؟?\u06D4]?/g) || [chunk];
-    for (const s of sentences) {
-      const trimmed = s.trim();
-      if (trimmed) out.push(trimmed);
-    }
-  }
-  return out;
-}
-
 function stopAiTyping() {
   if (AI_TYPE_TIMER) {
     clearTimeout(AI_TYPE_TIMER);
@@ -2389,20 +2354,6 @@ function tryParseJsonFromText(text = "") {
   if (start === -1 || end <= start) return null;
   const candidate = raw.slice(start, end + 1);
   try { return JSON.parse(candidate); } catch { }
-  return null;
-}
-
-async function safeParseJSON(response) {
-  const text = await response.text();
-  if (!text) return null;
-  const contentType = response.headers?.get("content-type") || "";
-  const trimmed = text.trim();
-  if (contentType.includes("application/json")) {
-    try { return JSON.parse(trimmed); } catch { return null; }
-  }
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try { return JSON.parse(trimmed); } catch { return null; }
-  }
   return null;
 }
 
@@ -2528,20 +2479,6 @@ function isArabicText(text = "") {
   return /[\u0600-\u06FF]/.test(String(text || ""));
 }
 
-const SOURCE_LABELS_AR = [
-  { keys: ["bukhari", "al bukhari", "sahih bukhari"], label: "صحيح البخاري" },
-  { keys: ["muslim", "sahih muslim"], label: "صحيح مسلم" },
-  { keys: ["ibn kathir", "ibn katheer"], label: "تفسير ابن كثير" },
-  { keys: ["qurtubi", "al qurtubi"], label: "تفسير القرطبي" },
-  { keys: ["tabari", "al tabari"], label: "تفسير الطبري" },
-  { keys: ["saadi", "al saadi", "as saadi"], label: "تفسير السعدي" },
-  { keys: ["muyassar", "al muyassar"], label: "تفسير الميسر" },
-  { keys: ["baghawi", "al baghawi"], label: "تفسير البغوي" },
-  { keys: ["ibn ashur", "ibn ashour", "ibn 'ashur"], label: "تفسير ابن عاشور" },
-  { keys: ["quran", "qur'an"], label: "القرآن الكريم" },
-  { keys: ["hadith"], label: "الحديث الشريف" },
-];
-
 const SOURCE_AR_TITLES = {
   "fath albari": "فتح الباري",
   "fath al bari": "فتح الباري",
@@ -2649,18 +2586,6 @@ function cleanBookTitle(labelOrLoc = "") {
   const lower = t.toLowerCase();
   if (lower === "book" || lower === "books") return "";
   return t;
-}
-
-function extractChunkInfo(text = "") {
-  const m = String(text || "").match(/chunk\s*([0-9]+(?:\/[0-9]+)?)/i);
-  return m ? m[1] : "";
-}
-
-function extractChunkFromId(rawId = "") {
-  const id = String(rawId || "");
-  if (!id.includes("#")) return "";
-  const chunk = id.split("#")[1] || "";
-  return chunk.replace(/[^\d/]/g, "");
 }
 
 function isBookResult(item) {
@@ -3023,61 +2948,6 @@ function normalizeTafsir(raw) {
   return out;
 }
 
-const TAFSIR_ENTRY_KEYS = {
-  surah: ["surah", "sura", "chapter", "s", "surahNo", "surah_number"],
-  ayah: ["ayah", "aya", "verse", "a", "ayahNo", "ayah_number"],
-  text: ["text", "tafsir", "content", "value", "explain", "meaning", "commentary"],
-};
-
-function getEntryField(obj, keys) {
-  for (const key of keys) {
-    if (obj?.[key] != null) return obj[key];
-  }
-  return null;
-}
-
-function getEntryText(entries, surahNo, ayahNo) {
-  if (!Array.isArray(entries)) return null;
-  const sNum = Number(surahNo);
-  const aNum = Number(ayahNo);
-  if (!Number.isFinite(sNum) || !Number.isFinite(aNum)) return null;
-  const cache = TAFSIR_ENTRY_CACHE.get(entries);
-  if (cache) return cache.get(`${sNum}:${aNum}`) || null;
-
-  let looksLikeEntries = false;
-  for (let i = 0; i < Math.min(entries.length, 5); i += 1) {
-    const item = entries[i];
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const s = getEntryField(item, TAFSIR_ENTRY_KEYS.surah);
-    const a = getEntryField(item, TAFSIR_ENTRY_KEYS.ayah);
-    if (s != null && a != null) {
-      looksLikeEntries = true;
-      break;
-    }
-  }
-  if (!looksLikeEntries) return null;
-
-  const map = new Map();
-  for (const item of entries) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const s = getEntryField(item, TAFSIR_ENTRY_KEYS.surah);
-    const a = getEntryField(item, TAFSIR_ENTRY_KEYS.ayah);
-    if (s == null || a == null) continue;
-    const sNumItem = Number(s);
-    const aNumItem = Number(a);
-    if (!Number.isFinite(sNumItem) || !Number.isFinite(aNumItem)) continue;
-    const text = getEntryField(item, TAFSIR_ENTRY_KEYS.text);
-    const normalized = normalizeTafsirText(text);
-    if (!normalized) continue;
-    map.set(`${sNumItem}:${aNumItem}`, normalized);
-  }
-  TAFSIR_ENTRY_CACHE.set(entries, map);
-  return map.get(`${sNum}:${aNum}`) || null;
-}
-
-// getTafsir and helpers removed
-function getTafsir() { return null; }
-
 /* en.sahih.json can be array of strings or array of objects */
 function buildEnglishMap(enRaw) {
   const out = {};
@@ -3310,18 +3180,6 @@ function expandResultsList() {
   } else {
     // Already expanded - just ensure max-height is stable (no animation flicker)
     results.style.maxHeight = "480px";
-  }
-}
-
-function toggleResultsList() {
-  if (!resultsShell || !results) return;
-  if (VERSES_OPEN) setVersePanelOpen(false);
-  if (resultsShell.classList.contains("collapsed")) {
-    expandResultsList();
-  } else {
-    results.classList.add("collapsed");
-    resultsShell.classList.add("collapsed");
-    results.style.maxHeight = "0";
   }
 }
 
@@ -4091,67 +3949,6 @@ function setCompareMessage(message, tone = "muted") {
   tafsirCompareContent.innerHTML = `<p class="text-sm font-semibold ${toneClass}">${escapeHtml(message)}</p>`;
 }
 
-function formatCompareTextToHtml(text = "") {
-  const cleaned = cleanAiText(String(text || ""));
-  if (!cleaned) return "";
-  const lines = cleaned.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) return "";
-
-  const htmlParts = [];
-  let listItems = [];
-
-  const flushList = () => {
-    if (!listItems.length) return;
-    htmlParts.push(`<ul class="mt-2 space-y-2">${listItems
-      .map((item) => `<li class="flex items-start gap-2 text-sm leading-6"><span class="mt-1 ai-bullet">&bull;</span><span>${formatAiInline(item)}</span></li>`)
-      .join("")}</ul>`);
-    listItems = [];
-  };
-
-  const addHeading = (textLine) => {
-    const heading = formatAiInline(textLine);
-    htmlParts.push(`<h4 class="${htmlParts.length ? "mt-4 " : ""}text-sm font-extrabold text-slate-700">${heading}</h4>`);
-  };
-
-  const addParagraph = (textLine) => {
-    htmlParts.push(`<p class="mt-2 text-sm leading-7">${formatAiInline(textLine)}</p>`);
-  };
-
-  for (const line of lines) {
-    const headingMatch = line.match(/^(#{1,3})\s*(.+)$/);
-    if (headingMatch) {
-      flushList();
-      addHeading(headingMatch[2]);
-      continue;
-    }
-
-    const bulletMatch = line.match(/^[-*•]\s+(.+)/);
-    if (bulletMatch) {
-      listItems.push(bulletMatch[1]);
-      continue;
-    }
-
-    const numberedMatch = line.match(/^\d+[.)]\s+(.+)/);
-    if (numberedMatch) {
-      listItems.push(numberedMatch[1]);
-      continue;
-    }
-
-    const colonHeading = line.match(/^(.+?)([:：؛])$/);
-    if (colonHeading && line.length <= 80) {
-      flushList();
-      addHeading(colonHeading[1]);
-      continue;
-    }
-
-    flushList();
-    addParagraph(line);
-  }
-
-  flushList();
-  return htmlParts.join("");
-}
-
 function renderCompareText(text = "", { streaming = false, typewriter = true } = {}) {
   if (!tafsirCompareContent) return;
 
@@ -4286,122 +4083,6 @@ function renderCompareText(text = "", { streaming = false, typewriter = true } =
   }
 }
 
-function extractCompareText(obj) {
-  const seen = new WeakSet();
-  const walk = (node) => {
-    if (!node) return "";
-    if (typeof node === "string") return node;
-    if (typeof node !== "object") return "";
-    if (seen.has(node)) return "";
-    seen.add(node);
-
-    const directKeys = [
-      "arabic_answer",
-      "english_answer",
-      "raw_text",
-      "comparison_text",
-      "comparison",
-      "text",
-      "answer",
-      "result",
-      "response",
-    ];
-    for (const key of directKeys) {
-      const value = node[key];
-      if (typeof value === "string" && value.trim()) return value;
-    }
-
-    const nestedKeys = ["data", "payload", "output", "response", "message"];
-    for (const key of nestedKeys) {
-      const value = node[key];
-      if (!value) continue;
-      const nested = walk(value);
-      if (nested) return nested;
-    }
-    return "";
-  };
-  return walk(obj);
-}
-
-async function buildComparePayload(surahNo, ayahNo) {
-  const keys = Object.keys(TAFSIRS || {});
-
-  // Batch fetch any missing tafsirs
-  await fetchTafsirsBatch(surahNo, ayahNo, keys);
-
-  const tafsirs = [];
-  for (const key of keys) {
-    const pack = TAFSIRS[key];
-    // Now look up in cache (synchronous - checks localStorage too)
-    const rawText = getTafsirCache(`${surahNo}:${ayahNo}:${key}`) || "";
-
-    const norm = typeof normalizeTafsirText === "function" ? normalizeTafsirText(rawText) : (rawText || "");
-    const text = trimForCompare(norm);
-    if (!text) continue;
-
-    tafsirs.push({
-      key,
-      label: pack?.label || pack?.shortLabel || key,
-      text,
-    });
-  }
-  return {
-    response_style: "concise",
-    verse: {
-      surah: surahNo,
-      ayah: ayahNo,
-      text: getAyahTextFromQuran(surahNo, ayahNo) || "",
-    },
-    ayahKey: `${surahNo}:${ayahNo}`,
-    tafsirs,
-  };
-}
-
-async function runCompare(payload, abortController) {
-  let response;
-  try {
-    response = await fetch(COMPARE_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: false,
-      signal: abortController.signal,
-    });
-  } catch (err) {
-    if (String(err).includes("AbortError")) throw err;
-    const offline = !navigator.onLine || err?.name === "TypeError";
-    return { ok: false, offline };
-  }
-
-  if (!response.ok) {
-    let bodyText = "";
-    try { bodyText = await response.text(); } catch (err) {
-      if (String(err).includes("AbortError")) throw err;
-    }
-    console.error("Compare failed:", response.status, bodyText);
-    const offline = !navigator.onLine || response.status === 0 || response.type === "opaque";
-    return { ok: false, offline };
-  }
-
-  let data = null;
-  try {
-    data = await response.json();
-  } catch (err) {
-    console.error("Compare failed to parse JSON:", err);
-    return { ok: false, offline: false };
-  }
-  if (data && data.ok === false) {
-    console.error("Compare error:", data);
-    return { ok: false, offline: false };
-  }
-
-  const text = extractCompareText(data);
-  if (!text) return { ok: false, offline: false };
-  setCompareCache(payload.ayahKey, text);
-  renderCompareText(text);
-  setCompareStatus("", "", { loading: false });
-  return { ok: true, offline: false };
-}
 /* Show the مختصر التفاسير loading spinner briefly, then render — so instant
  * (cached / offline) results still get the same loading feedback as the live
  * web fetch instead of popping in abruptly. Bails if the ayah changed meanwhile. */
@@ -4885,15 +4566,6 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   if (scroll) {
     try { tafsirSection?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { }
   }
-}
-
-function setSelected(surahNo, ayahNo) {
-  // helper used by AI "open ayah"
-  setPrimaryAyah(surahNo, ayahNo);
-  // Bug 2: only re-open the results list when it holds REAL result cards —
-  // expanding a list whose content is the stale "لا توجد نتائج" empty-state
-  // would paint that block right under the chip/مسح area.
-  if (results?.querySelector(".result-card")) expandResultsList();
 }
 
 /* ---------------- AI UI ---------------- */
@@ -5452,39 +5124,6 @@ async function fetchTafsirFromAPI(surah, ayah, key) {
     console.error("Tafsir fetch error:", e);
     return null;
   }
-}
-
-async function fetchTafsirsBatch(surah, ayah, keys) {
-  if (!surah || !ayah || !keys || !keys.length) return;
-
-  // Filter out keys that are already cached (including localStorage)
-  const missing = keys.filter(k => !getTafsirCache(`${surah}:${ayah}:${k}`));
-  if (missing.length === 0) return;
-
-  try {
-    const url = `${API_ROOT}/tafsir`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ surah: Number(surah), ayah: Number(ayah), tafsirs: missing })
-    });
-
-    if (!res.ok) return;
-
-    const data = await res.json();
-    if (data.status === "ok" && data.tafsirs) {
-      for (const [k, txt] of Object.entries(data.tafsirs)) {
-        if (txt) setTafsirCache(`${surah}:${ayah}:${k}`, txt);
-      }
-    }
-  } catch (e) {
-    console.error("Batch tafsir fetch error:", e);
-  }
-}
-
-async function loadOne(key, file, label, shortLabel) {
-  // Deprecated for tafsir, kept if needed for other JSONs but effectively unused for tafsir now
-  return false;
 }
 
 function renderSurahView(surah) {
@@ -6333,10 +5972,6 @@ async function init() {
     } catch {
       EN_MAP = null;
     }
-
-    /* Tafsir files are now fetched on-demand from API */
-    // await loadOne("muyassar", "tafseer_muyassar.json", "التفسير الميسّر", "الميسّر");
-    // ... all static loads removed
 
     // If current tafsir selection isn't loaded, fall back to first available
     const selectedKey = tafsirSelect?.value || "muyassar";

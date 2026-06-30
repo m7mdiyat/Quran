@@ -202,6 +202,7 @@ let PANEL_OPEN = false;
 let CURRENT_PAGE = 0;
 let CURRENT_TARGET_VERSE = null;  // "s:a" — initial highlight on next render
 let TARGET_SURAH = null;          // surah id whose ayahs render at full opacity
+let CURRENT_PAGE_DATA = null;     // live page data of the active page (for the fullscreen title)
 let LAST_VIEWED_AYAH = null;      // {s, a} — drives toggle restore in both directions
 
 let ROOT_EL = null;
@@ -222,14 +223,7 @@ let MUKHTASAR_POINT = null;       // {x,y} long-press viewport coords, when know
 let MUKHTASAR_SIDE = null;        // "below" | "above" — decided once per open
 let MUKHTASAR_DRAGGED = false;    // user moved the card → stop auto-repositioning
 let MENU_PRESS_POINT = null;      // press point captured when the ayah menu opened
-let NAV_PREV = null;
-let NAV_NEXT = null;
-let PLAYBACK_BAR_EL = null;
-let PLAYBACK_LABEL_EL = null;
 let PLAYBACK_PLAY_BTN = null;
-let PLAYBACK_PREV_BTN = null;
-let PLAYBACK_NEXT_BTN = null;
-let PLAYBACK_HIDE_TIMER = null;
 
 /* Audio state */
 let AUDIO_PLAYER = null;
@@ -238,7 +232,6 @@ let AUDIO_MODE = "single";
 let AUDIO_VOLUME = 0.8;          // 0..1
 let AUDIO_SPEED = 1;             // 0.5..2
 let MUTED_PREV_VOLUME = 0.8;     // volume to restore when un-muting
-let CURRENT_RECITER_LOCAL = null;
 
 /* Hover/long-press timers */
 let HOVER_SHOW_TIMER = null;
@@ -372,6 +365,12 @@ function commitMode(mode) {
     MUSHAF_MODE = wanted === "mushaf";
     document.documentElement.setAttribute("data-app-mode", wanted);
     try { localStorage.setItem(STORAGE.MODE, wanted); } catch { }
+    // The windowed-reading reclaim CSS keys off data-app-mode → the chrome heights
+    // just changed. Re-fit the box + font so the page sizes to the (now larger)
+    // reading box right away, not on the next flip.
+    if (MUSHAF_MODE && ACTIVE_PAGE_EL) {
+        try { const box = fitMushafPageBox(); autoFitFontSize(box); scheduleBoxSettle(); } catch { }
+    }
 }
 
 /**
@@ -1110,13 +1109,7 @@ function buildShell() {
         MUKHTASAR_BODY_EL = document.getElementById("mushafMukhtasarBody");
         MUKHTASAR_REF_EL = document.getElementById("mushafMukhtasarRef");
         MUKHTASAR_MORE_BTN = document.getElementById("mushafMukhtasarMore");
-        NAV_PREV = document.getElementById("mushafPrev");
-        NAV_NEXT = document.getElementById("mushafNext");
-        PLAYBACK_BAR_EL = null;
-        PLAYBACK_LABEL_EL = null;
         PLAYBACK_PLAY_BTN = document.getElementById("mushafToolbarPlay");
-        PLAYBACK_PREV_BTN = null;
-        PLAYBACK_NEXT_BTN = null;
         return;
     }
 
@@ -1293,13 +1286,7 @@ function buildShell() {
     MUKHTASAR_BODY_EL = document.getElementById("mushafMukhtasarBody");
     MUKHTASAR_REF_EL = document.getElementById("mushafMukhtasarRef");
     MUKHTASAR_MORE_BTN = document.getElementById("mushafMukhtasarMore");
-    NAV_PREV = document.getElementById("mushafPrev");
-    NAV_NEXT = document.getElementById("mushafNext");
-    PLAYBACK_BAR_EL = null;
-    PLAYBACK_LABEL_EL = null;
     PLAYBACK_PLAY_BTN = document.getElementById("mushafToolbarPlay");
-    PLAYBACK_PREV_BTN = null;
-    PLAYBACK_NEXT_BTN = null;
 
     wireNav();
     wireMenu();
@@ -1320,9 +1307,17 @@ function buildShell() {
             // layout reflow (entering, rotating, font-button clicks, page
             // swaps) would trigger autoFit and immediately overwrite the
             // multiplied --font-size — making the + button look broken.
-            if (PANEL_OPEN && !FS_FONT_LOCK) autoFitFontSize();
+            if (PANEL_OPEN && !FS_FONT_LOCK) { autoFitFontSize(); fitMushafPageBox(); }
         }).observe(PAGES_EL);
     }
+
+    // Re-fit the page box when the chrome ABOVE the stage can shift — rotation,
+    // viewport resize, late font load. Those move the stage's top WITHOUT resizing
+    // PAGES_EL, so the ResizeObserver above wouldn't catch them. (No-op off-app /
+    // in fullscreen — fitMushafPageBox guards both.)
+    window.addEventListener("resize", scheduleBoxSettle, { passive: true });
+    window.addEventListener("orientationchange", () => setTimeout(scheduleBoxSettle, 60), { passive: true });
+    try { document.fonts?.ready?.then(scheduleBoxSettle); } catch { }
 }
 
 /* Fullscreen-only flag — when true, the ResizeObserver above does NOT
@@ -1473,7 +1468,7 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
         hideMushafLoader();
 
         renderPage(data, direction);
-        commitPageState(p, data, { noScroll });
+        commitPageState(p, data, { noScroll, direction });
     } catch (e) {
         console.error("Mushaf goToPage error:", e);
     }
@@ -1483,12 +1478,23 @@ async function goToPage(p, { direction = "none", noScroll = false } = {}) {
  * target highlight, resume position. Shared by goToPage (instant/animated swap)
  * and the flip-drag's commit, so a finger-completed flip updates exactly the
  * same state as a button/swipe flip. */
-function commitPageState(p, data, { noScroll = false } = {}) {
+function commitPageState(p, data, { noScroll = false, direction = "none" } = {}) {
     CURRENT_PAGE = p;
     try { localStorage.setItem(STORAGE.LAST_PAGE, String(p)); } catch { }
     updateNavDisabledState();
     prefetchAdjacent(p);
     applyTargetHighlight({ noScroll });
+    // A page FLIP (swipe / ‹ › buttons → a slide direction) must NEVER move the document
+    // scroll: the reader stays exactly where their finger left them and only the page
+    // content swaps. The constant per-page box + autoFit keep the size identical across
+    // flips, and applyTargetHighlight no longer centers the ayah in-app, so the page just
+    // stays put — no jump. ONLY a non-flip arrival (direction "none") that didn't opt out
+    // (noScroll) tucks the hero away once: a cold-load / deep-link entry at the very top.
+    // Mode toggles + session-restore pass noScroll → they honor setAppMode's "Fix 3: the
+    // toggle must not move the viewport".
+    const mayTuck = direction === "none" && !noScroll;
+    if (mayTuck) lockReadingScrollTop();
+    requestAnimationFrame(() => { if (mayTuck) lockReadingScrollTop(); fitMushafPageBox(); });
     if (CURRENT_TARGET_VERSE) {
         const [s, a] = CURRENT_TARGET_VERSE.split(":").map(Number);
         LAST_VIEWED_AYAH = { s, a };
@@ -1639,56 +1645,98 @@ function buildPageElement(data, targetSurah = TARGET_SURAH) {
  * a dragged-in page gets the exact same wiring as a normally-rendered one. */
 function activatePage(newPage, data) {
     ACTIVE_PAGE_EL = newPage;
+    CURRENT_PAGE_DATA = data;   // set before the page-rendered event so the title reads it
     // Bottom-nav ‹ N › label (the per-page footer is built into the DOM above).
     const pageLabel = document.getElementById("mushafPageLabel");
     if (pageLabel) pageLabel.textContent = Number(data.page).toLocaleString("ar-EG");
     wireAyahInteractions(newPage);
     if (AUDIO_VERSE) highlightAyah(AUDIO_VERSE, "playing");
-    // Fire the event AFTER autoFit finishes (its document.fonts.ready is async).
-    // Fullscreen reads --font-size in its page-rendered handler.
-    const fitPromise = autoFitFontSize();
-    const dispatch = () => {
-        try {
-            PAGES_EL?.dispatchEvent(new CustomEvent("mushaf:page-rendered", {
-                bubbles: true,
-                detail: { page: data.page, el: newPage, data },
-            }));
-        } catch { }
-    };
-    if (fitPromise && typeof fitPromise.then === "function") fitPromise.then(dispatch, dispatch);
-    else dispatch();
+    // Width-fit the font to one consistent size, then announce so fullscreen/gharib
+    // read the final --font-size. (The old per-page "fixed box" height-fit was removed;
+    // the page now renders at natural height and the document scrolls.)
+    const box = fitMushafPageBox();   // no-op box reset (clears any stale inline height)
+    autoFitFontSize(box);
+    scheduleBoxSettle();  // re-fit the font once the chrome above the stage settles
+    try {
+        PAGES_EL?.dispatchEvent(new CustomEvent("mushaf:page-rendered", {
+            bubbles: true,
+            detail: { page: data.page, el: newPage, data },
+        }));
+    } catch { }
 }
 
+let _renderGen = 0;   // bumped per render; a held fs-zoom reveal aborts if superseded
 function renderPage(data, direction = "none") {
     if (!PAGES_EL) return;
+    const gen = ++_renderGen;
     closeMukhtasarCard(); // card/menu anchor to ayahs in the outgoing page — drop them
     const newPage = buildPageElement(data);
     const old = ACTIVE_PAGE_EL;
     PAGES_EL.appendChild(newPage);
 
-    if (direction !== "none" && old) {
-        // Soft horizontal slide (transform-only). RTL: NEXT (goNext → "left") →
-        // new enters from the LEFT, old exits to the RIGHT; PREV → the opposite.
-        const next = direction === "left";
-        const enterCls = next ? "mushaf-page--enter-from-left" : "mushaf-page--enter-from-right";
-        const exitCls = next ? "mushaf-page--exit-to-right" : "mushaf-page--exit-to-left";
-        // Rapid taps: drop any pages still sliding from an earlier swap.
+    // Force a synchronous layout NOW, before the slide animation reveals the page.
+    // The page's fonts are already loaded (goToPage awaits loadPageFontsWithRetry),
+    // but the page is freshly appended — in fullscreen-zoom the lines flip from the
+    // base nowrap to white-space:normal (wrap) under the [data-fs-zoom] rules, and
+    // if the slide starts painting before that recalc+shape lands you see the text
+    // cut off at the edge for a frame, then "fill in". Reading offsetHeight forces
+    // style-recalc + layout + text-shaping with the loaded font up front, so the
+    // page is in its FINAL wrapped/shaped geometry before it's ever shown.
+    void newPage.offsetHeight;
+
+    const runSwap = () => {
+        if (direction !== "none" && old) {
+            // Soft horizontal slide (transform-only). RTL: NEXT (goNext → "left") →
+            // new enters from the LEFT, old exits to the RIGHT; PREV → the opposite.
+            const next = direction === "left";
+            const enterCls = next ? "mushaf-page--enter-from-left" : "mushaf-page--enter-from-right";
+            const exitCls = next ? "mushaf-page--exit-to-right" : "mushaf-page--exit-to-left";
+            // Rapid taps: drop any pages still sliding from an earlier swap.
+            PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => { if (p !== old && p !== newPage) p.remove(); });
+            PAGES_EL.classList.add("mushaf-pages--animating");
+            clearTimeout(PAGES_ANIM_TIMER);
+            PAGES_ANIM_TIMER = setTimeout(() => PAGES_EL?.classList.remove("mushaf-pages--animating"), 480);
+            newPage.classList.add(enterCls);
+            newPage.addEventListener("animationend", () => newPage.classList.remove(enterCls), { once: true });
+            old.classList.add(exitCls);
+            old.addEventListener("animationend", () => old.remove(), { once: true });
+            setTimeout(() => { if (old.parentNode) old.remove(); }, 480);
+        } else {
+            clearTimeout(PAGES_ANIM_TIMER);
+            PAGES_EL.classList.remove("mushaf-pages--animating");
+            if (old) old.remove();
+        }
+        activatePage(newPage, data);
+    };
+
+    const root = PAGES_EL.closest(".mushaf-root");
+    const fsZoom = !!root && root.classList.contains("mushaf-root--fullscreen") && root.getAttribute("data-fs-zoom") === "1";
+    if (fsZoom) {
+        // ── fs-zoom flip: scroll-reset + instant swap under an OPAQUE cover ──────
+        // The page is ~1556px of 32px glyphs. The old opacity:0 hold did nothing —
+        // WebKit doesn't rasterize fully-transparent layers, so the page rastered
+        // only on reveal (the cut-then-fill). Instead:
+        //   1. reset the zoom scroller to the TOP (kills the stale-scroll bottom-cut),
+        //   2. swap INSTANTLY (no heavy 1556px slide to composite),
+        //   3. lay an OPAQUE cover over the page; after a real paint (double rAF)
+        //      fade it out, revealing an already-painted page.
+        root.scrollTop = 0; root.scrollLeft = 0;
+        const cover = document.createElement("div");
+        cover.className = "mushaf-fs-zoom-cover";
+        root.appendChild(cover);
         PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => { if (p !== old && p !== newPage) p.remove(); });
-        PAGES_EL.classList.add("mushaf-pages--animating");
-        clearTimeout(PAGES_ANIM_TIMER);
-        PAGES_ANIM_TIMER = setTimeout(() => PAGES_EL?.classList.remove("mushaf-pages--animating"), 480);
-        newPage.classList.add(enterCls);
-        newPage.addEventListener("animationend", () => newPage.classList.remove(enterCls), { once: true });
-        old.classList.add(exitCls);
-        old.addEventListener("animationend", () => old.remove(), { once: true });
-        setTimeout(() => { if (old.parentNode) old.remove(); }, 480);
-    } else {
         clearTimeout(PAGES_ANIM_TIMER);
         PAGES_EL.classList.remove("mushaf-pages--animating");
         if (old) old.remove();
+        activatePage(newPage, data);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (gen !== _renderGen) { cover.remove(); return; }   // superseded by a faster flip
+            cover.classList.add("mushaf-fs-zoom-cover--out");
+            setTimeout(() => { if (cover.parentNode) cover.remove(); }, 240);
+        }));
+        return;
     }
-
-    activatePage(newPage, data);
+    runSwap();
 }
 
 function buildSurahHeader(surahId) {
@@ -1791,7 +1839,10 @@ function wireFullscreenButton(btn) {
                 getActivePageEl: () => ACTIVE_PAGE_EL,
                 getCurrentPageNum: () => CURRENT_PAGE,
                 totalPages: TOTAL_PAGES,
-                refitFont: () => autoFitFontSize(),
+                // Box-aware re-fit. closeFullscreen() calls this AFTER dropping the
+                // --fullscreen class, so the page is re-sized for the NORMAL box
+                // synchronously, before paint — no big-but-cut-then-shrink-on-flip.
+                refitFont: () => { const box = fitMushafPageBox(); autoFitFontSize(box); scheduleBoxSettle(); },
                 setFontLock: (b) => { FS_FONT_LOCK = !!b; },
                 goPrev: () => goPrev(),
                 goNext: () => goNext(),
@@ -1800,6 +1851,15 @@ function wireFullscreenButton(btn) {
                 getCurrentReciter: () => DEPS?.getCurrentReciter?.(),
                 handleSettingsChip: (chip) => handleSettingsChip(chip),
                 syncSettingsUI: () => syncSettingsUI(),
+                // Name for the floating fullscreen title: the LAST surah on the page — i.e.
+                // the NEW one when a page ends one surah and starts the next, so the title
+                // shows the surah you're moving INTO (e.g. الكهف, not الإسراء). Single-surah
+                // pages → that surah. Falls back to TARGET_SURAH if page data isn't ready.
+                getCurrentSurahName: () => {
+                    const surahs = CURRENT_PAGE_DATA?.surahs;
+                    const id = surahs?.length ? surahs[surahs.length - 1].id : TARGET_SURAH;
+                    return id ? chapterArabicName(id) : "";
+                },
             });
         } catch (e) {
             console.error("page-fullscreen load failed", e);
@@ -1812,102 +1872,143 @@ function applyTargetHighlight({ noScroll = false } = {}) {
     const els = ACTIVE_PAGE_EL.querySelectorAll(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
     if (!els.length) return;
     els.forEach((el) => el.classList.add("mushaf-ayah--target"));
-    if (!noScroll) {
+    // App reading is page-based (the whole page is the unit): a flip keeps the reader's
+    // exact scroll position. Centering the target ayah here would land a different scroll
+    // each page (the ayah sits at a different height) → the page would jump on flip. So
+    // scroll-to-ayah is ONLY off-app or in fullscreen; in-app the viewport never moves.
+    const appReading = isApp() && !ROOT_EL?.classList.contains("mushaf-root--fullscreen");
+    if (!noScroll && !appReading) {
         els[0].scrollIntoView({ behavior: "smooth", block: "center" });
     }
     setTimeout(() => els.forEach((el) => el.classList.remove("mushaf-ayah--target")), 4000);
 }
 
+// App reading is a document-scroll layout: the constant-19px page is taller than the
+// viewport, so it scrolls. On a FRESH ENTRY (cold load / deep link at the very top) this
+// tucks the hero away once — scrolls DOWN so the page top sits just under the fixed
+// header. It is NOT called on a page flip (commitPageState calls it only for a non-flip
+// arrival), so a swipe never moves the reader's scroll position. It also only ever
+// scrolls DOWN, never up, so it can't pull a reader who has scrolled into the page.
+function lockReadingScrollTop() {
+    if (!isApp() || !ROOT_EL) return;
+    if (ROOT_EL.classList.contains("mushaf-root--fullscreen")) return;
+    const header = document.querySelector("header.site-header");
+    const headerBottom = header ? Math.round(header.getBoundingClientRect().bottom) : 0;
+    const docTop = Math.round(ROOT_EL.getBoundingClientRect().top + window.scrollY);
+    const target = Math.max(0, docTop - headerBottom);
+    // Only ever scroll DOWN to the lock point (tuck the hero away on entry) — NEVER pull
+    // the page UP. If the user has scrolled down to read, a flip keeps their position put.
+    if (window.scrollY < target - 2) window.scrollTo(0, target);
+}
+
 /* ============================================================
- * Uniform page sizing (autoFit)
+ * Per-page sizing (autoFit) — WIDTH fit only.
  *
- * Every Madani page renders at ONE shared font-size so pages don't jump
- * big/small as you flip. The size fits the GLOBAL densest line (the widest
- * single line seen anywhere in the Mushaf) into the container: the densest
- * page just fits, and every sparser page renders at the SAME size with
- * natural side margins — never enlarged past the shared size, never
- * overflowing.
+ * Every page is sized to ONE width-fit size: size = (container − gutter) ÷ ρ_global,
+ * where ρ_global is the widest line's width-per-1px-of-font-size across the WHOLE
+ * Mushaf (page 576 is densest; scripts/measure-mushaf-density.mjs) — the comfortable
+ * printed-Mushaf MAXIMUM, also the cap (FIT_MAX_PX). There is NO per-page height
+ * shrink anymore: a page taller than the viewport simply lets the DOCUMENT scroll.
  *
- * Why a ratio, not a fixed px: a line's natural width scales linearly with
- * font-size, so ρ = (line width ÷ font-size) is a device- and container-
- * independent property of the glyphs. We track the max ρ across pages
- * (MUSHAF_MAX_RATIO) and derive the px size at render time from the LIVE
- * container width — uniform on any screen, and the widest line can never
- * overflow. (Earlier this fit each page to its OWN widest line, so a page's
- * size depended on its densest line → big/small variance page-to-page.)
- *
- * Madani layout is untouched: which words sit on which line is fixed by the
- * page data (+ .mushaf-line nowrap), so font-size can't reflow a line.
+ * Madani layout is untouched: which words sit on which line is fixed by the page
+ * data (+ .mushaf-line nowrap), so font-size can't reflow a line.
  * ============================================================ */
 const FIT_SAFETY = 0.98;    // 2% margin for anti-aliasing / sub-pixel rounding
 const FIT_MAX_PX = 38;      // cap so it can't get gigantic on wide desktop monitors
-const FIT_RATIO_MIN = 4;    // sane band — reject degenerate measurements (a real
-const FIT_RATIO_MAX = 30;   // full Mushaf line is only ~10–14× its font-size)
-let MUSHAF_MAX_RATIO = 0;   // max (widest-line width ÷ font-size) seen this session
+// ρ_global, measured across all 604 pages (max is page 576 @ 18.85). Rounded UP
+// to 18.9 for safety; FIT_SAFETY adds a further 2%, so no page can overflow.
+// Regenerate with `node scripts/measure-mushaf-density.mjs` if fonts/data change.
+const MUSHAF_DENSEST_RATIO = 18.9;
 
-function autoFitFontSize() {
-    if (!ACTIVE_PAGE_EL || !PAGES_EL) return Promise.resolve();
-
-    // Reset to CSS default so we measure the line at a known base size.
-    ACTIVE_PAGE_EL.style.removeProperty('--font-size');
-    // Side gutter the widest line must stay inside. Normal view keeps 16px
-    // (the page reserves ~8px×2). Fullscreen is an immersive, padding-less
-    // column, so it reclaims down to 2px — letting the text fill more of the
-    // width (its remaining empty space is vertical/centering, which a
-    // width-pinned, nowrap line can't use without overflowing dense pages).
+// boxHeight is vestigial — kept only for the call signature. There is no height-fit
+// anymore; sizing is width-fit only (see header) and the document scrolls when tall.
+function autoFitFontSize(boxHeight) {
+    if (!ACTIVE_PAGE_EL || !PAGES_EL) return;
+    // The fullscreen wrap-zoom ([data-fs-zoom]) owns its own size via CSS
+    // !important overrides (lines wrap there) — leave the page alone.
+    if (ACTIVE_PAGE_EL.closest('[data-fs-zoom]')) return;
+    // Side gutter the widest line must stay inside. Normal view keeps 16px (the
+    // page reserves ~8px×2). Fullscreen reclaims to 2px (immersive, padding-less).
     const gutter = ACTIVE_PAGE_EL.closest('.mushaf-root--fullscreen') ? 2 : 16;
     const containerWidth = PAGES_EL.clientWidth - gutter;
-    if (containerWidth <= 0) return Promise.resolve();
+    if (containerWidth <= 0) return;
+    // WIDTH fit = the comfortable MAXIMUM (printed-Mushaf look): the widest line
+    // just fits the container. This is the target size for a normal/sparse page,
+    // and the cap — a page is never sized LARGER than this.
+    let newSize = (containerWidth / MUSHAF_DENSEST_RATIO) * FIT_SAFETY;
+    if (newSize > FIT_MAX_PX) newSize = FIT_MAX_PX;
+    newSize = Math.round(newSize * 2) / 2;   // stable 0.5px step
+    ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
+    // Natural width-fit (~19px) — NO height shrink. The page keeps its big, printed-Mushaf
+    // size. If it's taller than the area below the chrome the DOCUMENT scrolls; a flip keeps
+    // the reader's current scroll position (it never resets), so reading isn't interrupted.
+    // boxHeight is unused in normal view (kept for the signature / fullscreen).
+    void boxHeight;
+}
 
-    return document.fonts.ready.then(() => {
-        if (!ACTIVE_PAGE_EL) return;
+/* ============================================================
+ * Per-page box reset (APP, normal view). The old pinned-box "Tarteel" model — which
+ * sized .mushaf-stage to a constant per-device box and distributed the page's rows to
+ * fill it — was replaced by natural-height reading: the page renders at its width-fit
+ * size and the DOCUMENT scrolls. So this just clears any leftover inline height (and
+ * the legacy scroll class) and returns null; autoFitFontSize() owns the real sizing.
+ * Kept as the shared post-render / settle hook. Website + fullscreen own their layouts.
+ * ============================================================ */
 
-        let maxLineWidth = 0;
-        // Exclude the bismillah line. The QCF4 bismillah PUA glyph has an
-        // intentionally wide ornamental flourish; if we let its scrollWidth
-        // drive autoFit, the page font-size gets shrunk so the bismillah
-        // fits — which then makes the verse lines too small and stretches
-        // the bismillah letters horizontally across the page width. Verses
-        // determine the page font-size; the bismillah is sized independently
-        // in CSS (.mushaf-line--bismillah).
-        const lines = ACTIVE_PAGE_EL.querySelectorAll('.mushaf-line:not(.mushaf-line--bismillah)');
-        lines.forEach((line) => {
-            const width = line.scrollWidth;
-            if (width > maxLineWidth) maxLineWidth = width;
-        });
-        if (maxLineWidth <= 0) return;
+function fitMushafPageBox() {
+    if (!isApp() || !PAGES_EL) return null;
+    const root = PAGES_EL.closest(".mushaf-root");
+    if (!root) return null;
+    const stage = PAGES_EL.closest(".mushaf-stage");
+    if (!stage) return null;
 
-        const baseFontSize =
-            parseFloat(window.getComputedStyle(ACTIVE_PAGE_EL).getPropertyValue('--font-size')) || 32;
+    // ── FULLSCREEN ──────────────────────────────────────────────────────────
+    // Stage = full viewport (flex column; the page is centered via margin:auto on
+    // .mushaf-pages). At zoom-1 the page is intentionally enlarged + scrollable —
+    // do NOT pin it. At zoom-0, give .mushaf-pages a CONSTANT height (viewport
+    // minus the stage's own top/bottom padding) so the centered page is the same
+    // height on every page and never jumps on flip. The page fills + distributes
+    // its lines via the fullscreen app-fit CSS.
+    if (root.classList.contains("mushaf-root--fullscreen")) {
+        // Fullscreen renders each page at its NATURAL width-fit (max) size and
+        // CENTERS it via margin:auto on .mushaf-pages — NO fixed box, no height
+        // shrink. There's room for any page at the max size, so every page is the
+        // same large size and flipping never shrinks it (returning null → autoFit
+        // gets no boxHeight → no per-page shrink). Un-pin any height we set.
+        PAGES_EL.style.removeProperty("height");
+        return null;
+    }
 
-        // ρ for this page's widest line: width per 1px of font-size.
-        const ratio = maxLineWidth / baseFontSize;
+    // ── WINDOWED reading: NATURAL big size (~19px), document scrolls ─────────
+    // Do NOT pin the stage or shrink the font — the page renders at its full width-fit
+    // (~19px, printed-Mushaf) size. It's taller than the area below the chrome, so the
+    // DOCUMENT scrolls; a flip keeps the reader's current scroll position (it is never
+    // reset), and the reading background is seamless (no card chrome) so no gap shows at
+    // any scroll position.
+    stage.style.removeProperty("height");
+    PAGES_EL.classList.remove("mushaf-pages--scroll");
+    return null;
+}
 
-        // Grow the global densest-line ratio — but NOT while the fullscreen
-        // wrap-zoom ([data-fs-zoom]) is active: there the lines are
-        // display:inline / wrapped, so their scrollWidth is meaningless and
-        // would poison the shared size. (FS_FONT_LOCK no longer guards this —
-        // its deps are never called — so the skip lives here.) The sane band
-        // rejects any other stray measurement; a smaller ρ never wins, so the
-        // max converges to the true full-line ratio regardless.
-        if (ratio >= FIT_RATIO_MIN && ratio <= FIT_RATIO_MAX &&
-            ratio > MUSHAF_MAX_RATIO &&
-            !ACTIVE_PAGE_EL.closest('[data-fs-zoom]')) {
-            MUSHAF_MAX_RATIO = ratio;
-        }
-
-        // Uniform size = fit the GLOBAL densest line to the container. Until
-        // the first valid global sample exists, fall back to this page's own
-        // ratio (matches the old behaviour for that single first render).
-        const denom = MUSHAF_MAX_RATIO || ratio;
-        let newSize = (containerWidth / denom) * FIT_SAFETY;
-        if (newSize > FIT_MAX_PX) newSize = FIT_MAX_PX;
-        // Round to a stable 0.5px step so sub-pixel ratio noise between
-        // renders can't make otherwise-identical pages look different.
-        newSize = Math.round(newSize * 2) / 2;
-
-        ACTIVE_PAGE_EL.style.setProperty('--font-size', `${newSize}px`);
-    });
+/* Re-fit each frame until the box stops changing — the chrome ABOVE the stage
+ * (toolbar, fonts, safe-area) can still be laying out on a cold/resumed load, so
+ * the stage's top isn't final on frame 0. A warm flip settles on frame 1-2; a
+ * cold start converges as the layout lands (capped so it can't spin). This is
+ * what makes the box identical on EVERY page regardless of how it was reached. */
+let _boxSettleRAF = 0;
+function scheduleBoxSettle() {
+    if (!isApp()) return;
+    cancelAnimationFrame(_boxSettleRAF);
+    let last = NaN, stable = 0, n = 0;
+    const tick = () => {
+        const b = fitMushafPageBox();
+        autoFitFontSize(b);    // re-fit the font from the (possibly updated) box
+        n++;
+        if (b === last) stable++; else { stable = 0; last = b; }
+        if (b == null || stable >= 2 || n > 24) return;   // settled, off-app, or capped (~400ms)
+        _boxSettleRAF = requestAnimationFrame(tick);
+    };
+    _boxSettleRAF = requestAnimationFrame(tick);
 }
 
 /* ============================================================

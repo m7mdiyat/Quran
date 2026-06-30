@@ -439,6 +439,41 @@
         linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
     }
 
+    /* App page-background fixes. Mushaf reading scrolls to a CLEAN bottom where the page's
+       own background fills the lower screen, so two things that normally hide UNDER content
+       become visible there:
+
+       (1) Dead-zone height — window.innerHeight under-reports the real WebView height (e.g.
+       852 vs ~1070, measured on-device), so a height:100% fixed layer
+       stops short of the true bottom. 100dvh resolves to the real height here so the gradient
+       covers the full screen. (dvh needs iOS 15.4+; on 15.0–15.3 it no-ops back to 100%.)
+
+       (2) Bottom glows — the page gradient carries two decorative radial glows aimed at the
+       bottom corners (rgba(148,163,184) at 0%/100% 120%) that LIGHTEN the bottom ~third of
+       the screen. Under content that's pleasant ambiance, but on Mushaf's clean bottom it
+       reads as a lighter band that NO card/scroll/dead-zone change can remove (it's the page
+       background itself). So in-app we drop the two BOTTOM glows (keep the TOP glow + linear).
+       Override BOTH the ::before overlay AND the body's own background so the bottom is
+       uniformly dark on EVERY device — even old iOS where dvh no-ops and the body bg can peek
+       through the dead-zone. The website keeps all of its glows (these rules are is-app only). */
+    html.is-app body::before {
+        height: 100dvh;
+        background:
+            radial-gradient(1400px 900px at 50% -20%, rgba(191, 219, 254, .35), transparent 65%),
+            linear-gradient(180deg, #f7fbff 0%, #eff5ff 55%, #edf6fb 100%);
+    }
+    html.is-app body.dark::before {
+        background:
+            radial-gradient(1300px 820px at 50% -30%, rgba(148, 163, 184, .16), transparent 65%),
+            linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
+    }
+    html.is-app body.dark {
+        background:
+            radial-gradient(1300px 820px at 50% -30%, rgba(148, 163, 184, .16), transparent 65%),
+            linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
+        background-attachment: fixed;
+    }
+
     header.site-header {
       background: rgba(247, 251, 255, .72);
       border-color: var(--line);
