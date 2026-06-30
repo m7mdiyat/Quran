@@ -232,6 +232,19 @@ body.dark .mode-toggle__knob {
     overflow: hidden;
 }
 
+/* Fullscreen: do NOT vertically clip during a flip. The outgoing page turns out as
+   position:absolute; inset:0, which forces its box to .mushaf-pages's height — and that
+   height is the INCOMING page (the one in normal flow). So when the outgoing page is taller
+   than the incoming one, overflow:hidden sliced its bottom rows off mid-turn (the cut), and
+   it only "fixed" once the outgoing page was removed on landing. Letting the container
+   overflow vertically shows the outgoing page at its true height as it slides away.
+   Horizontal containment isn't needed here — pages slide a full width, off the viewport
+   edge, so there's nothing to clip sideways. (Normal تدبر view keeps overflow:hidden: its
+   container sits inside the page, so sideways clipping there still matters.) */
+.mushaf-root--fullscreen .mushaf-pages--animating {
+    overflow: visible;
+}
+
 .mushaf-loader {
     position: absolute;
     inset: 0;
@@ -350,6 +363,167 @@ body.dark .mushaf-download {
     position: absolute;
     inset: 0;
 }
+
+/* ============================================================
+ * Fixed-box CENTERED layout (APP, NORMAL view). fitMushafPageBox() sizes
+ * .mushaf-stage to a fixed height; autoFitFontSize() sizes each page PER-PAGE
+ * (width-fit MAX, shrunk only if that page's OWN content overflows the box); and
+ * here the natural-height page is simply CENTERED in the box. No stretch/distribute,
+ * no scroll (→ no bottom-gap). Fullscreen uses its own margin:auto centering and is
+ * NOT box-pinned (every page renders at the max size). Website keeps natural scroll.
+ * ============================================================ */
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-pages {
+    height: 100%;   /* fill the JS-pinned stage box */
+}
+/* NORMAL view: CENTER the natural-height page in the fixed stage box, no scroll.
+ * The PER-PAGE autoFit sizes each page so its OWN content fits this box, so
+ * overflow:hidden never clips — it only forbids scrolling (kills the bottom-gap)
+ * and horizontal wobble. The page stays NATURAL height (no stretch); .mushaf-line
+ * keeps its base 1.85 + --line-gap. (Fullscreen centers via its own margin:auto
+ * rule on .mushaf-pages and is NOT box-pinned, so its pages stay at the max size.) */
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-pages {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+/* The whole page scales with --font-size as ONE unit so it's proportional at any
+ * autoFit size and MUSHAF_DENSEST_HEIGHT_RATIO holds (fixed-px headers would break
+ * it on multi-surah pages). Factors = original size ÷ ~20px reference → unchanged
+ * in fullscreen (~20px), scaled down proportionally in the smaller normal box. */
+html.is-app .mushaf-surah-header__name { font-size: calc(var(--font-size) * 1.6); }
+html.is-app .mushaf-surah-header__label { font-size: calc(var(--font-size) * 0.7); }
+html.is-app .mushaf-line--bismillah { font-size: calc(var(--font-size) * 0.9); }
+/* Trim the surah-header block (margins only — NOT the text) so multi-header
+   pages stay compact within the box. */
+/* Mushaf tab (app, not fullscreen): the surah NAME is CENTERED, and "سورة" hangs as a small
+   annotation to its RIGHT. "سورة" is drawn as the name's ::after, ABSOLUTELY positioned, so
+   it doesn't count toward the centred width → the name stays perfectly centred. The real
+   label span is hidden (no duplicate). The name is a touch smaller with a roomy line-height
+   so the tall Amiri glyphs are no longer clipped (the cut was the old tight 1.1 line-height
+   on the now-inline name). App, non-fullscreen only — website + fullscreen are untouched. */
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-surah-header {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-surah-header__label {
+    display: none;   /* "سورة" is drawn by the name's ::after below instead */
+}
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-surah-header__name {
+    display: inline-block;
+    position: relative;
+    font-size: calc(var(--font-size) * 1.1);   /* a touch smaller — so it isn't cut */
+    line-height: 1.4;                            /* room for the tall Amiri glyphs */
+}
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-surah-header__name::after {
+    content: "سورة";
+    position: absolute;
+    left: 100%;                              /* the name's right edge (physical) */
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: calc(var(--font-size) * 0.28);   /* gap between the name and سورة */
+    font-size: calc(var(--font-size) * 0.62);
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+}
+/* Clearance band so the arrows clear the last line of a dense (box-filling) page;
+   sparser pages get extra clearance from centering. The box budget subtracts the
+   measured navOuter (incl. this margin), so the nav keeps its on-screen position. */
+html.is-app .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-bottom-nav {
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+/* ============================================================
+ * Windowed reading (APP, Mushaf mode) — RENDER-SAFE in-flow layout. Compact the
+ * in-app chrome (toolbar + card padding + nav) for more reading room; the header is
+ * left as-is so it MATCHES Tafsir mode (default py-3 padding + border-b). The page
+ * renders at its natural height and the document scrolls.
+ *
+ * NOTE: a position:fixed; inset:0 FULL-SCREEN frame was tried (to kill the bottom
+ * dead-zone) and it COLLAPSED to 0×0 on device → BLANK screen — the mushaf root
+ * carries .t-panel-slide whose transform/filter make a fixed root a broken
+ * containing block, and even 100dvh + inert overrides didn't size it here. So we
+ * stay in flow (renders reliably). The bottom dead-zone is re-approached separately
+ * with a real-viewport measurement, never by making this root fixed.
+ * Scoped to data-app-mode="mushaf" (set by commitMode).
+ * ============================================================ */
+html.is-app[data-app-mode="mushaf"] .mushaf-toolbar { margin-bottom: 6px; }
+/* Bottom safe-area (Bug 2): the card's padding-bottom carries the home-indicator inset
+   so the card BACKGROUND fills all the way to the real screen bottom — no empty band
+   showing through under the nav when scrolled down. The nav then needs only a small
+   margin (NOT another safe-area, which double-stacked → the visible gap). */
+html.is-app[data-app-mode="mushaf"] .mushaf-root { padding: 10px 10px calc(env(safe-area-inset-bottom, 0px)); }
+
+/* "Melted bottom" app cards — BOTH the Mushaf reading card AND the Tafsir card get the
+   identical treatment so both tabs blend into the page bottom the same way. Keep the card's
+   rounded TOP, border and tint at the top, but DISSOLVE it into the page at the bottom so
+   there is no hard edge/line where the card ends. (A card can't physically reach the screen
+   bottom — the iOS dead-zone is paintable only by a FIXED layer — so instead of showing an
+   edge there, the card's skin fades out into the page gradient.) The skin (tint + border +
+   rounded top) is drawn on a ::before BEHIND the content and masked to fade over its last
+   ~160px; the text + controls/nav are NOT masked, so they stay crisp. App only — the website
+   (and fullscreen Mushaf) keep the full, normal card. */
+html.is-app[data-app-mode="mushaf"] .mushaf-root:not(.mushaf-root--fullscreen),
+html.is-app[data-app-mode="tafsir"] #tafsirSection {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    isolation: isolate;   /* contain the skin ::before's negative z-index */
+}
+html.is-app[data-app-mode="mushaf"] .mushaf-root:not(.mushaf-root--fullscreen)::before,
+html.is-app[data-app-mode="tafsir"] #tafsirSection::before {
+    content: "";
+    position: absolute;
+    inset: 0;             /* border:0 above → padding box == card's outer edge */
+    z-index: -1;          /* behind the content, above the page gradient */
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;   /* rounded TOP only (rounded-3xl) */
+    /* Fade the whole skin (tint + side/top borders) out over the last stretch so the card
+       melts into the page gradient instead of ending on a hard line. */
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent);
+            mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent);
+    pointer-events: none;
+}
+
+/* Edge-fill — match the Mushaf card's width. The Mushaf root pulls out of <main>'s px-4
+   gutter to ~4px from the screen edge (margin-inline:-12px in the phone media query), so
+   its reading column runs nearly edge-to-edge; #tafsirSection sat at the full 16px gutter
+   and looked narrow/inset beside it. Pull the tafsir box out the same -12px (the ::before
+   skin above is inset:0, so it widens WITH the box → its faded edges now line up with the
+   Mushaf's) and trim the side padding 24→12px so the tafsir content fills the width too.
+   App + tafsir mode only; vertical padding (the Tailwind p-6) is left intact. */
+html.is-app[data-app-mode="tafsir"] #tafsirSection {
+    margin-inline: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+html.is-app[data-app-mode="mushaf"] .mushaf-root:not(.mushaf-root--fullscreen) .mushaf-bottom-nav {
+    margin-top: 10px;
+    margin-bottom: 6px;
+}
+
+/* fs-zoom flip pre-raster cover (Issue 2): opaque overlay that hides the page
+ * while it rasterizes after a flip, then fades out → an already-painted reveal.
+ * Matches the fullscreen background. */
+.mushaf-fs-zoom-cover {
+    position: fixed;
+    inset: 0;
+    z-index: 1003;
+    background: #ffffff;
+    pointer-events: none;
+}
+body.dark .mushaf-fs-zoom-cover { background: #232933; }
+.mushaf-fs-zoom-cover--out { opacity: 0; transition: opacity 220ms ease; }
+/* Natural line spacing (base .mushaf-line: line-height 1.85 + --line-gap) is kept
+   in both app modes now — the height-aware autoFit sizes the font so the natural
+   column fits the box, so there's no need to crush line-height or drop the gap. */
 
 /* ============================================================
  * Page-turn: soft horizontal slide (replaces the cross-fade). The new page
@@ -526,6 +700,16 @@ body.dark .mushaf-ayah--playing {
    cleanly right after the ‹ N › row. */
 [data-app-mode="mushaf"] main > section.pt-14 {
     padding-bottom: 0;
+}
+
+/* Hide the non-hero section(s) in the app. Today that's only the "سؤال الذكاء الاصطناعي
+   – قريبًا" teaser — a disabled, coming-soon AI <section> sitting BELOW the main card.
+   Hiding it in-app (a) drops the unclickable toggle, and (b) leaves the Mushaf/Tafsir card
+   as the LAST element so it melts cleanly into the page bottom with no trailing gap. The
+   hero (first section) hosts the card itself, so it stays. App only — the website keeps the
+   teaser (there the JS in mushaf.js still shows/hides the AI section per mode). */
+html.is-app main > section:not(:first-of-type) {
+    display: none;
 }
 
 .mushaf-bottom-nav__page {
@@ -2661,10 +2845,44 @@ html.dark #searchPillActions .mushaf-surah-dropdown {
  * (the fullscreen `* { manipulation }` rule otherwise re-allows it); the JS
  * swipe-flip is unaffected (touch-action never blocks JS touch events). */
 .mushaf-root--fullscreen[data-fs-zoom="1"] {
+    /* The root NO LONGER scrolls — the .mushaf-stage does (rule below). Keeping the scroll
+       off the root means the floating chrome (buttons/title/play), which are siblings of the
+       stage in the root, are true fixed overlays the scroller can't drag or glitch — so the
+       page can slide-flip cleanly while the top bar stays frozen. */
+    overflow: hidden;
+}
+
+/* The zoom scroll container. Block (not flex) so the page flows + scrolls from the top;
+   overflow-x:hidden clips the horizontal slide-flip; overflow-y:auto is the scroll. Its own
+   bounds cap the scroll, so the user can't drag past the page's bottom into empty space. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-stage {
+    display: block;
+    height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+}
+
+/* Top no-go-zone mask (zoom only). In zoom the root IS the scroll container and fills the
+   whole screen, so scrolled-up text would ride up into the status bar / Dynamic Island. This
+   opaque strip (the reading background) is pinned over the top region — ABOVE the page but
+   BELOW the floating buttons (which sit at z-index 1001) — so scrolled text disappears behind
+   it instead of into the no-go zone. Its height matches the stage's padding-top, i.e. where
+   the reading text is meant to start. Light bg here; dark overridden below. */
+.mushaf-root--fullscreen[data-fs-zoom="1"]::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(56px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    background: #ffffff;
+    z-index: 50;          /* above the page (auto), below the chrome buttons/title (1001) */
+    pointer-events: none; /* taps in the top region still pass through to toggle chrome */
+}
+body.dark .mushaf-root--fullscreen[data-fs-zoom="1"]::before {
+    background: #232933;
 }
 
 body.dark .mushaf-root--fullscreen {
@@ -2678,13 +2896,43 @@ body.dark .mushaf-root--fullscreen {
     to { opacity: 1; }
 }
 
-/* Hide the regular Mushaf chrome — fullscreen is verses only. The toolbar
- * (settings/play/font/surah/fullscreen button itself), the decorative
- * surah header inside the page, and the bottom page-nav row all disappear;
- * the floating controls + overlay nav (.mushaf-fs__nav) take over. */
-.mushaf-root--fullscreen .mushaf-surah-header,
+/* Hide the regular Mushaf chrome in fullscreen — the toolbar (settings/play/font/
+ * surah/fullscreen button) and the bottom page-nav row disappear; the floating
+ * controls + overlay nav (.mushaf-fs__nav) take over. The in-page surah-name header
+ * IS kept (shown for actual surah starts, styled below) so you know which surah you're
+ * reading; only mid-surah CONTINUATION headers are suppressed (rule further down). */
 .mushaf-root--fullscreen .mushaf-bottom-nav {
     display: none !important;
+}
+
+/* Bismillah line (surah-start pages) — BOTH normal view + level-0 fullscreen. Enlarge +
+   center the basmala glyph and give it normal line spacing so a surah-start page reads
+   TIGHT — bismillah right under the surah name, then the verses, like Al-Fatiha — with no
+   big gaps. (It used to be inflated to (15−N) verse-slots, vertically centered with
+   margin:0, to force every page to one height for the old pinned-box model; that model is
+   gone, so the inflation and the margin:0 were removed — the centering now no-ops on the
+   natural-height line.) `.mushaf-root:not([data-fs-zoom="1"])` = normal + level-0
+   fullscreen, excludes zoom (its own bismillah rule). High specificity to outrank
+   `html.is-app .mushaf-line--bismillah`. */
+html.is-app .mushaf-root:not([data-fs-zoom="1"]) .mushaf-line--bismillah {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px 0 10px;
+    font-size: calc(var(--font-size) * 1.2);
+}
+
+/* Fullscreen, level-0 only: keep the bismillah at its pre-today size so a surah-start page
+   is the SAME height as a regular page → the margin:auto vertical centering has nothing to
+   shift, and flipping to/from a surah start stays smooth. (The rule above enlarged it to
+   1.2×var(--font-size) + flex for the normal تدبر tab; in fullscreen that taller bismillah
+   grew surah-start pages, so the centered page jumped on every surah-start flip.) The
+   doubled .mushaf-root.mushaf-root--fullscreen outranks the rule above regardless of source
+   order; zoom keeps its own bismillah rule. */
+html.is-app .mushaf-root.mushaf-root--fullscreen:not([data-fs-zoom="1"]) .mushaf-line--bismillah {
+    display: block;
+    margin: 8px 0 10px;
+    font-size: clamp(18px, 4vw, 28px);
 }
 
 /* In fullscreen we hide the regular toolbar's chrome (settings, surah
@@ -2786,9 +3034,25 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
     flex-direction: column;
 }
 
+/* Top-align every fullscreen page at a CONSTANT Y. This was margin-top/bottom:auto, which
+   centered each page at its OWN height's center — so .mushaf-pages re-centered the instant a
+   flip swapped in a different-height page, dragging the still-visible outgoing page up (next
+   page taller) or down (next page shorter). THAT is the "the text page moves every flip"
+   jump. With a fixed top, the outgoing and incoming pages share the same top edge, so flips
+   never shift vertically no matter the page height. (A genuinely short page now sits
+   top-aligned with space below — like a printed Mushaf — instead of centered.) Overflowing
+   pages were already top-aligned here, since auto margins collapse to 0 on overflow, so the
+   zoom-1 level is unchanged; this only affects pages that fit (level-0). */
 .mushaf-root--fullscreen .mushaf-pages {
-    margin-top: auto;
-    margin-bottom: auto;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* Zoom (+) pages flow from the TOP of the stage scroller (no vertical centering — the stage
+   is a block scroll container now, and the slide must not vertically jump between pages). */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-pages {
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 /* Floating close button (top-right in RTL). Minimal, neutral grey. */
@@ -3198,21 +3462,66 @@ body.mushaf-fs-open {
     text-align-last: center !important;
     margin: 10px auto 14px !important;
     width: 100% !important;
+    /* Override the inline height autoFitFontSize sets at level-0 (the surah-start
+       fill) — zoom owns its own layout, so the bismillah is natural height here. */
+    height: auto !important;
 }
 
-.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header {
-    display: block !important;
-    text-align: center !important;
-    text-align-last: center !important;
-    margin: 14px auto 12px !important;
-    width: 100% !important;
+/* Fullscreen: the inline in-page surah-name header is HIDDEN so a surah-start page has the
+   EXACT same geometry as every other page. (Fullscreen vertically CENTERS the page, so the
+   old inline name added height and pushed surah-start pages visibly downward vs the rest.)
+   The surah name is shown instead as a subtle floating label in the fixed chrome — see
+   .mushaf-fs__surah-name below — which never touches the page flow. */
+.mushaf-root--fullscreen .mushaf-surah-header {
+    display: none !important;
+}
+
+/* Subtle floating surah name — fullscreen only (and fullscreen is app-only). A quiet title
+   centered in the top chrome, in the gap between the left (✕/⚙/▶) and right (🔖/🏮/＋) button
+   clusters. position:fixed + pointer-events:none, and it lives inside .mushaf-fs__chrome so
+   distraction-free mode fades it with the rest. Topped + sized to line up with the 32px
+   control buttons. Updated per page in page-fullscreen.js (reads mushaf's live TARGET_SURAH). */
+.mushaf-fs__surah-name {
+    position: fixed;
+    top: calc(12px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1001;
+    max-width: calc(100vw - 240px);   /* always clears the side button clusters (~120px each) */
+    line-height: 32px;                /* keeps the title text aligned with the 32px buttons */
+    text-align: center;
+    white-space: nowrap;
+    /* The cut is Amiri's final ر: its long tail descends BELOW the text line. The old fixed
+       32px box + the translateX transform made iOS clip the tail to that box even with
+       overflow:visible (a fixed+transformed layer is sized to its own box). Fix: NO fixed
+       height, plus real padding UNDER (and beside) the line, so the tail lands INSIDE the
+       element's box — where nothing can clip it — instead of overflowing it. */
+    padding: 0 10px 16px;
+    overflow: visible;
+    font-family: "Amiri", "MeQuran", serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--muted);
+    opacity: 0.72;
+    pointer-events: none;
+    transition: opacity 240ms ease;
+}
+
+/* Gentle fade-in, replayed only when the surah actually changes (page-fullscreen.js
+   removes + re-adds this class with a reflow between). */
+.mushaf-fs__surah-name--in {
+    animation: fsSurahNameIn 380ms ease both;
+}
+@keyframes fsSurahNameIn {
+    from { opacity: 0; }
+    to   { opacity: 0.72; }
 }
 
 /* And the label/name spans inside the surah header — they're `display:
  * block` by default, so each forms its own single-line block that also
  * inherits text-align-last. Force center on them too. */
-.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header__label,
-.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-surah-header__name {
+.mushaf-root--fullscreen .mushaf-surah-header__label,
+.mushaf-root--fullscreen .mushaf-surah-header__name {
     text-align: center !important;
     text-align-last: center !important;
 }
