@@ -1712,29 +1712,12 @@ function renderPage(data, direction = "none") {
     const root = PAGES_EL.closest(".mushaf-root");
     const fsZoom = !!root && root.classList.contains("mushaf-root--fullscreen") && root.getAttribute("data-fs-zoom") === "1";
     if (fsZoom) {
-        // ── fs-zoom flip: scroll-reset + instant swap under an OPAQUE cover ──────
-        // The page is ~1556px of 32px glyphs. The old opacity:0 hold did nothing —
-        // WebKit doesn't rasterize fully-transparent layers, so the page rastered
-        // only on reveal (the cut-then-fill). Instead:
-        //   1. reset the zoom scroller to the TOP (kills the stale-scroll bottom-cut),
-        //   2. swap INSTANTLY (no heavy 1556px slide to composite),
-        //   3. lay an OPAQUE cover over the page; after a real paint (double rAF)
-        //      fade it out, revealing an already-painted page.
-        root.scrollTop = 0; root.scrollLeft = 0;
-        const cover = document.createElement("div");
-        cover.className = "mushaf-fs-zoom-cover";
-        root.appendChild(cover);
-        PAGES_EL.querySelectorAll(".mushaf-page").forEach((p) => { if (p !== old && p !== newPage) p.remove(); });
-        clearTimeout(PAGES_ANIM_TIMER);
-        PAGES_EL.classList.remove("mushaf-pages--animating");
-        if (old) old.remove();
-        activatePage(newPage, data);
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            if (gen !== _renderGen) { cover.remove(); return; }   // superseded by a faster flip
-            cover.classList.add("mushaf-fs-zoom-cover--out");
-            setTimeout(() => { if (cover.parentNode) cover.remove(); }, 240);
-        }));
-        return;
+        // Zoom (+) flip: reset the STAGE scroller (not the root) to the top so the incoming
+        // page slides in at its top, then fall through to the SAME slide as the non-zoom
+        // flip. The chrome now lives in the non-scrolling root (the stage is the scroller),
+        // so the slide can't drag it and the scroll-reset can't glitch it.
+        const stage = PAGES_EL.closest(".mushaf-stage");
+        if (stage) { stage.scrollTop = 0; stage.scrollLeft = 0; }
     }
     runSwap();
 }

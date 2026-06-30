@@ -2845,10 +2845,44 @@ html.dark #searchPillActions .mushaf-surah-dropdown {
  * (the fullscreen `* { manipulation }` rule otherwise re-allows it); the JS
  * swipe-flip is unaffected (touch-action never blocks JS touch events). */
 .mushaf-root--fullscreen[data-fs-zoom="1"] {
+    /* The root NO LONGER scrolls — the .mushaf-stage does (rule below). Keeping the scroll
+       off the root means the floating chrome (buttons/title/play), which are siblings of the
+       stage in the root, are true fixed overlays the scroller can't drag or glitch — so the
+       page can slide-flip cleanly while the top bar stays frozen. */
+    overflow: hidden;
+}
+
+/* The zoom scroll container. Block (not flex) so the page flows + scrolls from the top;
+   overflow-x:hidden clips the horizontal slide-flip; overflow-y:auto is the scroll. Its own
+   bounds cap the scroll, so the user can't drag past the page's bottom into empty space. */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-stage {
+    display: block;
+    height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+}
+
+/* Top no-go-zone mask (zoom only). In zoom the root IS the scroll container and fills the
+   whole screen, so scrolled-up text would ride up into the status bar / Dynamic Island. This
+   opaque strip (the reading background) is pinned over the top region — ABOVE the page but
+   BELOW the floating buttons (which sit at z-index 1001) — so scrolled text disappears behind
+   it instead of into the no-go zone. Its height matches the stage's padding-top, i.e. where
+   the reading text is meant to start. Light bg here; dark overridden below. */
+.mushaf-root--fullscreen[data-fs-zoom="1"]::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(56px + max(env(safe-area-inset-top, 0px), var(--m7-statusbar-height, 24px)));
+    background: #ffffff;
+    z-index: 50;          /* above the page (auto), below the chrome buttons/title (1001) */
+    pointer-events: none; /* taps in the top region still pass through to toggle chrome */
+}
+body.dark .mushaf-root--fullscreen[data-fs-zoom="1"]::before {
+    background: #232933;
 }
 
 body.dark .mushaf-root--fullscreen {
@@ -3010,6 +3044,13 @@ body.dark .mushaf-root--fullscreen #mushafPlayWrap .mushaf-toolbar__btn--play[da
    pages were already top-aligned here, since auto margins collapse to 0 on overflow, so the
    zoom-1 level is unchanged; this only affects pages that fit (level-0). */
 .mushaf-root--fullscreen .mushaf-pages {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* Zoom (+) pages flow from the TOP of the stage scroller (no vertical centering — the stage
+   is a block scroll container now, and the slide must not vertically jump between pages). */
+.mushaf-root--fullscreen[data-fs-zoom="1"] .mushaf-pages {
     margin-top: 0;
     margin-bottom: 0;
 }
@@ -3447,12 +3488,16 @@ body.mushaf-fs-open {
     transform: translateX(-50%);
     z-index: 1001;
     max-width: calc(100vw - 240px);   /* always clears the side button clusters (~120px each) */
-    height: 32px;
-    line-height: 32px;
+    line-height: 32px;                /* keeps the title text aligned with the 32px buttons */
     text-align: center;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* The cut is Amiri's final ر: its long tail descends BELOW the text line. The old fixed
+       32px box + the translateX transform made iOS clip the tail to that box even with
+       overflow:visible (a fixed+transformed layer is sized to its own box). Fix: NO fixed
+       height, plus real padding UNDER (and beside) the line, so the tail lands INSIDE the
+       element's box — where nothing can clip it — instead of overflowing it. */
+    padding: 0 10px 16px;
+    overflow: visible;
     font-family: "Amiri", "MeQuran", serif;
     font-size: 18px;
     font-weight: 600;
