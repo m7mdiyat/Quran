@@ -626,8 +626,20 @@
 
     /* Results collapse chip behavior (keeps compatibility with app.js) */
     .results {
-      transition: max-height .35s ease, opacity .25s ease, transform .25s ease,
-        padding .3s ease, margin-top .3s ease, border-width .3s ease;
+      /* #results is the single grid row inside #resultsShell. Its HEIGHT is
+         animated by the shell's grid-template-rows 0fr↔1fr reveal (no JS
+         measuring); here #results only fades + de-blurs its contents in on the
+         same fluid curve. align-self:start + min-height:0 keep the row from
+         being stretched (so no scrollbar flashes mid-reveal) and let it
+         collapse fully to 0fr. */
+      align-self: start;
+      min-height: 0;
+      transition: opacity .3s cubic-bezier(0.22, 1, 0.36, 1),
+        filter .3s cubic-bezier(0.22, 1, 0.36, 1),
+        transform .3s cubic-bezier(0.22, 1, 0.36, 1),
+        padding .3s cubic-bezier(0.22, 1, 0.36, 1),
+        margin-top .3s cubic-bezier(0.22, 1, 0.36, 1),
+        border-width .3s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     /* ISSUE 1: collapsing only max-height left a 26px residue strip (the
@@ -637,8 +649,11 @@
        Collapse EVERYTHING so the post-pick card is pixel-identical to the
        initial compact card; the transitions above ease it shut/open. */
     .results.collapsed {
-      max-height: 0 !important;
+      /* Height is owned by the shell's grid-template-rows reveal now (no
+         max-height here — two competing height animations would fight). This
+         only fades the contents out as the box closes. */
       opacity: 0;
+      filter: blur(4px);
       pointer-events: none;
       transform: translateY(-2px) scale(.99);
       padding-top: 0;
@@ -647,9 +662,14 @@
       margin-top: 0;
     }
 
+    /* Empty AND collapsed both close the grid reveal (grid-template-rows: 0fr).
+       This was `display: none` — but going display:none→block on the first
+       search gives the browser no prior style to interpolate from, so the box
+       JUMPED open instead of animating. Staying rendered at 0fr lets the
+       0fr→1fr open transition actually run. */
     .results-shell.is-empty {
+      grid-template-rows: 0fr;
       margin-top: 0;
-      display: none;
     }
 
     /* ── مسح in the pill (replaces the selected-ayah chip card) ─────────
@@ -2267,14 +2287,26 @@
       color: #cbd5e1 !important;
     }
 
+    /* The results box "expands fluidly" via the grid-template-rows 0fr↔1fr
+       accordion technique (transitions.dev) — no JS height measuring. #results
+       is the single grid row; animating the track from 0fr to 1fr reveals it
+       to its natural (max-height-capped) height and back. overflow:hidden
+       clips the row while the track is shorter than the content. */
     .results-shell {
-      transition: transform .35s ease, opacity .35s ease, margin-top .3s ease;
+      display: grid;
+      grid-template-rows: 1fr;
+      overflow: hidden;
+      transition: grid-template-rows .42s cubic-bezier(0.22, 1, 0.36, 1),
+        transform .35s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity .35s cubic-bezier(0.22, 1, 0.36, 1),
+        margin-top .3s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     /* ISSUE 1 (with the .results.collapsed rule above): the shell's own
        mt-3 must go too, or the collapsed card keeps a 12px gap the
        landing state doesn't have. */
     .results-shell.collapsed {
+      grid-template-rows: 0fr;
       margin-top: 0;
     }
 
@@ -5717,7 +5749,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-cTCwtt0Z.js"></script>
+  <script type="module" crossorigin src="/assets/index-Mzo-A612.js"></script>
 </head>
 
 <body>
