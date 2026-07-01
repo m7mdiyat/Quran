@@ -468,10 +468,23 @@
             linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
     }
     html.is-app body.dark {
-        background:
-            radial-gradient(1300px 820px at 50% -30%, rgba(148, 163, 184, .16), transparent 65%),
-            linear-gradient(180deg, #232933 0%, #1f252e 55%, #1b2129 100%);
-        background-attachment: fixed;
+        /* TRANSPARENT so the fixed body::before gradient is the single VISIBLE
+           background — this restores the dark-mode "light" (the gradient + top
+           glow) AND kills the mode-switch twitch.
+
+           This used to be a gradient + `background-attachment: fixed`. On iOS
+           WKWebView a fixed-ATTACHMENT background (a) paints OVER ::before and
+           (b) is sized to the whole DOCUMENT, not the viewport — so the tall
+           Mushaf page vs the short Tafsir home showed a different gradient slice
+           (the persistent, dark-only colour change) and re-rasterized on every
+           reflow (the twitch). A position:fixed ELEMENT (::before) has neither:
+           it's viewport-sized (identical in both modes) with no attachment
+           repaint. (Chrome already painted ::before on top of body; only iOS
+           painted body's own bg over it — so transparent makes both engines
+           agree on ::before as the light.) Dead-zone / overscroll falls to
+           html.dark's #1b2129 — the gradient's bottom stop, so it stays
+           seamless. Light mode is untouched (this rule is dark-only). */
+        background: transparent;
     }
 
     header.site-header {
