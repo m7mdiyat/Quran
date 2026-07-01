@@ -3147,7 +3147,6 @@ function collapseResultsToChip(it) {
   deactivateSearchBeam();
   results.classList.add("collapsed");
   resultsShell.classList.add("collapsed");
-  results.style.maxHeight = "";
   // Round 5: the typed fragment auto-completes into the FULL ayah text,
   // materializing in the pill (reverse of the مسح dissolve). Clicking the
   // locked pill later dissolves it for a fresh search.
@@ -3156,31 +3155,12 @@ function collapseResultsToChip(it) {
 
 function expandResultsList() {
   if (!resultsShell || !results) return;
-
-  // If already expanded, just ensure max-height is set correctly without animation
-  const wasCollapsed = resultsShell.classList.contains("collapsed");
-
+  // The reveal is pure CSS now: dropping .collapsed flips the shell's
+  // grid-template-rows from 0fr to 1fr, animating the box open fluidly. The
+  // #results max-height:480 (inline) stays a static scroll cap — no longer
+  // animated, so there's nothing to measure or snap here.
   resultsShell.classList.remove("collapsed");
   results.classList.remove("collapsed");
-
-  // Always ensure the container has proper max-height for scrolling
-  if (wasCollapsed) {
-    // Animate in from collapsed state
-    const targetMax = Math.min(results.scrollHeight || 0, 480);
-    if (targetMax > 0) {
-      results.style.maxHeight = `${targetMax}px`;
-      const cleanup = () => {
-        results.style.maxHeight = "480px";
-        results.removeEventListener("transitionend", cleanup);
-      };
-      results.addEventListener("transitionend", cleanup);
-    } else {
-      results.style.maxHeight = "480px";
-    }
-  } else {
-    // Already expanded - just ensure max-height is stable (no animation flicker)
-    results.style.maxHeight = "480px";
-  }
 }
 
 /* Issue 4: wipe the typed-search autocomplete dropdown + its cached results.
@@ -3194,7 +3174,6 @@ function clearTypedSearchResults() {
   results.innerHTML = "";
   results.classList.add("is-empty", "collapsed");
   resultsShell?.classList.add("is-empty", "collapsed");
-  results.style.maxHeight = "0";
 }
 
 // Build a regex pattern that matches Arabic text with optional diacritics between letters
@@ -3268,8 +3247,12 @@ function renderResults(items, query) {
   results.innerHTML = "";
 
   if (!items.length) {
-    results.classList.add("is-empty");
-    resultsShell?.classList.add("is-empty");
+    // collapsed too, not just is-empty: .results.collapsed is what applies
+    // opacity:0 + closes the shell's grid to 0fr. Without it the empty state
+    // stays fully opaque and its message shows through as a residual strip
+    // (the initial page-load empty state carries BOTH classes — match it).
+    results.classList.add("is-empty", "collapsed");
+    resultsShell?.classList.add("is-empty", "collapsed");
     results.innerHTML = `
       <div class="p-6 text-center">
         <div class="text-sm font-extrabold text-slate-700">لا توجد نتائج</div>
@@ -4500,7 +4483,7 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   if (results && !results.querySelector(".result-card") && results.innerHTML !== "") {
     results.innerHTML = "";
     results.classList.add("is-empty", "collapsed");
-    results.style.maxHeight = "0";
+    resultsShell?.classList.add("is-empty", "collapsed");
   }
   // Keep the search-pill surah selector's label (visible in both modes)
   // tracking the surah being read, and LAST_VIEWED_AYAH fresh for a later
@@ -5570,7 +5553,11 @@ async function init() {
     const q = textSearch.value || "";
     const found = searchText(q);
     renderResults(found, q);
-    expandResultsList();
+    // Only expand when there's something to show — expanding drops .collapsed,
+    // and an empty render must KEEP it collapsed (renderResults re-adds it) so
+    // the box stays fully closed instead of leaving a residual strip. Going
+    // results→empty now animates shut (1fr→0fr) via the grid instead.
+    if (found.length) expandResultsList();
   };
   textSearch.oninput = debounce(() => { runSearch(); }, 180);
 
@@ -5593,7 +5580,6 @@ async function init() {
     resultsShell?.classList.add("is-empty");
     results.classList.add("collapsed");
     resultsShell?.classList.add("collapsed");
-    results.style.maxHeight = "0";
 
     stopAudio();              // Tafsir per-ayah <audio> + surahAudio engine
     resetMushafHomeState();   // close Mushaf panel, drop its anchor ayah, toggle → تفسير
