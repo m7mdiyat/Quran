@@ -1526,13 +1526,19 @@ function commitPageState(p, data, { noScroll = false, direction = "none" } = {})
     applyTargetHighlight({ noScroll });
     // A page FLIP (swipe / ‹ › buttons → a slide direction) must NEVER move the document
     // scroll: the reader stays exactly where their finger left them and only the page
-    // content swaps. The constant per-page box + autoFit keep the size identical across
-    // flips, and applyTargetHighlight no longer centers the ayah in-app, so the page just
-    // stays put — no jump. ONLY a non-flip arrival (direction "none") that didn't opt out
-    // (noScroll) tucks the hero away once: a cold-load / deep-link entry at the very top.
+    // content swaps. goPrev/goNext CLEAR CURRENT_TARGET_VERSE, so applyTargetHighlight
+    // above early-returns on a flip — no scroll — and the constant per-page box keeps the
+    // size identical, so the page just stays put.
+    //
+    // The remaining in-app scroll on a non-flip (direction "none", not noScroll) splits by
+    // whether a specific ayah is targeted:
+    //   • target verse set (search-bar pick / surah selector / deep link) → applyTargetHighlight
+    //     smooth-scrolls to THAT ayah (only if off-screen). So the instant hero-tuck must NOT
+    //     also fire here, or they fight — an instant jump, then a glide.
+    //   • no target (openMushafAtPage) → tuck the hero away once under the header.
     // Mode toggles + session-restore pass noScroll → they honor setAppMode's "Fix 3: the
     // toggle must not move the viewport".
-    const mayTuck = direction === "none" && !noScroll;
+    const mayTuck = direction === "none" && !noScroll && !CURRENT_TARGET_VERSE;
     if (mayTuck) lockReadingScrollTop();
     requestAnimationFrame(() => { if (mayTuck) lockReadingScrollTop(); fitMushafPageBox(); });
     if (CURRENT_TARGET_VERSE) {
@@ -1895,13 +1901,20 @@ function applyTargetHighlight({ noScroll = false } = {}) {
     const els = ACTIVE_PAGE_EL.querySelectorAll(`.mushaf-ayah[data-verse-key="${CSS.escape(CURRENT_TARGET_VERSE)}"]`);
     if (!els.length) return;
     els.forEach((el) => el.classList.add("mushaf-ayah--target"));
-    // App reading is page-based (the whole page is the unit): a flip keeps the reader's
-    // exact scroll position. Centering the target ayah here would land a different scroll
-    // each page (the ayah sits at a different height) → the page would jump on flip. So
-    // scroll-to-ayah is ONLY off-app or in fullscreen; in-app the viewport never moves.
-    const appReading = isApp() && !ROOT_EL?.classList.contains("mushaf-root--fullscreen");
-    if (!noScroll && !appReading) {
-        els[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    // A DELIBERATE jump to a specific ayah (search-bar pick / surah selector /
+    // deep link) scrolls to THAT ayah. A page FLIP clears CURRENT_TARGET_VERSE
+    // (goPrev/goNext), so this can never fire on a flip — the reader's scroll
+    // position stays put. Web + fullscreen keep the centered scrollIntoView;
+    // in-app reading is a DOCUMENT scroll, so it glides the window to the ayah
+    // under the fixed header, and only when the ayah isn't already fully visible
+    // (a visible ayah must not jump). See scrollTargetAyahIntoView.
+    if (!noScroll) {
+        const fullscreen = !!ROOT_EL?.classList.contains("mushaf-root--fullscreen");
+        if (isApp() && !fullscreen) {
+            scrollTargetAyahIntoView(els[0]);
+        } else {
+            els[0].scrollIntoView({ behavior: "smooth", block: "center" });
+        }
     }
     setTimeout(() => els.forEach((el) => el.classList.remove("mushaf-ayah--target")), 4000);
 }
@@ -1922,6 +1935,49 @@ function lockReadingScrollTop() {
     // Only ever scroll DOWN to the lock point (tuck the hero away on entry) — NEVER pull
     // the page UP. If the user has scrolled down to read, a flip keeps their position put.
     if (window.scrollY < target - 2) window.scrollTo(0, target);
+}
+
+/* A DELIBERATE in-app jump to a specific ayah (search-bar pick / surah selector /
+ * deep link) GLIDES that ayah into the reading area under the fixed header — and
+ * only when it isn't already fully visible, so a visible ayah never jumps (the
+ * requested behaviour: smooth when the ayah is off-screen below, no movement when
+ * it's already up in view). In-app reading is a DOCUMENT scroll, so it scrolls the
+ * window. A page FLIP clears CURRENT_TARGET_VERSE, so applyTargetHighlight — the
+ * only caller — never reaches here on a flip; the reader's scroll stays put.
+ *
+ * Poll-until-steady (NOT a fixed frame count — the iOS overlay lesson): the panel
+ * reveal (.t-panel-slide) animates translateY up to 160px over 400ms, so the
+ * ayah's getBoundingClientRect() is offset until the reveal settles; scrolling
+ * early would land at the wrong place. Wait for the rect to hold still (capped so
+ * it can't hang), then scroll from the settled position. */
+function scrollTargetAyahIntoView(el) {
+    if (!el || !CURRENT_TARGET_VERSE) return;
+    const myKey = CURRENT_TARGET_VERSE;
+    let reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { }
+    let lastTop = null, steady = 0, frames = 0;
+    const tick = () => {
+        // A newer jump superseded this one, or the page swapped out — abandon so
+        // we can never scroll to a stale target.
+        if (CURRENT_TARGET_VERSE !== myKey || !el.isConnected) return;
+        const top = Math.round(el.getBoundingClientRect().top);
+        if (lastTop !== null && Math.abs(top - lastTop) <= 1) steady++; else steady = 0;
+        lastTop = top;
+        if (steady < 2 && frames++ < 48) { requestAnimationFrame(tick); return; }
+        const header = document.querySelector("header.site-header");
+        const headerBottom = header ? Math.round(header.getBoundingClientRect().bottom) : 0;
+        const margin = 14;
+        const usableTop = headerBottom + margin;
+        const usableBottom = window.innerHeight - margin;
+        const r = el.getBoundingClientRect();
+        // Already fully visible below the header → leave the scroll exactly put.
+        if (r.top >= usableTop && r.bottom <= usableBottom) return;
+        // Otherwise glide it to just under the header (a natural reading start).
+        const target = Math.max(0, Math.round(window.scrollY + r.top - usableTop));
+        try { window.scrollTo({ top: target, behavior: reduce ? "auto" : "smooth" }); }
+        catch { window.scrollTo(0, target); }
+    };
+    requestAnimationFrame(tick);
 }
 
 /* ============================================================
