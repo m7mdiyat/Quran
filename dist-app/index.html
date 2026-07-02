@@ -2351,65 +2351,68 @@
     }
 
     /* ── Translation card v2 (الترجمة) ─────────────────────────────────
-       One cohesive card at the bottom of the tafsir panel: header row
+       One compact card at the bottom of the tafsir panel: slim header
        (collapse toggle + attribution + language segment), the CURRENT
        ayah's translation always in view, copy/share tools, and the
        surrounding-verses list folded beneath. The collapse uses the same
-       grid-template-rows 0fr↔1fr fluid technique as .results-shell. */
+       grid-template-rows 0fr↔1fr fluid technique as .results-shell.
+       Dark rules use BOTH body.dark and html.dark — at boot only <html>
+       carries the class (the pre-body script), body follows later. */
     .tr-card {
-      border-radius: 24px;
+      border-radius: 18px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, .65);
+      background: rgba(255, 255, 255, .55);
       overflow: hidden;
     }
 
-    body.dark .tr-card {
-      background: rgba(26, 30, 36, .55);
+    body.dark .tr-card,
+    html.dark .tr-card {
+      background: rgba(255, 255, 255, .035);
     }
 
     .tr-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
-      padding: 12px 16px;
+      padding: 7px 10px;
     }
 
     /* Collapse toggle doubles as the card title (whole area tappable). */
     .tr-head__main {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       background: none;
       border: 0;
-      padding: 4px 2px;
+      padding: 3px 2px;
       cursor: pointer;
       color: var(--text, #0b1326);
       -webkit-tap-highlight-color: transparent;
     }
 
     .tr-head__icon {
-      width: 18px;
-      height: 18px;
-      color: var(--accent-strong);
+      width: 15px;
+      height: 15px;
+      color: var(--muted);
       flex-shrink: 0;
     }
 
     .tr-head__title {
-      font-size: 14px;
+      font-size: 12.5px;
       font-weight: 800;
     }
 
     .tr-head__attr {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       color: var(--muted);
     }
 
     .tr-head__chevron {
-      width: 13px;
-      height: 13px;
+      width: 11px;
+      height: 11px;
       color: var(--muted);
       transition: transform .3s cubic-bezier(0.22, 1, 0.36, 1);
     }
@@ -2418,26 +2421,27 @@
       transform: rotate(-90deg);
     }
 
-    body.dark .tr-head__main {
+    body.dark .tr-head__main,
+    html.dark .tr-head__main {
       color: #e2e8f0;
     }
 
     /* Language segment: English ⇄ مع العربية */
     .tr-seg {
       display: inline-flex;
-      gap: 3px;
-      padding: 3px;
+      gap: 2px;
+      padding: 2px;
       border-radius: 999px;
       border: 1px solid var(--line);
-      background: rgba(148, 163, 184, .08);
+      background: rgba(148, 163, 184, .07);
     }
 
     .tr-seg__btn {
       border: 0;
       background: none;
-      padding: 5px 12px;
+      padding: 4px 10px;
       border-radius: 999px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       color: var(--muted);
       cursor: pointer;
@@ -2446,19 +2450,19 @@
     }
 
     .tr-seg__btn.is-on {
-      background: #fff;
+      background: rgba(59, 130, 246, .1);
       color: var(--accent-strong);
-      box-shadow: 0 2px 8px rgba(15, 23, 42, .10);
     }
 
-    body.dark .tr-seg {
-      background: rgba(255, 255, 255, .05);
+    body.dark .tr-seg,
+    html.dark .tr-seg {
+      background: rgba(255, 255, 255, .04);
     }
 
-    body.dark .tr-seg__btn.is-on {
-      background: rgba(255, 255, 255, .12);
+    body.dark .tr-seg__btn.is-on,
+    html.dark .tr-seg__btn.is-on {
+      background: rgba(147, 197, 253, .14);
       color: #93c5fd;
-      box-shadow: none;
     }
 
     /* Fluid collapse (grid-rows 0fr↔1fr, no height measuring). */
@@ -2477,21 +2481,32 @@
     .tr-body__inner {
       overflow: hidden;
       min-height: 0;
-      padding: 0 16px 14px;
+      /* No bottom padding here: border-box keeps an element's own padding
+         visible even at height 0, which left a phantom band under the
+         header when collapsed. The ::after spacer is CONTENT, so the 0fr
+         track clips it away. */
+      padding: 0 12px;
+    }
+
+    .tr-body__inner::after {
+      content: "";
+      display: block;
+      height: 11px;
     }
 
     /* The current ayah's translation — always visible, no digging. */
     .tr-current__ar {
-      font-size: 19px;
-      line-height: 2.1;
+      font-size: 17.5px;
+      line-height: 2;
       text-align: right;
       color: var(--text, #0b1326);
-      padding-bottom: 10px;
-      margin-bottom: 10px;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
       border-bottom: 1px dashed var(--line);
     }
 
-    body.dark .tr-current__ar {
+    body.dark .tr-current__ar,
+    html.dark .tr-current__ar {
       color: #e2e8f0;
     }
 
@@ -2499,20 +2514,21 @@
       direction: ltr;
       text-align: left;
       font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
-      font-size: 16.5px;
+      font-size: 15px;
       font-weight: 500;
-      line-height: 1.85;
+      line-height: 1.8;
       letter-spacing: 0;
       color: var(--text, #0b1326);
     }
 
-    body.dark .tr-current__en {
+    body.dark .tr-current__en,
+    html.dark .tr-current__en {
       color: #e2e8f0;
     }
 
     .tr-current__empty {
       direction: rtl;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       color: var(--muted);
     }
@@ -2520,9 +2536,9 @@
     .tr-current__ref {
       direction: ltr;
       text-align: left;
-      margin-top: 8px;
+      margin-top: 6px;
       font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       letter-spacing: .04em;
       color: var(--muted);
@@ -2532,9 +2548,9 @@
     .tr-tools {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
-      margin-top: 12px;
+      margin-top: 10px;
     }
 
     .tr-tools__spacer {
@@ -2544,31 +2560,32 @@
     .tr-tool {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 7px 12px;
-      border-radius: 12px;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 10px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, .55);
-      font-size: 12px;
+      background: transparent;
+      font-size: 11.5px;
       font-weight: 800;
-      color: var(--text, #0b1326);
+      color: var(--muted);
       cursor: pointer;
       transition: background .2s ease, color .2s ease, border-color .2s ease;
       -webkit-tap-highlight-color: transparent;
     }
 
     .tr-tool svg {
-      width: 15px;
-      height: 15px;
+      width: 13px;
+      height: 13px;
       flex-shrink: 0;
     }
 
     .tr-tool:hover {
-      background: rgba(255, 255, 255, .9);
+      background: rgba(148, 163, 184, .1);
+      color: var(--text, #0b1326);
     }
 
     .tr-tool:disabled {
-      opacity: .45;
+      opacity: .4;
       cursor: not-allowed;
     }
 
@@ -2578,58 +2595,80 @@
     }
 
     .tr-tool__chevron {
-      width: 12px !important;
-      height: 12px !important;
-      color: var(--muted);
+      width: 10px !important;
+      height: 10px !important;
       transition: transform .3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Open state: the surrounding-verses toggle reads as "on" — accent
+       tint, accent text, flipped chevron. */
+    .tr-tool--ctx[aria-expanded="true"] {
+      background: rgba(59, 130, 246, .09);
+      border-color: rgba(59, 130, 246, .28);
+      color: var(--accent-strong);
     }
 
     .tr-tool--ctx[aria-expanded="true"] .tr-tool__chevron {
       transform: rotate(180deg);
     }
 
-    body.dark .tr-tool {
-      background: rgba(255, 255, 255, .05);
+    body.dark .tr-tool:hover,
+    html.dark .tr-tool:hover {
+      background: rgba(255, 255, 255, .07);
       color: #e2e8f0;
     }
 
-    body.dark .tr-tool:hover {
-      background: rgba(255, 255, 255, .1);
-    }
-
-    body.dark .tr-tool.is-ok {
+    body.dark .tr-tool.is-ok,
+    html.dark .tr-tool.is-ok {
       color: #34d399;
       border-color: rgba(52, 211, 153, .35);
     }
 
+    body.dark .tr-tool--ctx[aria-expanded="true"],
+    html.dark .tr-tool--ctx[aria-expanded="true"] {
+      background: rgba(147, 197, 253, .1);
+      border-color: rgba(147, 197, 253, .3);
+      color: #93c5fd;
+    }
+
     /* Surrounding-verses list (#versePanel keeps its inline max-height
-       open/close mechanism + .is-open from setVersePanelOpen). */
+       open/close mechanism + .is-open from setVersePanelOpen). The list
+       is scrolled by touch/wheel — no scrollbar (in RTL it painted as a
+       bright bar hugging the card's LEFT edge). */
     .tr-context {
-      margin-top: 12px;
-      border-radius: 18px;
+      margin-top: 10px;
+      border-radius: 14px;
       border: 1px solid var(--line);
-      background: rgba(148, 163, 184, .06);
-      padding: 0 12px;
+      background: rgba(148, 163, 184, .05);
+      padding: 0 8px;
+      scrollbar-width: none;
+    }
+
+    .tr-context::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
     }
 
     #versePanel.is-open.tr-context {
-      padding: 12px;
+      padding: 8px;
     }
 
-    body.dark .tr-context {
-      background: rgba(255, 255, 255, .03);
+    body.dark .tr-context,
+    html.dark .tr-context {
+      background: rgba(255, 255, 255, .025);
     }
 
     #ayahContext {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     .ayah-line {
       position: relative;
-      padding: 11px 14px;
-      border-radius: 14px;
+      padding: 9px 12px;
+      border-radius: 12px;
       border: 1px solid transparent;
       background: transparent;
       cursor: pointer;
@@ -2641,7 +2680,8 @@
       border-color: var(--line);
     }
 
-    body.dark .ayah-line:hover {
+    body.dark .ayah-line:hover,
+    html.dark .ayah-line:hover {
       background: rgba(255, 255, 255, .05);
       border-color: rgba(148, 163, 184, .2);
     }
@@ -2650,7 +2690,7 @@
       font-weight: 800;
       color: var(--accent-strong);
       margin-left: 6px;
-      font-size: 12px;
+      font-size: 11px;
     }
 
     /* Active row: accent inset bar on the start (right, RTL) edge
@@ -2661,7 +2701,8 @@
       box-shadow: inset -3px 0 0 0 var(--accent-strong);
     }
 
-    body.dark .ayah-line.active {
+    body.dark .ayah-line.active,
+    html.dark .ayah-line.active {
       background: rgba(147, 197, 253, .08);
       border-color: rgba(147, 197, 253, .25);
       box-shadow: inset -3px 0 0 0 #93c5fd;
@@ -2669,8 +2710,8 @@
 
     .ayah-line .en {
       display: block;
-      margin-top: 6px;
-      font-size: 12.5px;
+      margin-top: 5px;
+      font-size: 12px;
       line-height: 1.7;
       color: var(--muted);
       direction: ltr;
@@ -6003,7 +6044,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-CauUYgU4.js"></script>
+  <script type="module" crossorigin src="/assets/index-C28oiYcI.js"></script>
 </head>
 
 <body>

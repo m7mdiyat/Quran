@@ -3329,77 +3329,187 @@ function renderResults(items, query) {
 /* ---------------- Ayah panels ---------------- */
 function computeContextWindow(surah, ayahNo) {
   const len = surah.ayahs.length;
-  const before = 5;
-  const after = 5;
+  // Initial window only — scrolling the list keeps extending it
+  // (extendContext) until it spans the whole surah.
+  const before = 10;
+  const after = 10;
 
   let start = Math.max(1, ayahNo - before);
   let end = Math.min(len, ayahNo + after);
   return { start, end };
 }
 
+/* One row of the surrounding-verses list. */
+function buildContextRow(surahNo, surah, i, mode) {
+  const a = surah.ayahs.find((x) => x.numberInSurah === i);
+  if (!a) return null;
+  const numHtml = `<span class="num" dir="ltr">(${i})</span>`;
+  const div = document.createElement("div");
+  div.dataset.id = i;
+  div.dataset.surah = surahNo;
+  div.className = "ayah-line transition-colors duration-200";
+  div.title = "اضغط لجعل هذه الآية هي الرئيسية";
+  const enText = EN_MAP?.[String(surahNo)]?.[String(i)] || "";
+  if (mode === "en") {
+    div.innerHTML = `${numHtml} ${escapeHtml(enText || "—")}`;
+    div.style.direction = "ltr";
+    div.style.textAlign = "left";
+  } else {
+    const arText = wrapTashkeelWords(escapeHtml(a.text));
+    div.innerHTML = `${numHtml} ${arText}<span class="en">${escapeHtml(enText || "—")}</span>`;
+    div.style.direction = "rtl";
+    div.style.textAlign = "right";
+  }
+  div.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // The panels ABOVE this list re-render for the new ayah; hold the
+    // page visually still while they do — the reader owns the scroll.
+    pinPageAroundVersePanel();
+    setPrimaryAyah(surahNo, i, { scroll: false });
+  };
+  return div;
+}
+
+/* #versePanel has CSS scroll-behavior:smooth (for the gentle reveals) —
+ * mechanical corrections must bypass it or they animate. */
+function setPanelScrollTopInstant(panel, top) {
+  const prev = panel.style.scrollBehavior;
+  panel.style.scrollBehavior = "auto";
+  panel.scrollTop = top;
+  panel.style.scrollBehavior = prev;
+}
+
+/* ── Infinite surrounding-verses list ────────────────────────────────
+ * The old list was a fixed ±5 window you grew by CLICKING its edge rows.
+ * Now it simply keeps loading as you scroll: nearing the top prepends
+ * earlier ayahs (back to 1, with a scrollTop correction so the rows under
+ * the finger never move), nearing the bottom appends later ones (to the
+ * surah's end). One chunk per scroll event, re-entrancy guarded. */
+const CTX_CHUNK = 20;
+const CTX_EDGE_PX = 200;
+let CTX_EXTENDING = false;
+
+function extendContext(dir) {
+  if (!CONTEXT_STATE || CTX_EXTENDING || !versePanel || !ayahContext) return;
+  const surah = QURAN?.surahs?.find((s) => s.number === CONTEXT_STATE.surah);
+  if (!surah) return;
+  const mode = CONTEXT_STATE.lang || TR_MODE;
+  CTX_EXTENDING = true;
+  try {
+    if (dir < 0 && CONTEXT_STATE.start > 1) {
+      const newStart = Math.max(1, CONTEXT_STATE.start - CTX_CHUNK);
+      const frag = document.createDocumentFragment();
+      for (let i = newStart; i < CONTEXT_STATE.start; i++) {
+        const row = buildContextRow(CONTEXT_STATE.surah, surah, i, mode);
+        if (row) frag.appendChild(row);
+      }
+      const h0 = versePanel.scrollHeight;
+      ayahContext.prepend(frag);
+      CONTEXT_STATE.start = newStart;
+      // Safari/WKWebView has no scroll anchoring — compensate manually.
+      const delta = versePanel.scrollHeight - h0;
+      if (delta) setPanelScrollTopInstant(versePanel, versePanel.scrollTop + delta);
+    } else if (dir > 0 && CONTEXT_STATE.end < surah.ayahs.length) {
+      const newEnd = Math.min(surah.ayahs.length, CONTEXT_STATE.end + CTX_CHUNK);
+      const frag = document.createDocumentFragment();
+      for (let i = CONTEXT_STATE.end + 1; i <= newEnd; i++) {
+        const row = buildContextRow(CONTEXT_STATE.surah, surah, i, mode);
+        if (row) frag.appendChild(row);
+      }
+      ayahContext.appendChild(frag);
+      CONTEXT_STATE.end = newEnd;
+    }
+  } finally {
+    CTX_EXTENDING = false;
+  }
+}
+
+function onVersePanelScroll() {
+  if (!VERSES_OPEN || !CONTEXT_STATE || !versePanel) return;
+  if (versePanel.scrollTop < CTX_EDGE_PX) extendContext(-1);
+  if (versePanel.scrollHeight - versePanel.scrollTop - versePanel.clientHeight < CTX_EDGE_PX) {
+    extendContext(1);
+  }
+}
+
+/* ── Page pin ────────────────────────────────────────────────────────
+ * Picking an ayah from the list re-renders the ayah text / tafsir box /
+ * translation ABOVE the list; their height changes dragged the whole page
+ * up or down under the reader ("the page moves with each click"). For up
+ * to ~1.5s after the click we counter-scroll the window every frame so
+ * #versePanel stays at the exact same viewport position — covering both
+ * the synchronous swap and the async tafsir landing with its 220ms height
+ * ease. The reader's own wheel/touch input cancels the pin instantly. */
+let PIN_STOP = null;
+
+function pinPageAroundVersePanel() {
+  if (!versePanel) return;
+  PIN_STOP?.();
+  const anchor = versePanel.getBoundingClientRect().top;
+  let raf = 0;
+  let quiet = 0;
+  let last = performance.now();
+  const started = last;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    window.removeEventListener("wheel", stop);
+    window.removeEventListener("touchmove", stop);
+    if (PIN_STOP === stop) PIN_STOP = null;
+  };
+  const tick = (now) => {
+    raf = 0;
+    const delta = versePanel.getBoundingClientRect().top - anchor;
+    if (Math.abs(delta) > 0.5) {
+      window.scrollBy(0, delta);
+      quiet = 0;
+    } else {
+      quiet += now - last;
+    }
+    last = now;
+    if (now - started < 1500 && quiet < 400) raf = requestAnimationFrame(tick);
+    else stop();
+  };
+  raf = requestAnimationFrame(tick);
+  window.addEventListener("wheel", stop, { passive: true });
+  window.addEventListener("touchmove", stop, { passive: true });
+  PIN_STOP = stop;
+}
+
 function showAyahContext(surahNo, ayahNo) {
   const surah = QURAN.surahs.find((s) => s.number === surahNo);
   if (!surah) return;
 
-  const surahName = SURAH_META.find((x) => x.number === surahNo)?.name_ar || surah.name_ar;
-
-  // 1. Initialize State if missing or switching Surahs
-  // If we are in the same Surah, we keep the existing window boundaries
-  // so we can detect if the user clicked the edge.
+  // (Re)initialize the window when entering / switching surahs.
   if (!CONTEXT_STATE || CONTEXT_STATE.surah !== surahNo) {
     const w = computeContextWindow(surah, ayahNo);
     CONTEXT_STATE = { surah: surahNo, start: w.start, end: w.end };
   }
 
-  // 2. Detect Expansion (Edge Clicking)
-  let didExpand = false;
-  let oldScrollHeight = 0;
-  let oldScrollTop = 0;
-
-  // Capture scroll metrics before changing anything
-  if (versePanel) {
-    oldScrollHeight = versePanel.scrollHeight;
-    oldScrollTop = versePanel.scrollTop;
-  }
-
-  // Check: Did user click the very TOP ayah? -> Expand Up
-  if (ayahNo == CONTEXT_STATE.start && CONTEXT_STATE.start > 1) {
-    CONTEXT_STATE.start = Math.max(1, CONTEXT_STATE.start - 5);
-    didExpand = true;
-  }
-  // Check: Did user click the very BOTTOM ayah? -> Expand Down
-  else if (ayahNo == CONTEXT_STATE.end && CONTEXT_STATE.end < surah.ayahs.length) {
-    CONTEXT_STATE.end = Math.min(surah.ayahs.length, CONTEXT_STATE.end + 5);
-    didExpand = true;
-  }
-
-  // Safety: If we jumped to a verse completely outside the current view (e.g. using Next button), reset window.
+  // Jumped outside the rendered range (next/prev chains, selector jumps)
+  // → re-center the window around the new ayah.
+  let recentered = false;
   if (ayahNo < CONTEXT_STATE.start || ayahNo > CONTEXT_STATE.end) {
     const w = computeContextWindow(surah, ayahNo);
     CONTEXT_STATE.start = w.start;
     CONTEXT_STATE.end = w.end;
-    didExpand = true;
+    recentered = true;
   }
 
   const { start, end } = CONTEXT_STATE;
   const mode = TR_MODE; // translation card's language segment (en | both)
-
-  // Track language change
   const langChanged = CONTEXT_STATE.lang !== mode;
-  if (langChanged) {
-    CONTEXT_STATE.lang = mode;
-  }
+  if (langChanged) CONTEXT_STATE.lang = mode;
 
-  // 3. Render Decision
-  // We only re-render if we expanded OR if the DOM is empty/wrong OR if language changed.
+  // Re-render only when the window moved / language flipped / DOM stale.
   const needsRender =
-    didExpand ||
+    recentered ||
     langChanged ||
     ayahContext.childElementCount === 0 ||
     ayahContext.children[0]?.dataset.surah !== String(surahNo);
 
   if (needsRender) {
-    // --- Full Render with smooth transition ---
     // Fade out for language changes
     if (langChanged && ayahContext.childElementCount > 0) {
       ayahContext.style.opacity = "0";
@@ -3407,66 +3517,32 @@ function showAyahContext(surahNo, ayahNo) {
     }
 
     ayahContext.innerHTML = "";
-
     for (let i = start; i <= end; i++) {
-      const a = surah.ayahs.find((x) => x.numberInSurah === i);
-      if (!a) continue;
-
-      const numHtml = `<span class="num" dir="ltr">(${i})</span>`;
-      const div = document.createElement("div");
-      div.dataset.id = i;
-      div.dataset.surah = surahNo;
-      div.className = "ayah-line transition-colors duration-200";
-
-      // Explicit Selection
-      if (i === ayahNo) div.classList.add("active");
-
-      div.title = "اضغط لجعل هذه الآية هي الرئيسية";
-
-      const enText = EN_MAP?.[String(surahNo)]?.[String(i)] || "";
-
-      if (mode === "en") {
-        div.innerHTML = `${numHtml} ${escapeHtml(enText || "—")}`;
-        div.style.direction = "ltr";
-        div.style.textAlign = "left";
-      } else {
-        const arText = wrapTashkeelWords(escapeHtml(a.text));
-        div.innerHTML = `${numHtml} ${arText}<span class="en">${escapeHtml(enText || "—")}</span>`;
-        div.style.direction = "rtl";
-        div.style.textAlign = "right";
-      }
-
-      // Click Handler
-      div.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Update primary ayah WITHOUT scrolling page
-        // This triggers this function again to handle expansion logic
-        setPrimaryAyah(surahNo, i, { scroll: false });
-      };
-
-      ayahContext.appendChild(div);
+      const row = buildContextRow(surahNo, surah, i, mode);
+      if (!row) continue;
+      if (i === ayahNo) row.classList.add("active");
+      ayahContext.appendChild(row);
     }
 
     // Animation reset
     ayahContext.classList.remove("context-animate");
     requestAnimationFrame(() => {
       ayahContext.classList.add("context-animate");
-      // Fade back in after rendering
       ayahContext.style.opacity = "1";
       ayahContext.style.transform = "translateY(0)";
     });
 
-    // 4. Smooth scroll to show newly revealed ayahs above
-    // When user clicks first ayah, smoothly reveal the 5 ayahs above
-    if (didExpand && versePanel) {
-      // Find the clicked ayah element
-      const clickedAyah = ayahContext.querySelector(`[data-id="${ayahNo}"]`);
-      if (clickedAyah) {
-        // Wait for DOM to update, then smoothly scroll to center the clicked ayah
+    // A fresh window while the list is OPEN: place the selected ayah
+    // mid-panel (instant — the reader didn't scroll here, there is
+    // nothing to animate from). The open-toggle flow positions itself
+    // (populate happens before VERSES_OPEN flips, panel height is still
+    // 0 — its own estimate-based centering must not be overwritten).
+    if (VERSES_OPEN && versePanel) {
+      const active = ayahContext.querySelector(`[data-id="${ayahNo}"]`);
+      if (active) {
         requestAnimationFrame(() => {
-          const top = clickedAyah.offsetTop - versePanel.clientHeight / 2 + clickedAyah.clientHeight / 2;
-          versePanel.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+          const top = active.offsetTop - versePanel.clientHeight / 2 + active.clientHeight / 2;
+          setPanelScrollTopInstant(versePanel, Math.max(0, top));
         });
       }
     }
@@ -5950,12 +6026,16 @@ async function init() {
       // Use a rough estimate since panel isn't expanded yet
       const estimatedPanelHeight = 400; // Approximate expanded height
       const top = active.offsetTop - estimatedPanelHeight / 2 + active.clientHeight / 2;
-      panel.scrollTop = Math.max(0, top);
+      setPanelScrollTopInstant(panel, Math.max(0, top));
     }
 
     // Now open the panel - it will animate open with scroll already positioned
     setVersePanelOpen(true);
   });
+
+  // Infinite surrounding-verses list: extend toward the surah's start /
+  // end as the reader nears the list's edges.
+  versePanel?.addEventListener("scroll", onVersePanelScroll, { passive: true });
 
   prevAyahBtn?.addEventListener("click", () => stepAyah(-1));
   nextAyahBtn?.addEventListener("click", () => stepAyah(1));
