@@ -46,11 +46,11 @@ import { initMukhtasarPulse } from "./pulse-beam.js";
 import { initGharib } from "./gharib.js";
 
 /* Transitions.dev animation pack: panel reveal for the ayah panel, the
- * ayah→ayah page slide, the مسح input dissolve, the selector number swap,
- * and reduced-motion plumbing (CSS in index.html). */
+ * مسح input dissolve, the selector number swap, and reduced-motion
+ * plumbing (CSS in index.html). */
 import {
   panelPrepare, panelOpen, panelOpenInstant,
-  dissolveSearchClear, materializeSearchText, swapBlock, cssMs, prefersReducedMotion,
+  dissolveSearchClear, materializeSearchText, swapBlock, prefersReducedMotion,
 } from "./transitions.js";
 
 /* Repeat / loop preference + active-loop counter (shared website + app) */
@@ -3700,13 +3700,12 @@ async function updateTafsirUI(surahNo, ayahNo) {
     // only after the async loadPrimaryTafsir below — which made the text
     // snap to the new ayah and then fade in late, feeling jerky during
     // continuous-mode auto-advance. The tafsirBox swap stays after the
-    // async load because its content updates then.
-    // Suppressed while the page-slide carries the change — two competing
-    // motions (sideways page + inner fade-up) read as jank.
+    // async load because its content updates then. This fade-up is the
+    // ONLY motion the ayah text gets on every path — manual next/prev
+    // included, now that the whole-panel crossfade is retired (it made
+    // unrelated panel chrome twitch on each step).
     tafsirAyahTag.classList.remove("tafsir-swap");
-    if (!TAFSIR_SLIDE_ACTIVE) {
-      requestAnimationFrame(() => tafsirAyahTag.classList.add("tafsir-swap"));
-    }
+    requestAnimationFrame(() => tafsirAyahTag.classList.add("tafsir-swap"));
   }
 
   updateBasmalaUI(surahNo, ayahNo);
@@ -3826,6 +3825,15 @@ function updateNavButtons(surahNo, ayahNo) {
   const disabled = !Number.isFinite(surahNo) || !Number.isFinite(ayahNo);
   prevAyahBtn.disabled = disabled;
   nextAyahBtn.disabled = disabled;
+  // First/last ayah of the surah: the arrow that would step OUT of the
+  // surah disappears (.is-edge fades it to visibility:hidden IN PLACE —
+  // the flex slot stays, so the remaining arrow and the ayah text never
+  // shift). stepAyah's bounds guard remains the functional gate; this is
+  // the visual affordance, shared by clicks, swipes and the arrow keys.
+  const ayahCount = disabled ? 0
+    : (QURAN?.surahs?.find((s) => s.number === surahNo)?.ayahs?.length || 0);
+  prevAyahBtn.classList.toggle("is-edge", !disabled && ayahNo <= 1);
+  nextAyahBtn.classList.toggle("is-edge", !disabled && ayahCount > 0 && ayahNo >= ayahCount);
   updateCompareButtonState();
 }
 
@@ -3851,6 +3859,64 @@ function stepAyah(delta) {
   if (next < 1 || next > surah.ayahs.length) return;
 
   setPrimaryAyah(CURRENT.s, next, { scroll: false });
+}
+
+/* ── Tafsir swipe navigation (web + app) ─────────────────────────────
+ * A horizontal swipe anywhere on the Tafsir panel steps the ayah the
+ * same way the on-screen arrows and the ← → keys do: finger LEFT → next
+ * ayah (the next arrow's side in this RTL layout), finger RIGHT →
+ * previous. (The Mushaf's page swipe is the opposite on purpose — there
+ * the finger drags a page, here it points at an arrow.) Listeners are
+ * purely passive — vertical reading-scroll (page or tafsir box) is never
+ * preventDefault'd; a gesture only fires when it is decisively
+ * horizontal (|dx| > 1.2·|dy| plus the Mushaf-matched 50px distance or
+ * 0.45 px/ms flick), single-finger, didn't start inside a control that
+ * owns its own drag (sliders, selects, toolbar dropdowns, the tafsir
+ * book menu), and ends with no text selected — so adjusting an iOS text
+ * selection can't step the ayah. stepAyah's bounds guard makes edge
+ * swipes a calm no-op, mirroring the hidden .is-edge arrow. */
+function initTafsirSwipeNav() {
+  if (!tafsirSection) return;
+  const THRESHOLD_PX = 50;      // same distance the Mushaf page-swipe uses
+  const FLICK_VELOCITY = 0.45;  // px/ms — a fast short flick still steps
+  let startX = 0, startY = 0, lastX = 0, lastT = 0, vx = 0, tracking = false;
+
+  tafsirSection.addEventListener("touchstart", (e) => {
+    tracking = e.touches.length === 1
+      && !e.target.closest("input, select, textarea, .mushaf-toolbar__dropdown, .tafsir-dd__menu");
+    if (!tracking) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    lastX = startX;
+    lastT = e.timeStamp;
+    vx = 0;
+  }, { passive: true });
+
+  tafsirSection.addEventListener("touchmove", (e) => {
+    if (!tracking) return;
+    if (e.touches.length !== 1) { tracking = false; return; } // pinch/multi-touch
+    const x = e.touches[0].clientX;
+    const now = e.timeStamp;
+    if (now > lastT) vx = (x - lastX) / (now - lastT);
+    lastX = x;
+    lastT = now;
+  }, { passive: true });
+
+  tafsirSection.addEventListener("touchend", (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) < Math.abs(dy) * 1.2) return;  // not decisively horizontal
+    if (Math.abs(dx) < THRESHOLD_PX && Math.abs(vx) < FLICK_VELOCITY) return;
+    const sel = document.getSelection?.();
+    if (sel && !sel.isCollapsed) return;            // selection drag, not a swipe
+    stepAyah(dx < 0 ? 1 : -1);                      // left → next, right → previous
+  }, { passive: true });
+
+  tafsirSection.addEventListener("touchcancel", () => { tracking = false; }, { passive: true });
 }
 
 /* ---------------- Tafsir compare ---------------- */
@@ -4364,96 +4430,20 @@ function applyAyahPanelContent(surahNo, ayahNo) {
   resetComparePanel({ hide: true, silent: true });
 }
 
-/* ── Round 5.2: Tafsir ayah→ayah PURE CROSSFADE ──────────────────────────
- * The outgoing page is snapshotted (cloneNode) and overlaid FIRST, the
- * heavy apply runs hidden behind that pixel-identical snapshot (the
- * screen never blanks — this is what killed the old "lag in the middle"),
- * then the snapshot simply fades away while the new page fades in.
- * Opacity ONLY: no translate, no blur, no height choreography — chrome
- * that is identical between ayahs overlaps pixel-exactly, so the eye sees
- * just the changed text dissolve. The clone keeps its descendant ids: it
- * sits AFTER the live page in tree order, so getElementById / el(...)
- * still resolve to the live elements, while CSS #id rules style the
- * snapshot identically. Rapid steps retarget the live (entering) page;
- * resets cancel cleanly. First reveal and the mode switch keep the
- * .t-panel-slide choreography — untouched. */
-let TAFSIR_SWAP_TIMER = null;
-let TAFSIR_SWAP_GHOST = null;
-/* True for the whole swap lifecycle — updateTafsirUI reads it to suppress
- * the inner .tafsir-swap text animations (a second competing motion). */
-let TAFSIR_SLIDE_ACTIVE = false;
-
-function cancelTafsirSwap() {
-  if (TAFSIR_SWAP_TIMER) { clearTimeout(TAFSIR_SWAP_TIMER); TAFSIR_SWAP_TIMER = null; }
-  if (TAFSIR_SWAP_GHOST) { TAFSIR_SWAP_GHOST.remove(); TAFSIR_SWAP_GHOST = null; }
-  TAFSIR_SLIDE_ACTIVE = false;
-  el("tafsirPages")?.classList.remove("is-swapping");
-  const cur = el("tafsirPageCurrent");
-  if (cur) {
-    // Snap to rest with no transition (cancel = instant, mid-flight or not).
-    const prev = cur.style.transition;
-    cur.style.transition = "none";
-    cur.classList.remove("t-page-enter");
-    void cur.offsetWidth;
-    cur.style.transition = prev;
-  }
-}
-
-function softSwapTafsir(applyContent) {
-  const cur = el("tafsirPageCurrent");
-  const pages = el("tafsirPages");
-  if (!cur || !pages || prefersReducedMotion()) { applyContent(); return; }
-  if (TAFSIR_SLIDE_ACTIVE) {
-    // Mid-swap: retarget — the entering page simply becomes the newest
-    // ayah (it keeps its in-flight fade; the snapshot keeps its exit).
-    applyContent();
-    return;
-  }
-  TAFSIR_SLIDE_ACTIVE = true;
-
-  // 1. Pixel-identical snapshot of the outgoing page, overlaid on top.
-  const ghost = cur.cloneNode(true);
-  ghost.removeAttribute("id");
-  ghost.className = "t-page-ghost";
-  ghost.setAttribute("aria-hidden", "true");
-  // cloneNode copies attributes, not live state — sync what a user can
-  // actually see in the snapshot: the chosen selects (tafsir book,
-  // translation language) and the tafsir box's scroll offset.
-  const liveSelects = cur.querySelectorAll("select");
-  ghost.querySelectorAll("select").forEach((s, i) => {
-    if (liveSelects[i]) s.value = liveSelects[i].value;
-  });
-  pages.classList.add("is-swapping");
-  pages.appendChild(ghost);
-  TAFSIR_SWAP_GHOST = ghost;
-  const liveBox = cur.querySelector("#tafsirBox");
-  const ghostBox = ghost.querySelector("#tafsirBox");
-  if (liveBox && ghostBox && liveBox.scrollTop) ghostBox.scrollTop = liveBox.scrollTop;
-
-  // 2. The heavy apply runs NOW, hidden behind the snapshot — the screen
-  //    keeps painting the identical clone, so there is no blank middle.
-  cur.classList.add("t-page-enter"); // opacity 0, transition:none
-  applyContent();
-
-  // 3. Next frame: pure crossfade — the snapshot fades away while the new
-  //    page fades in beneath it; the fade curves cross high, so combined
-  //    visibility never dips and there is no perceivable hand-off.
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (TAFSIR_SWAP_GHOST !== ghost) return; // cancelled / restarted
-    ghost.classList.add("is-out");
-    cur.classList.remove("t-page-enter");
-  }));
-
-  const total = Math.max(
-    cssMs("--page-swap-out-dur", 320),
-    cssMs("--page-swap-in-dur", 320)) + 80;
-  TAFSIR_SWAP_TIMER = setTimeout(() => {
-    TAFSIR_SWAP_TIMER = null;
-    if (TAFSIR_SWAP_GHOST === ghost) { ghost.remove(); TAFSIR_SWAP_GHOST = null; }
-    pages.classList.remove("is-swapping");
-    TAFSIR_SLIDE_ACTIVE = false;
-  }, total);
-}
+/* ── Ayah→ayah change: inner swaps ONLY (whole-panel crossfade retired) ──
+ * Rounds 5–5.2 crossfaded the ENTIRE panel between ayahs via a cloned
+ * overlay snapshot (.t-page-ghost). The clone looked pixel-identical but
+ * was not inert: every CSS animation inside it restarted from keyframe 0
+ * — most visibly the مختصر التفاسير beam, whose fade-in re-ran so the glow
+ * blinked off and re-lit at a random breathing/hue phase on EVERY
+ * next/prev click — while the live page faded up from opacity 0, dimming
+ * the real beam beneath. Net effect: panel chrome that has nothing to do
+ * with the ayah (button glow, toolbar, selects) twitched on each step, on
+ * the website and worse in the app. Manual steps now take the SAME light
+ * path listening-mode auto-advance always used: the ayah text re-fires
+ * its .tafsir-swap fade-up and the tafsir box height-eases via
+ * setTafsirBoxContent — nothing else in the panel is repainted, so the
+ * chrome (and the beam's rAF driver) carries on undisturbed. */
 
 function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scroll = true, animate = true, skipAudioStop = false, panelReveal = "auto" } = {}) {
   // Engine playing the same surah → seek to the clicked ayah instead of
@@ -4471,7 +4461,6 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     // the recitation ("switching verses plays audio automatically").
     stopAudio();
   }
-  const prevAyah = CURRENT;
   CURRENT = { s: surahNo, a: ayahNo };
   // Round 5: the locked bar replaced the chip card as the selected-ayah
   // display — keep it tracking EVERY path that sets an ayah (search pick,
@@ -4503,19 +4492,17 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   /* Ayah panel choreography:
    *   • first reveal → content applies, panel slides up/open (Task 3
    *     .t-panel-slide — UNCHANGED, as is the Task-7 mode switch);
-   *   • ayah → ayah change while the panel is open → soft swap (round 5):
-   *     gentle fade-out, swap while invisible, gentle fade-in;
    *   • panelReveal:"defer" → setAppMode's mode-switch choreography stages
    *     and opens the panel itself (Task 7);
-   *   • animate:false / engine auto-advance (skipAudioStop) / same-ayah
-   *     refresh → instant content update, panel stays put (the listening
-   *     mode keeps its light inner tafsir-swap instead of pulsing the
-   *     panel every few seconds).
+   *   • panel already open (manual next/prev, engine auto-advance,
+   *     same-ayah refresh) → the panel itself stays put; the change is
+   *     carried by the inner swaps alone (.tafsir-swap on the ayah text,
+   *     setTafsirBoxContent's height-eased fade on the box), so the
+   *     panel chrome — beam, toolbar, selects, nav — never repaints.
    */
   const wasVisible = !!tafsirSection
     && !tafsirSection.classList.contains("hidden")
     && tafsirSection.dataset.open === "true";
-  const ayahChanged = !prevAyah || prevAyah.s !== surahNo || prevAyah.a !== ayahNo;
 
   if (tafsirSection) {
     tafsirSection.classList.remove("is-hidden");
@@ -4525,25 +4512,15 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
   if (!tafsirSection) {
     applyAyahPanelContent(surahNo, ayahNo);
   } else if (panelReveal === "defer") {
-    cancelTafsirSwap();
     applyAyahPanelContent(surahNo, ayahNo);
     panelPrepare(tafsirSection);
   } else if (!wasVisible) {
-    cancelTafsirSwap();
     applyAyahPanelContent(surahNo, ayahNo);
     if (animate && !prefersReducedMotion()) panelOpen(tafsirSection);
     else panelOpenInstant(tafsirSection);
-  } else if (!animate || skipAudioStop || !ayahChanged || prefersReducedMotion()) {
-    if (TAFSIR_SLIDE_ACTIVE) {
-      // Mid-swap: route through the retarget path so a pending (older)
-      // apply can't overwrite this newer content at exit-end.
-      softSwapTafsir(() => applyAyahPanelContent(surahNo, ayahNo));
-    } else {
-      applyAyahPanelContent(surahNo, ayahNo);
-    }
-    panelOpenInstant(tafsirSection);
   } else {
-    softSwapTafsir(() => applyAyahPanelContent(surahNo, ayahNo));
+    applyAyahPanelContent(surahNo, ayahNo);
+    panelOpenInstant(tafsirSection);
   }
 
   if (scroll) {
@@ -5584,9 +5561,6 @@ async function init() {
     stopAudio();              // Tafsir per-ayah <audio> + surahAudio engine
     resetMushafHomeState();   // close Mushaf panel, drop its anchor ayah, toggle → تفسير
     CURRENT = null;
-    // A soft swap mid-flight from a just-clicked ayah change must not
-    // apply stale content / leave exit classes on the retracted panel.
-    cancelTafsirSwap();
     if (tafsirSection) {
       tafsirSection.classList.add("hidden");
       tafsirSection.dataset.open = "false";   // next reveal stages from closed
@@ -5849,6 +5823,7 @@ async function init() {
 
   prevAyahBtn?.addEventListener("click", () => stepAyah(-1));
   nextAyahBtn?.addEventListener("click", () => stepAyah(1));
+  initTafsirSwipeNav();
   playAyahBtn?.addEventListener("click", playCurrentAyah);
 
   // Phone (web + app): tap the ayah text to play its recitation; tap again to stop.
@@ -6000,7 +5975,6 @@ async function init() {
       CURRENT = null;
       // "/" renders the homepage default — retract the tafsir panel too,
       // matching what the مسح reset (which pushState'd this entry) shows.
-      cancelTafsirSwap();
       if (tafsirSection) {
         tafsirSection.classList.add("hidden");
         tafsirSection.dataset.open = "false";

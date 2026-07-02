@@ -1550,6 +1550,43 @@
       }
     }
 
+    /* Pin the prev/next arrows to the TOP of their row instead of its
+       vertical middle: the row's height tracks the ayah text (one line vs
+       six), so centred arrows drifted up and down on every step — pinned
+       ones stay in exactly one spot, so they can be spam-clicked without
+       chasing them. The margin optically centres the arrow on the ayah's
+       FIRST line (line box ≈ 30px×2.4 = 72px desktop / 24px×2.4 ≈ 58px
+       mobile, against the 48/44px buttons). */
+    #prevAyahBtn,
+    #nextAyahBtn {
+      align-self: flex-start;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 640px) {
+      #prevAyahBtn,
+      #nextAyahBtn {
+        margin-top: 7px;
+      }
+    }
+
+    /* First/last ayah of the surah (updateNavButtons): the arrow that
+       would step out of the surah fades away IN PLACE — visibility keeps
+       its flex slot so the other arrow and the ayah text never move. The
+       base class's `transition: all .2s` carries the opacity fade; the
+       !importants out-rank the always-visible guards above. */
+    .ayah-nav-btn.is-edge {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none;
+    }
+
+    /* The base `.ayah-nav-btn svg` rule pins the icon visibility:visible,
+       which would override the hidden parent — re-hide it explicitly. */
+    .ayah-nav-btn.is-edge svg {
+      visibility: hidden !important;
+    }
+
     /* Ayah Grid Buttons (Surah Landing Page) */
     .ayah-grid-btn {
       transition: all 0.2s ease-out;
@@ -5108,21 +5145,6 @@
       --panel-blur: 2px;
       --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-      /* — Tafsir ayah→ayah PURE CROSSFADE (round 5.2: zero movement — the
-           outgoing page is snapshotted and simply fades away while the new
-           ayah fades in beneath it. All the chrome that is identical
-           between pages (buttons, selects, labels) overlaps pixel-exactly,
-           so to the eye only the TEXT that actually changes dissolves;
-           nothing slides, nothing flies) — */
-      --page-swap-out-dur: 200ms;
-      --page-swap-in-dur: 220ms;
-      /* Entering page: fast-start ease (reaches visibility quickly);
-         snapshot fade: gentle symmetric curve. Their crossing keeps
-         combined visibility near 1 the whole way — no blank middle, no
-         visible dip. */
-      --page-swap-ease: cubic-bezier(0.22, 1, 0.36, 1);
-      --page-swap-fade-ease: cubic-bezier(0.45, 0, 0.55, 1);
-
       /* — Modal open/close (Task 4 + Bug 3) — */
       --modal-open-dur: 250ms;
       --modal-close-dur: 150ms;
@@ -5466,58 +5488,14 @@
       }
     }
 
-    /* ── Round 5.2: Tafsir ayah→ayah PURE CROSSFADE ─────────────────────
-       softSwapTafsir() in src/app.js clones the outgoing page into an
-       absolutely-positioned snapshot (.t-page-ghost), applies the new
-       ayah BEHIND it (the screen keeps painting the identical clone while
-       the heavy DOM work runs — no blank frame ever), then the snapshot
-       fades away while the live page fades in. Opacity ONLY — no
-       translate, no blur, no height choreography: chrome that is
-       identical between pages overlaps pixel-exactly, so the eye sees
-       just the changed text dissolve. Cheapest composite in WKWebView. */
-    #tafsirPages {
-      position: relative;
-    }
-
-    /* Clip a taller outgoing snapshot to the panel's new height. */
-    #tafsirPages.is-swapping {
-      overflow: hidden;
-    }
-
-    .t-page-ghost {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 1;
-      pointer-events: none;
-      transition: opacity var(--page-swap-out-dur) var(--page-swap-fade-ease);
-    }
-
-    .t-page-ghost.is-out {
-      opacity: 0;
-    }
-
-    #tafsirPageCurrent {
-      transition: opacity var(--page-swap-in-dur) var(--page-swap-ease);
-    }
-
-    /* Staged by JS the same frame the new content applies — invisible,
-       NO transition; removing this class is what fades it in. */
-    #tafsirPageCurrent.t-page-enter {
-      opacity: 0;
-      transition: none;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      #tafsirPageCurrent {
-        transition: none !important;
-      }
-
-      .t-page-ghost {
-        display: none !important;
-      }
-    }
+    /* (The round-5.2 whole-panel ayah→ayah crossfade that lived here —
+       #tafsirPages / .t-page-ghost — is retired: the cloned snapshot
+       restarted every CSS animation inside it (the مختصر التفاسير beam
+       blinked and re-lit at a random phase on each next/prev click) and
+       the live page's fade dimmed the real beam, so unrelated panel
+       chrome twitched on every step. Ayah changes now animate through
+       the inner swaps only: .tafsir-swap on the ayah text and the
+       height-eased fade inside setTafsirBoxContent.) */
 
     /* ── Task 4 + Bug 3: modal open/close ───────────────────────────── */
     .t-modal {
@@ -5901,13 +5879,6 @@
         <div class="mt-6">
           <div class="mx-auto max-w-4xl">
             <div id="tafsirSection" class="glass hidden rounded-3xl p-6 t-panel-slide" data-open="false">
-              <!-- Round 5.2: #tafsirPageCurrent is the ayah→ayah crossfade
-                   target — softSwapTafsir (src/app.js) overlays a cloned
-                   snapshot (.t-page-ghost) inside #tafsirPages and the two
-                   layers purely cross-fade (opacity only). Plain flow
-                   content at rest. -->
-              <div id="tafsirPages">
-              <div id="tafsirPageCurrent">
               <!-- App-only "audio needs internet" notice (top of the tab) -->
               <div id="tafsirAudioMsg" class="tafsir-audio-msg" aria-live="polite" hidden></div>
               <!-- Controls layout: tafsir menu up, compare centered, nav centered -->
@@ -6130,8 +6101,6 @@
                     style="transition: opacity 0.2s ease, transform 0.2s ease;"></div>
                 </div>
               </div>
-              </div>
-              </div><!-- /tafsirPages crossfade stage -->
             </div>
           </div>
         </div>
