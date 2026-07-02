@@ -2216,10 +2216,6 @@
     }
 
 
-    body.dark #toggleVersesBtn {
-      background: linear-gradient(135deg, #1d8fff, #0b6bdc);
-    }
-
     body.dark .input-glass {
       background: rgba(34, 40, 48, .9);
       border-color: rgba(148, 163, 184, .22);
@@ -2395,26 +2391,43 @@
       background: rgba(255, 255, 255, .035);
     }
 
+    /* The whole header row toggles the card (JS excludes .tr-seg clicks);
+       a hairline separates it from the body only while expanded. */
     .tr-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       flex-wrap: wrap;
-      padding: 7px 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      transition: border-color .3s ease;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    /* Collapse toggle doubles as the card title (whole area tappable). */
+    .tr-card:not(.is-collapsed) .tr-head {
+      border-bottom-color: var(--line);
+    }
+
     .tr-head__main {
       display: flex;
       align-items: center;
       gap: 7px;
       background: none;
       border: 0;
-      padding: 3px 2px;
+      padding: 2px;
       cursor: pointer;
       color: var(--text, #0b1326);
       -webkit-tap-highlight-color: transparent;
+    }
+
+    /* End cluster (left side in RTL): language segment + the accordion
+       chevron anchored at the card's corner. */
+    .tr-head__end {
+      display: flex;
+      align-items: center;
+      gap: 9px;
     }
 
     .tr-head__icon {
@@ -2451,43 +2464,57 @@
       color: #e2e8f0;
     }
 
-    /* Language segment: English ⇄ مع العربية */
+    /* Language segment: English ⇄ مع العربية. iOS-style segmented
+       control — equal-width segments (grid 1fr columns), a quiet inset
+       track, and a neutral RAISED active segment (no colored blob). */
     .tr-seg {
-      display: inline-flex;
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
       gap: 2px;
       padding: 2px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(148, 163, 184, .07);
+      border-radius: 9px;
+      background: rgba(15, 23, 42, .06);
     }
 
     .tr-seg__btn {
       border: 0;
       background: none;
-      padding: 4px 10px;
-      border-radius: 999px;
+      padding: 3px 11px;
+      border-radius: 7px;
       font-size: 11px;
-      font-weight: 800;
+      font-weight: 700;
+      line-height: 1.7;
+      text-align: center;
+      white-space: nowrap;
       color: var(--muted);
       cursor: pointer;
-      transition: background .2s ease, color .2s ease;
+      transition: background .2s ease, color .2s ease, box-shadow .2s ease;
       -webkit-tap-highlight-color: transparent;
     }
 
     .tr-seg__btn.is-on {
-      background: rgba(59, 130, 246, .1);
-      color: var(--accent-strong);
+      background: #fff;
+      color: #0f172a;
+      font-weight: 800;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, .14);
     }
 
     body.dark .tr-seg,
     html.dark .tr-seg {
-      background: rgba(255, 255, 255, .04);
+      background: rgba(0, 0, 0, .28);
+    }
+
+    body.dark .tr-seg__btn,
+    html.dark .tr-seg__btn {
+      color: #8b95a5;
     }
 
     body.dark .tr-seg__btn.is-on,
     html.dark .tr-seg__btn.is-on {
-      background: rgba(147, 197, 253, .14);
-      color: #93c5fd;
+      background: rgba(255, 255, 255, .11);
+      color: #f1f5f9;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
     }
 
     /* Fluid collapse (grid-rows 0fr↔1fr, no height measuring). */
@@ -2513,6 +2540,7 @@
       padding: 0 12px;
     }
 
+    .tr-body__inner::before,
     .tr-body__inner::after {
       content: "";
       display: block;
@@ -2586,16 +2614,25 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 5px 10px;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      background: transparent;
+      padding: 5px 11px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: rgba(15, 23, 42, .05);
       font-size: 11.5px;
-      font-weight: 800;
+      font-weight: 700;
       color: var(--muted);
       cursor: pointer;
       transition: background .2s ease, color .2s ease, border-color .2s ease;
       -webkit-tap-highlight-color: transparent;
+    }
+
+    /* The card's controls opt OUT of the global button:hover lift —
+       .tr-tool has no transform transition, so the -1px applied
+       instantly and read as a jump. Calm surfaces only. */
+    .tr-tool:hover:not(:disabled),
+    .tr-seg__btn:hover:not(:disabled),
+    .tr-head__main:hover:not(:disabled) {
+      transform: none;
     }
 
     .tr-tool svg {
@@ -2605,7 +2642,7 @@
     }
 
     .tr-tool:hover {
-      background: rgba(148, 163, 184, .1);
+      background: rgba(15, 23, 42, .09);
       color: var(--text, #0b1326);
     }
 
@@ -2616,7 +2653,7 @@
 
     .tr-tool.is-ok {
       color: #059669;
-      border-color: rgba(5, 150, 105, .35);
+      border-color: rgba(5, 150, 105, .3);
     }
 
     .tr-tool__chevron {
@@ -2625,11 +2662,10 @@
       transition: transform .3s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    /* Open state: the surrounding-verses toggle reads as "on" — accent
-       tint, accent text, flipped chevron. */
+    /* Open state: quiet accent tint + flipped chevron. */
     .tr-tool--ctx[aria-expanded="true"] {
-      background: rgba(59, 130, 246, .09);
-      border-color: rgba(59, 130, 246, .28);
+      background: rgba(59, 130, 246, .1);
+      border-color: rgba(59, 130, 246, .22);
       color: var(--accent-strong);
     }
 
@@ -2637,22 +2673,28 @@
       transform: rotate(180deg);
     }
 
+    body.dark .tr-tool,
+    html.dark .tr-tool {
+      background: rgba(255, 255, 255, .055);
+      color: #aeb7c4;
+    }
+
     body.dark .tr-tool:hover,
     html.dark .tr-tool:hover {
-      background: rgba(255, 255, 255, .07);
+      background: rgba(255, 255, 255, .09);
       color: #e2e8f0;
     }
 
     body.dark .tr-tool.is-ok,
     html.dark .tr-tool.is-ok {
       color: #34d399;
-      border-color: rgba(52, 211, 153, .35);
+      border-color: rgba(52, 211, 153, .3);
     }
 
     body.dark .tr-tool--ctx[aria-expanded="true"],
     html.dark .tr-tool--ctx[aria-expanded="true"] {
-      background: rgba(147, 197, 253, .1);
-      border-color: rgba(147, 197, 253, .3);
+      background: rgba(147, 197, 253, .12);
+      border-color: rgba(147, 197, 253, .26);
       color: #93c5fd;
     }
 
@@ -6413,6 +6455,10 @@
                      EMPTY #ayahContext div by regex — keep it an empty
                      <div id="ayahContext" ...></div>. -->
                 <div id="translationCard" class="tr-card">
+                  <!-- The WHOLE header toggles the card (clicks inside the
+                       language segment are excluded in JS); the chevron is
+                       anchored at the far (left, RTL) corner like a
+                       standard accordion. -->
                   <div class="tr-head">
                     <button type="button" id="trCollapseBtn" class="tr-head__main" aria-expanded="true"
                       aria-controls="trBody" aria-label="طيّ أو فتح الترجمة">
@@ -6424,14 +6470,16 @@
                       </svg>
                       <span class="tr-head__title">الترجمة</span>
                       <span class="tr-head__attr">د. مصطفى خطّاب</span>
+                    </button>
+                    <div class="tr-head__end">
+                      <div class="tr-seg" id="trLangSeg" role="group" aria-label="لغة العرض">
+                        <button type="button" class="tr-seg__btn" data-mode="en">English</button>
+                        <button type="button" class="tr-seg__btn" data-mode="both">مع العربية</button>
+                      </div>
                       <svg class="tr-head__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                       </svg>
-                    </button>
-                    <div class="tr-seg" id="trLangSeg" role="group" aria-label="لغة العرض">
-                      <button type="button" class="tr-seg__btn" data-mode="en">English</button>
-                      <button type="button" class="tr-seg__btn" data-mode="both">مع العربية</button>
                     </div>
                   </div>
 

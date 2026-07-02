@@ -4055,7 +4055,14 @@ function initTranslationCard() {
   document.querySelectorAll("#trLangSeg .tr-seg__btn").forEach((btn) => {
     btn.addEventListener("click", () => setTranslationMode(btn.dataset.mode));
   });
-  trCollapseBtn?.addEventListener("click", () => setTranslationOpen(!TR_OPEN));
+  // The WHOLE header row toggles the card (a far bigger target than the
+  // old chevron button); clicks inside the language segment are excluded.
+  // trCollapseBtn (the title button) participates via bubbling — it has
+  // no listener of its own, so no double toggle.
+  translationCard?.querySelector(".tr-head")?.addEventListener("click", (e) => {
+    if (e.target.closest(".tr-seg")) return;
+    setTranslationOpen(!TR_OPEN);
+  });
   trCopyBtn?.addEventListener("click", copyCurrentTranslation);
   // The share button only exists where the native share sheet does
   // (the app's WebView + mobile browsers); elsewhere copy covers it.
