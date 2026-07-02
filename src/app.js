@@ -367,7 +367,13 @@ const aiStatus = el("aiStatus");
 const aiResults = el("aiResults");
 
 const ayahContext = el("ayahContext");
-const langSelect = el("langSelect");
+/* Translation card v2 (replaces the old langSelect + ترجمة الآيات button) */
+const translationCard = el("translationCard");
+const trCurrent = el("trCurrent");
+const trCopyBtn = el("trCopyBtn");
+const trCopyLabel = el("trCopyLabel");
+const trShareBtn = el("trShareBtn");
+const trCollapseBtn = el("trCollapseBtn");
 
 const tafsirHeader = el("tafsirHeader");
 const tafsirSelect = el("tafsirSelect");
@@ -450,6 +456,12 @@ let INDEX = [];
 let CURRENT = null; // {s,a}
 let LAST_RESULTS = [];
 let VERSES_OPEN = false;
+/* Translation card state — both persisted so the reader's choice sticks
+ * across sessions (like the gharib learned-set: decided once, settled). */
+let TR_MODE = "en";   // "en" (English only) | "both" (Arabic + English)
+let TR_OPEN = true;   // card expanded?
+try { TR_MODE = localStorage.getItem("m7_tr_lang") === "both" ? "both" : "en"; } catch { }
+try { TR_OPEN = localStorage.getItem("m7_tr_open") !== "0"; } catch { }
 let AI_TYPE_TIMER = null;
 let AI_ABORT = null;
 let COMPARE_ABORT = null;
@@ -478,6 +490,7 @@ const TAFSIR_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 let TAFSIR_REQUEST_ID = 0;
 let SECONDARY_TAFSIR_ABORT = null; // AbortController for background phase
 let EN_MAP = null; // {"s":{"a":"text"}}
+let EN_LOAD_DONE = false; // background en.sahih.json load finished (ok or not)
 let API_WARMED_UP = false; // Track if API has been warmed up
 
 // Compare writing animation state
@@ -3369,7 +3382,7 @@ function showAyahContext(surahNo, ayahNo) {
   }
 
   const { start, end } = CONTEXT_STATE;
-  const mode = langSelect?.value || "en";
+  const mode = TR_MODE; // translation card's language segment (en | both)
 
   // Track language change
   const langChanged = CONTEXT_STATE.lang !== mode;
@@ -3848,6 +3861,130 @@ function setVersePanelOpen(open) {
   versePanel?.classList.toggle("is-open", VERSES_OPEN);
   versePanel?.setAttribute("aria-hidden", VERSES_OPEN ? "false" : "true");
   toggleVersesBtn?.setAttribute("aria-expanded", VERSES_OPEN ? "true" : "false");
+}
+
+/* ── Translation card v2 ─────────────────────────────────────────────
+ * The old area hid every translation behind a "ترجمة الآيات" button and a
+ * list hunt. The card keeps the CURRENT ayah's translation in view at all
+ * times (re-rendered from applyAyahPanelContent on every ayah change),
+ * adds copy/share for the ayah+translation pair, and folds the old
+ * surrounding-verses list (#versePanel — unchanged smart-window logic)
+ * underneath. Language mode and the collapsed state persist. */
+
+function updateTranslationCard(surahNo, ayahNo) {
+  if (!trCurrent) return;
+  const en = EN_MAP?.[String(surahNo)]?.[String(ayahNo)] || "";
+  const meta = SURAH_META.find((x) => x.number === surahNo);
+  let html = "";
+  if (TR_MODE === "both") {
+    const ar = getAyahTextFromQuran(surahNo, ayahNo);
+    if (ar) html += `<div class="tr-current__ar quran-font" dir="rtl">${wrapTashkeelWords(escapeHtml(ar))}</div>`;
+  }
+  if (en) {
+    html += `<p class="tr-current__en" dir="ltr">${escapeHtml(en)}</p>`;
+    html += `<div class="tr-current__ref">${escapeHtml(meta?.name_en || `Surah ${surahNo}`)} · ${surahNo}:${ayahNo}</div>`;
+  } else {
+    html += `<p class="tr-current__empty">${EN_LOAD_DONE ? "الترجمة غير متاحة لهذه الآية." : "جاري تحميل الترجمة…"}</p>`;
+  }
+  trCurrent.innerHTML = html;
+  // Same gentle fade-up the ayah text uses — one shared motion language.
+  trCurrent.classList.remove("tafsir-swap");
+  requestAnimationFrame(() => trCurrent.classList.add("tafsir-swap"));
+  if (trCopyBtn) trCopyBtn.disabled = !en;
+  if (trShareBtn) trShareBtn.disabled = !en;
+}
+
+function setTranslationMode(mode, { rerender = true } = {}) {
+  TR_MODE = mode === "both" ? "both" : "en";
+  try { localStorage.setItem("m7_tr_lang", TR_MODE); } catch { }
+  document.querySelectorAll("#trLangSeg .tr-seg__btn").forEach((b) =>
+    b.classList.toggle("is-on", b.dataset.mode === TR_MODE));
+  if (rerender && CURRENT) {
+    updateTranslationCard(CURRENT.s, CURRENT.a);
+    // langChanged path inside showAyahContext re-renders the list rows.
+    showAyahContext(CURRENT.s, CURRENT.a);
+  }
+}
+
+function setTranslationOpen(open) {
+  TR_OPEN = !!open;
+  try { localStorage.setItem("m7_tr_open", TR_OPEN ? "1" : "0"); } catch { }
+  translationCard?.classList.toggle("is-collapsed", !TR_OPEN);
+  trCollapseBtn?.setAttribute("aria-expanded", TR_OPEN ? "true" : "false");
+}
+
+/* Ayah + translation + reference + link, for copy (link inline) and the
+ * native share sheet (link passed separately as url). */
+function buildTranslationShareText(surahNo, ayahNo, { withLink = true } = {}) {
+  const ar = getAyahTextFromQuran(surahNo, ayahNo);
+  const en = EN_MAP?.[String(surahNo)]?.[String(ayahNo)] || "";
+  const meta = SURAH_META.find((x) => x.number === surahNo);
+  const parts = [];
+  if (ar) parts.push(`﴿${ar}﴾`);
+  parts.push(`سورة ${meta?.name_ar || surahNo} — الآية ${ayahNo}`);
+  if (en) parts.push(`\n"${en}"\n— Dr. Mustafa Khattab, The Clear Quran`);
+  if (withLink) parts.push(`\nhttps://www.m7mdiyat.com/${surahNo}/${ayahNo}`);
+  return parts.join("\n");
+}
+
+let TR_COPY_TIMER = null;
+
+async function copyCurrentTranslation() {
+  if (!CURRENT) return;
+  const text = buildTranslationShareText(CURRENT.s, CURRENT.a);
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    // Clipboard API can be unavailable (older WebViews, http origins) —
+    // classic hidden-textarea fallback.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;opacity:0;pointer-events:none;";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch { }
+  }
+  if (!ok || !trCopyLabel || !trCopyBtn) return;
+  clearTimeout(TR_COPY_TIMER);
+  trCopyLabel.textContent = "تم النسخ";
+  trCopyBtn.classList.add("is-ok");
+  TR_COPY_TIMER = setTimeout(() => {
+    trCopyLabel.textContent = "نسخ";
+    trCopyBtn.classList.remove("is-ok");
+  }, 1600);
+}
+
+async function shareCurrentTranslation() {
+  if (!CURRENT || !navigator.share) return;
+  const meta = SURAH_META.find((x) => x.number === CURRENT.s);
+  try {
+    await navigator.share({
+      title: `سورة ${meta?.name_ar || CURRENT.s} — الآية ${CURRENT.a}`,
+      text: buildTranslationShareText(CURRENT.s, CURRENT.a, { withLink: false }),
+      url: `https://www.m7mdiyat.com/${CURRENT.s}/${CURRENT.a}`,
+    });
+  } catch { /* user dismissed the sheet — not an error */ }
+}
+
+function initTranslationCard() {
+  // Restore persisted state before the panel is ever shown (tafsirSection
+  // is still hidden during init, so no transition plays).
+  setTranslationMode(TR_MODE, { rerender: false });
+  setTranslationOpen(TR_OPEN);
+  document.querySelectorAll("#trLangSeg .tr-seg__btn").forEach((btn) => {
+    btn.addEventListener("click", () => setTranslationMode(btn.dataset.mode));
+  });
+  trCollapseBtn?.addEventListener("click", () => setTranslationOpen(!TR_OPEN));
+  trCopyBtn?.addEventListener("click", copyCurrentTranslation);
+  // The share button only exists where the native share sheet does
+  // (the app's WebView + mobile browsers); elsewhere copy covers it.
+  if (navigator.share) trShareBtn?.classList.remove("hidden");
+  trShareBtn?.addEventListener("click", shareCurrentTranslation);
 }
 
 function stepAyah(delta) {
@@ -4425,6 +4562,7 @@ function resetSeoMetaToHome({ removeAyahParam = false } = {}) {
  * BEFORE the content swaps. */
 function applyAyahPanelContent(surahNo, ayahNo) {
   showAyahContext(surahNo, ayahNo);
+  updateTranslationCard(surahNo, ayahNo);
   updateTafsirUI(surahNo, ayahNo);
   updateNavButtons(surahNo, ayahNo);
   resetComparePanel({ hide: true, silent: true });
@@ -5789,10 +5927,8 @@ async function init() {
     if (CURRENT) updateTafsirUI(CURRENT.s, CURRENT.a);
   });
 
-  // context language change
-  langSelect?.addEventListener("change", () => {
-    if (CURRENT) showAyahContext(CURRENT.s, CURRENT.a);
-  });
+  // Translation card v2: language segment, collapse, copy/share wiring.
+  initTranslationCard();
 
   // verse panel toggle (Smart Scroll Fix)
   toggleVersesBtn?.addEventListener("click", () => {
@@ -5933,6 +6069,10 @@ async function init() {
     } catch {
       EN_MAP = null;
     }
+    EN_LOAD_DONE = true;
+    // An ayah picked before the background load finished rendered the
+    // card's "جاري تحميل الترجمة…" placeholder — refresh it now.
+    if (CURRENT) updateTranslationCard(CURRENT.s, CURRENT.a);
 
     // If current tafsir selection isn't loaded, fall back to first available
     const selectedKey = tafsirSelect?.value || "muyassar";

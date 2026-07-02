@@ -1433,7 +1433,6 @@
     }
 
     #aiAskBtn,
-    #toggleVersesBtn,
     .ai-open-btn {
       background: linear-gradient(135deg, var(--accent), var(--accent-strong));
       color: #fff;
@@ -2351,51 +2350,328 @@
       transition: color .2s ease;
     }
 
+    /* ── Translation card v2 (الترجمة) ─────────────────────────────────
+       One cohesive card at the bottom of the tafsir panel: header row
+       (collapse toggle + attribution + language segment), the CURRENT
+       ayah's translation always in view, copy/share tools, and the
+       surrounding-verses list folded beneath. The collapse uses the same
+       grid-template-rows 0fr↔1fr fluid technique as .results-shell. */
+    .tr-card {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .65);
+      overflow: hidden;
+    }
+
+    body.dark .tr-card {
+      background: rgba(26, 30, 36, .55);
+    }
+
+    .tr-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+    }
+
+    /* Collapse toggle doubles as the card title (whole area tappable). */
+    .tr-head__main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: 0;
+      padding: 4px 2px;
+      cursor: pointer;
+      color: var(--text, #0b1326);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tr-head__icon {
+      width: 18px;
+      height: 18px;
+      color: var(--accent-strong);
+      flex-shrink: 0;
+    }
+
+    .tr-head__title {
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .tr-head__attr {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .tr-head__chevron {
+      width: 13px;
+      height: 13px;
+      color: var(--muted);
+      transition: transform .3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .tr-card.is-collapsed .tr-head__chevron {
+      transform: rotate(-90deg);
+    }
+
+    body.dark .tr-head__main {
+      color: #e2e8f0;
+    }
+
+    /* Language segment: English ⇄ مع العربية */
+    .tr-seg {
+      display: inline-flex;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(148, 163, 184, .08);
+    }
+
+    .tr-seg__btn {
+      border: 0;
+      background: none;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tr-seg__btn.is-on {
+      background: #fff;
+      color: var(--accent-strong);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .10);
+    }
+
+    body.dark .tr-seg {
+      background: rgba(255, 255, 255, .05);
+    }
+
+    body.dark .tr-seg__btn.is-on {
+      background: rgba(255, 255, 255, .12);
+      color: #93c5fd;
+      box-shadow: none;
+    }
+
+    /* Fluid collapse (grid-rows 0fr↔1fr, no height measuring). */
+    .tr-body {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows .42s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity .3s ease;
+    }
+
+    .tr-card.is-collapsed .tr-body {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+
+    .tr-body__inner {
+      overflow: hidden;
+      min-height: 0;
+      padding: 0 16px 14px;
+    }
+
+    /* The current ayah's translation — always visible, no digging. */
+    .tr-current__ar {
+      font-size: 19px;
+      line-height: 2.1;
+      text-align: right;
+      color: var(--text, #0b1326);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    body.dark .tr-current__ar {
+      color: #e2e8f0;
+    }
+
+    .tr-current__en {
+      direction: ltr;
+      text-align: left;
+      font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
+      font-size: 16.5px;
+      font-weight: 500;
+      line-height: 1.85;
+      letter-spacing: 0;
+      color: var(--text, #0b1326);
+    }
+
+    body.dark .tr-current__en {
+      color: #e2e8f0;
+    }
+
+    .tr-current__empty {
+      direction: rtl;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .tr-current__ref {
+      direction: ltr;
+      text-align: left;
+      margin-top: 8px;
+      font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Arial;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+
+    /* Tool row: copy / share / surrounding-verses toggle. */
+    .tr-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .tr-tools__spacer {
+      flex: 1;
+    }
+
+    .tr-tool {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .55);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text, #0b1326);
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease, border-color .2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tr-tool svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+
+    .tr-tool:hover {
+      background: rgba(255, 255, 255, .9);
+    }
+
+    .tr-tool:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .tr-tool.is-ok {
+      color: #059669;
+      border-color: rgba(5, 150, 105, .35);
+    }
+
+    .tr-tool__chevron {
+      width: 12px !important;
+      height: 12px !important;
+      color: var(--muted);
+      transition: transform .3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .tr-tool--ctx[aria-expanded="true"] .tr-tool__chevron {
+      transform: rotate(180deg);
+    }
+
+    body.dark .tr-tool {
+      background: rgba(255, 255, 255, .05);
+      color: #e2e8f0;
+    }
+
+    body.dark .tr-tool:hover {
+      background: rgba(255, 255, 255, .1);
+    }
+
+    body.dark .tr-tool.is-ok {
+      color: #34d399;
+      border-color: rgba(52, 211, 153, .35);
+    }
+
+    /* Surrounding-verses list (#versePanel keeps its inline max-height
+       open/close mechanism + .is-open from setVersePanelOpen). */
+    .tr-context {
+      margin-top: 12px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(148, 163, 184, .06);
+      padding: 0 12px;
+    }
+
+    #versePanel.is-open.tr-context {
+      padding: 12px;
+    }
+
+    body.dark .tr-context {
+      background: rgba(255, 255, 255, .03);
+    }
+
     #ayahContext {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .ayah-line {
-      padding: 12px 14px;
-      border-radius: 18px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, .6);
+      position: relative;
+      padding: 11px 14px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      background: transparent;
       cursor: pointer;
-      transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+      transition: background .2s ease, border-color .2s ease;
     }
 
     .ayah-line:hover {
-      transform: translateY(-1px);
-      background: rgba(255, 255, 255, .85);
-      box-shadow: 0 12px 26px rgba(15, 23, 42, .10);
-    }
-
-    body.dark .ayah-line {
-      background: rgba(26, 30, 36, .9);
-      border-color: rgba(148, 163, 184, .2);
+      background: rgba(255, 255, 255, .75);
+      border-color: var(--line);
     }
 
     body.dark .ayah-line:hover {
-      background: rgba(34, 39, 46, .92);
-      box-shadow: 0 12px 26px rgba(0, 0, 0, .35);
+      background: rgba(255, 255, 255, .05);
+      border-color: rgba(148, 163, 184, .2);
     }
 
     .ayah-line .num {
       font-weight: 800;
       color: var(--accent-strong);
       margin-left: 6px;
+      font-size: 12px;
     }
 
+    /* Active row: accent inset bar on the start (right, RTL) edge
+       instead of the old grey outline. */
     .ayah-line.active {
-      outline: 2px solid rgba(148, 163, 184, .25);
+      background: rgba(59, 130, 246, .07);
+      border-color: rgba(59, 130, 246, .22);
+      box-shadow: inset -3px 0 0 0 var(--accent-strong);
+    }
+
+    body.dark .ayah-line.active {
+      background: rgba(147, 197, 253, .08);
+      border-color: rgba(147, 197, 253, .25);
+      box-shadow: inset -3px 0 0 0 #93c5fd;
     }
 
     .ayah-line .en {
       display: block;
       margin-top: 6px;
-      font-size: 12px;
+      font-size: 12.5px;
+      line-height: 1.7;
       color: var(--muted);
       direction: ltr;
       text-align: left;
@@ -5727,7 +6003,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-I72PlGig.js"></script>
+  <script type="module" crossorigin src="/assets/index-CauUYgU4.js"></script>
 </head>
 
 <body>
@@ -6058,23 +6334,85 @@
               <div class="mt-6">
                 <!-- Small centred section divider (theme-aware via --line) -->
                 <div aria-hidden="true" style="width:96px; height:2px; border-radius:999px; background:var(--line); margin:0 auto 18px;"></div>
-                <div class="flex items-center gap-2" style="justify-content:center;">
-                  <select id="langSelect"
-                    class="bg-white/70 border border-slate-900/10 rounded-2xl px-4 py-2 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition">
-                    <option value="en" selected>English</option>
-                    <option value="both">English + العربية</option>
-                  </select>
-                  <button type="button" id="toggleVersesBtn" aria-expanded="false"
-                    class="px-4 py-2 rounded-2xl bg-blue-600 text-white font-extrabold text-sm hover:opacity-90 transition">
-                    ترجمة الآيات
-                  </button>
-                </div>
 
-                <div id="versePanel" aria-hidden="true"
-                  class="mt-4 rounded-3xl border border-slate-900/10 bg-white/55 p-4" style="max-height:0; overflow:hidden; opacity:0; transform: translateY(-4px);
-                     transition:max-height .45s ease, opacity .35s ease, transform .35s ease;">
-                  <div id="ayahContext" class="text-[18px] leading-[2.2]"
-                    style="transition: opacity 0.2s ease, transform 0.2s ease;"></div>
+                <!-- ── Translation card v2 ─────────────────────────────
+                     The old select + "ترجمة الآيات" button hid the current
+                     ayah's translation behind a click and a list hunt. The
+                     card shows it directly (updateTranslationCard in
+                     src/app.js re-renders it on every ayah change), with
+                     copy/share tools and the surrounding-verses list
+                     (#versePanel/#ayahContext — same smart-window logic as
+                     before) folded underneath. Language mode + collapsed
+                     state persist in localStorage (m7_tr_lang / m7_tr_open).
+                     NOTE: scripts/prerender.js injects SEO content into the
+                     EMPTY #ayahContext div by regex — keep it an empty
+                     <div id="ayahContext" ...></div>. -->
+                <div id="translationCard" class="tr-card">
+                  <div class="tr-head">
+                    <button type="button" id="trCollapseBtn" class="tr-head__main" aria-expanded="true"
+                      aria-controls="trBody" aria-label="طيّ أو فتح الترجمة">
+                      <svg class="tr-head__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" />
+                        <path d="M3.6 9h16.8M3.6 15h16.8" />
+                        <path d="M12 3a13.5 13.5 0 0 0 0 18M12 3a13.5 13.5 0 0 1 0 18" />
+                      </svg>
+                      <span class="tr-head__title">الترجمة</span>
+                      <span class="tr-head__attr">د. مصطفى خطّاب</span>
+                      <svg class="tr-head__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    <div class="tr-seg" id="trLangSeg" role="group" aria-label="لغة العرض">
+                      <button type="button" class="tr-seg__btn" data-mode="en">English</button>
+                      <button type="button" class="tr-seg__btn" data-mode="both">مع العربية</button>
+                    </div>
+                  </div>
+
+                  <div id="trBody" class="tr-body">
+                    <div class="tr-body__inner">
+                      <div id="trCurrent" class="tr-current" aria-live="polite"></div>
+
+                      <div class="tr-tools">
+                        <button type="button" id="trCopyBtn" class="tr-tool" disabled>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M16.5 8.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v8.25A2.25 2.25 0 0 0 6 16.5h2.25" />
+                            <rect x="8.25" y="8.25" width="12" height="12" rx="2.25" />
+                          </svg>
+                          <span id="trCopyLabel">نسخ</span>
+                        </button>
+                        <button type="button" id="trShareBtn" class="tr-tool hidden" disabled>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3v12" />
+                            <path d="M8.25 6.75 12 3l3.75 3.75" />
+                            <path d="M6 10.5H5.25A2.25 2.25 0 0 0 3 12.75v6A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75v-6a2.25 2.25 0 0 0-2.25-2.25H18" />
+                          </svg>
+                          <span>مشاركة</span>
+                        </button>
+                        <span class="tr-tools__spacer" aria-hidden="true"></span>
+                        <button type="button" id="toggleVersesBtn" class="tr-tool tr-tool--ctx" aria-expanded="false">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h10.5" />
+                          </svg>
+                          <span>الآيات المحيطة</span>
+                          <svg class="tr-tool__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div id="versePanel" aria-hidden="true" class="tr-context" style="max-height:0; overflow:hidden; opacity:0; transform: translateY(-4px);
+                           transition:max-height .45s ease, opacity .35s ease, transform .35s ease;">
+                        <div id="ayahContext" class="text-[18px] leading-[2.2]"
+                          style="transition: opacity 0.2s ease, transform 0.2s ease;"></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
