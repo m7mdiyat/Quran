@@ -3032,6 +3032,53 @@ invoked here with evidence** (§4).
 >   the app).** Real-voice on Mac is Mohammed's to try; the app path is the
 >   device-verified threaded one.
 
+> **🔴 OPEN — LIVE-MIC ACCURACY (2026-07-13, where a fresh session RESUMES).**
+> Mohammed recited into it (Safari, threaded, keeps up) and hit accuracy problems
+> that are diagnostically opposite: **(1) false skips** (correct words flagged
+> skipped), **(2) missed mistakes** (wrong words pass as correct), **(3) phantom
+> insertions** (red dots). All three = ONE cause: **the ASR is MISHEARING LIVE
+> VOICE**. Critical gap: ALL accuracy validation was on the RECORDED golden clips;
+> **live mic (gain, echo-cancel, noise-suppress, AGC, real-time chunking) was NEVER
+> validated.** Rule from Mohammed: **DIAGNOSE BEFORE TUNING — do not touch the
+> engine's matching rules until the transcript is confirmed.**
+> - **DIAGNOSTIC TOOLING BUILT (this turn, not yet used by Mohammed):**
+>   (a) **live raw-ASR transcript** — `src/tasmee-worker.js` wraps `feedToken` →
+>   posts `{type:"transcript"}` → `tasmee-ui.js` `onHeard()` logs `[tasmee ASR] …`
+>   + shows a `.ts-heard` overlay in the mic meter; `__tasmee._transcript()` = full.
+>   (b) **mic processing OFF** — `tasmee-audio.js` `AUDIO_PROCESSING=false`
+>   (echoCancellation/noiseSuppression/autoGainControl off) to match the golden
+>   clips; flip the const to A/B. (c) **session recording** —
+>   `__tasmee._downloadRecording()` saves the exact 48k the model heard → run
+>   `node scripts/tasmee-bench.mjs <wav> --page N --decode=incremental`.
+> - **RULED OUT:** the live streaming resampler is **byte-identical** to the
+>   bench's `resampleTo16k` (0/1.75M samples differ) — resample is NOT the cause.
+>   Transcript viewer validated on a recording (An-Nas transcribed correctly).
+> - **NEXT (resume here):** Mohammed recites → reads the transcript vs what he said.
+>   Garbage transcript → audio/mic/room (record → bench: if bench ALSO mishears the
+>   recording, it's the audio; if bench is right, it's a live-path diff = VAD
+>   gating word edges / streaming timing). Then fix the RIGHT layer. Ranked
+>   hypotheses: (1) call-processing distortion [now off — first retest tests it],
+>   (2) mic/room, (3) VAD trimming word starts/ends.
+> - **DEFERRED (Mohammed, until accuracy is right):** mistake sounds + animations.
+
+> **▶ RESUME MECHANICS (dev env, 2026-07-13 — all tasmee work is on branch
+> `tasmee-wip` @ github.com/m7mdiyat/Quran, pushed).** A fresh clone/pull of
+> `tasmee-wip` is missing three GIT-IGNORED things it needs:
+> 1. **Model** — `models/tasmee/fastconformer_ar_ctc_q8.onnx` (131 MB, MEL input)
+>    + `models/tasmee/vocab.json` + `checksums.txt`. Restore from GCS or re-export
+>    (`scripts/tasmee-export-model.py`; provenance pinned in this plan's Gate-3 §).
+> 2. **Dev serving of model + ORT wasm** (served from `public/`, git-ignored):
+>    `mkdir -p public/ort public/models/tasmee`;
+>    `cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.{wasm,mjs} public/ort/`;
+>    `ln -sf ../../../models/tasmee/fastconformer_ar_ctc_q8.onnx public/models/tasmee/`;
+>    `cp models/tasmee/vocab.json public/models/tasmee/`.
+> 3. **Golden WAVs** — `tests/**/*.wav` git-ignored (voice recordings → GCS);
+>    restore to run the bench. Truth JSONs + tests are committed.
+> Then `npm ci` → `npm run dev` (vite.config.js already has COOP/COEP require-corp
+> for threads + optimizeDeps + worker.format es) → `localhost:5173/read/ayah/1/1?tasmee=1`
+> → enter tasmee → tap the mic. **Nothing BREAKS on npm install** — the app runs; the
+> tasmee worker's model fetch just 404s until steps 1–2, and the bench needs step 3.
+
 **GATE 5 — Mushaf UI integration.** Mode lifecycle, hide/reveal CSS, summary sheet,
 settings, suppressions (gharib/menu/audio/swipe). Accept: zero layout shift on
 hide/reveal (word rects identical — you verify in dev console; no automated browser run
