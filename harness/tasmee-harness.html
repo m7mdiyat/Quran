@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tasmee dev harness — Gate 3</title>
+    <style>
+        body { font: 14px/1.45 ui-monospace, Menlo, monospace; margin: 16px; background: #0e1116; color: #d6dde6; }
+        h1 { font-size: 16px; margin: 0 0 10px; }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+        input { background: #161b23; color: #d6dde6; border: 1px solid #2a3342; border-radius: 6px; padding: 6px 8px; min-width: 240px; }
+        button { background: #2a6df4; color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; }
+        button:disabled { opacity: .5; }
+        #status { color: #8b98a9; margin: 8px 0; min-height: 1.2em; }
+        pre { background: #161b23; border: 1px solid #2a3342; border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-word; unicode-bidi: plaintext; }
+    </style>
+</head>
+
+<body>
+    <h1>tasmee dev harness — real-browser bench (Gate 3)</h1>
+    <div class="row">
+        <label>clip <input id="clip" value="/golden/smoke114-p604.wav"></label>
+        <label>range <input id="range" value="114:1-6" style="min-width:100px"></label>
+        <label>page <input id="page" value="" style="min-width:60px" placeholder="NNN"></label>
+        <button id="run">run</button>
+    </div>
+    <div id="status">idle</div>
+    <pre id="out">—</pre>
+    <script type="module" src="/harness/tasmee-harness.js"></script>
+</body>
+
+</html>

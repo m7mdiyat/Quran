@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<!-- ============================================================
+     tasmee iOS threading prototype — TASK #11, THE go/no-go.
+     Answers ONE question on the real app stack: does the Capacitor
+     iOS WebView reach crossOriginIsolated=true (→ SharedArrayBuffer →
+     ort-web threads), and what is the real on-device threaded ORT
+     cost. No mic, no Mushaf, no matching — this is not the feature.
+     Requires the wrapper's WebViewAssetHandler to serve
+     COOP: same-origin + COEP: require-corp (patch instructions in
+     TASMEE-PLAN / the #11 task).
+     ============================================================ -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tasmee #11 prototype</title>
+<style>
+  body { margin:0; padding:16px calc(12px + env(safe-area-inset-right)) 40px calc(12px + env(safe-area-inset-left)); background:#0c1218; color:#d7e3ee; font:14px/1.45 -apple-system, system-ui, sans-serif; }
+  h1 { font-size:16px; margin:14px 0 4px; color:#8fd0ff; }
+  .sub { color:#7d8fa0; font-size:12px; margin-bottom:14px; }
+  button { display:block; width:100%; margin:8px 0; padding:14px; font-size:16px; font-weight:600; border:0; border-radius:10px; background:#1c5d8f; color:#fff; }
+  button:disabled { opacity:.45; }
+  #b1 { background:#3a4d61; }
+  #b3 { background:#3f5d46; }
+  pre { background:#060a0e; border:1px solid #1d2b38; border-radius:10px; padding:12px; font:11.5px/1.5 ui-monospace, Menlo, monospace; white-space:pre-wrap; word-break:break-all; user-select:text; -webkit-user-select:text; }
+</style>
+</head>
+<body>
+<h1>tasmee #11 — iOS threading go/no-go</h1>
+<div class="sub">Tap RUN. The readout below IS the result — screenshot the whole block. threads=4 is the gate question; threads=1 is the comparison number.</div>
+<button id="b4">RUN — threads=4 (the gate)</button>
+<button id="b1">RUN — threads=1 (comparison)</button>
+<button id="b3">RUN — WebGPU EP (isolation-independent)</button>
+<pre id="log">(waiting)</pre>
+<script>
+"use strict";
+const logEl = document.getElementById("log");
+const lines = [];
+function line(t) { lines.push(t); logEl.textContent = lines.join("\n"); console.log("[proto]", t); }
+
+/* Page-scope ground truth, printed immediately (cheap — no ORT/model
+ * work at load; heavy init stays on the tap path per the pinned iOS
+ * gesture-path rule). */
+lines.length = 0;
+line("== page scope ==");
+line("crossOriginIsolated: " + (typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : "undefined"));
+line("SharedArrayBuffer:   " + (typeof SharedArrayBuffer !== "undefined"));
+line("isSecureContext:     " + isSecureContext + " · origin: " + location.origin);
+line("hardwareConcurrency: " + navigator.hardwareConcurrency);
+line("navigator.gpu:       " + ("gpu" in navigator ? "PRESENT — WebGPU candidate; measure the EP next" : "absent (expected on iOS ≤ 18 WKWebView)"));
+line("UA: " + navigator.userAgent);
+
+function b64FromBytes(bytes) { // chunked btoa — avoids call-stack limits
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+}
+
+async function fsProbe() {
+    /* §3/A3a leg: are FILESYSTEM bytes reachable under COEP? 1 MB
+     * round-trip (write → getUri → convertFileSrc → fetch) proves the
+     * _capacitor_file_ path's response policy without a 134 MB base64. */
+    const cap = window.Capacitor; // call-time, never module-load-time
+    line("");
+    line("== capacitor / filesystem probe ==");
+    if (!cap) { line("capacitor bridge: ABSENT — page is running outside the app (browser?)"); return; }
+    line("capacitor bridge: present · native=" + (cap.isNativePlatform ? cap.isNativePlatform() : "?"));
+    const FS = cap.Plugins && cap.Plugins.Filesystem;
+    if (!FS) { line("Filesystem plugin: UNAVAILABLE — FS leg skipped (install @capacitor/filesystem later; model still loads same-origin below)"); return; }
+    try {
+        const probe = new Uint8Array(1 << 20);
+        for (let i = 0; i < probe.length; i++) probe[i] = i & 255;
+        await FS.writeFile({ path: "tasmee-proto-probe.bin", data: b64FromBytes(probe), directory: "DATA" });
+        const { uri } = await FS.getUri({ path: "tasmee-proto-probe.bin", directory: "DATA" });
+        const src = cap.convertFileSrc(uri);
+        line("fs uri: " + uri);
+        line("fs src: " + src);
+        const r = await fetch(src);
+        const back = new Uint8Array(await r.arrayBuffer());
+        const ok = r.ok && back.length === probe.length && back[123456] === probe[123456] && back[999999] === probe[999999];
+        line("fs round-trip: " + (ok ? "OK" : "FAIL") + " · status " + r.status + " · bytes " + back.length +
+            " → Filesystem bytes " + (ok ? "ARE" : "are NOT") + " reachable under the current policy");
+    } catch (e) { line("fs probe ERROR: " + e); }
+}
+
+async function gcsProbe() {
+    /* The download-leg evidence: does a CORS fetch to GCS pass COEP
+     * (require-corp accepts CORS-approved responses)? Range-fetch 100
+     * bytes; failure here does NOT gate the prototype (model is
+     * bundled) — it evidences the future download leg. */
+    line("");
+    line("== gcs-under-COEP probe (download leg — informational) ==");
+    const urls = [
+        "https://storage.googleapis.com/recitations-bucket-data/audio/timings/qasim/4.json",
+        "https://storage.googleapis.com/recitations-bucket-data/timings/qasim/4.json",
+    ];
+    for (const u of urls) {
+        try {
+            const r = await fetch(u, { mode: "cors", headers: { Range: "bytes=0-99" } });
+            const n = (await r.arrayBuffer()).byteLength;
+            line("gcs " + u.slice(48) + " → " + r.status + " · " + n + "B · CORS fetch " + (r.ok ? "PASSES under COEP" : "not ok"));
+        } catch (e) { line("gcs " + u.slice(48) + " → BLOCKED (" + e + ")"); }
+    }
+}
+
+async function fetchModel() {
+    line("");
+    line("== model (bundled same-origin asset → bytes) ==");
+    const t0 = performance.now();
+    const res = await fetch("./model.onnx");
+    if (!res.ok) throw new Error("model fetch " + res.status);
+    const total = Number(res.headers.get("content-length") || 0);
+    let buf;
+    if (res.body && total) {
+        const out = new Uint8Array(total);
+        const rd = res.body.getReader();
+        let got = 0, lastLog = 0;
+        for (;;) {
+            const { done, value } = await rd.read();
+            if (done) break;
+            out.set(value, got); got += value.length;
+            if (got - lastLog > 30e6) { line("  … " + (got / 1048576).toFixed(0) + " / " + (total / 1048576).toFixed(0) + " MB"); lastLog = got; }
+        }
+        buf = out.buffer;
+    } else buf = await res.arrayBuffer();
+    line("model bytes: " + buf.byteLength + " in " + ((performance.now() - t0) / 1000).toFixed(1) + "s (same-origin — no cross-origin fetch in-session)");
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const EXPECT = "e2dfe38c8c64e3a27ed0faef76fa37b8cef1763401450dfbb6b0bafaa54c87a8"; // q8pc-head, record artifact 2026-07-11
+    line("model sha256: " + hex.slice(0, 12) + "… " + (hex === EXPECT ? "MATCH (q8pc-head record artifact)" : "MISMATCH vs " + EXPECT.slice(0, 12) + "… — DO NOT TRUST THE TIMINGS"));
+    return buf;
+}
+
+let running = false;
+const BTNS = ["b4", "b1", "b3"];
+function setBusy(busy) { for (const id of BTNS) document.getElementById(id).disabled = busy; }
+async function run(mode) {
+    if (running) return;
+    running = true;
+    const ep = mode === "webgpu" ? "webgpu" : "wasm";
+    const threads = mode === "webgpu" ? 1 : mode;
+    setBusy(true);
+    try {
+        line("");
+        line("==== RUN " + (ep === "webgpu" ? "ep=webgpu" : "threads=" + threads) + " · " + new Date().toISOString() + " ====");
+        await fsProbe();
+        await gcsProbe();
+        const modelBuf = await fetchModel();
+        line("");
+        line("== worker (ORT lives here — gesture-path init) ==");
+        const w = new Worker("./proto-worker.js", { type: "module" });
+        w.onerror = (e) => { line("WORKER ERROR: " + (e.message || "spawn/parse failure")); running = false; };
+        w.onmessage = (e) => {
+            if (e.data.type === "line") line(e.data.text);
+            else if (e.data.type === "done") {
+                line("");
+                line("==== END — screenshot from the top ====");
+                running = false;
+                setBusy(false);
+            }
+        };
+        w.postMessage({ threads, ep, modelBuf }, [modelBuf]); // zero-copy transfer (the A3a shape)
+    } catch (e) {
+        line("RUN ERROR: " + e);
+        running = false;
+        setBusy(false);
+    }
+}
+document.getElementById("b4").addEventListener("click", () => run(4));
+document.getElementById("b1").addEventListener("click", () => run(1));
+document.getElementById("b3").addEventListener("click", () => run("webgpu"));
+</script>
+</body>
+</html>

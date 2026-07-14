@@ -1,0 +1,12 @@
+{
+  "schema": "tasmee-truth-v1",
+  "clip": "04-subs-p453.wav",
+  "page": 453,
+  "range": { "vkFrom": "38:1", "vkTo": "38:16" },
+  "corrections": "2026-07-11 listen-back (Mohammed): the عجاب(38:5:8) and هؤلاء(38:15:3) plants materialized only as TASHKEEL variants (عِجاب with kasra; هؤلاءُ with added final damma) — the same word, not word-level substitutions; removed from events. The engine matching tashkeel variants is CORRECT BY DESIGN (normalizer check 2026-07-11: tasmeeNorm(عُجَابٌ)===tasmeeNorm(عِجاب) and tasmeeNorm(هَٰؤُلَاءِ)===tasmeeNorm(هؤلاءُ)). The three surviving plants' actual utterances filled in from the readback — transcript evidence confirms the ASR heard them (الإملال/الأموال visible in the 04 committed transcript; all three flagged as subs = TPs).",
+  "events": [
+    { "act": "sub", "vk": "38:7", "pos": 10, "said": "إمتلاق", "note": "اختلاق — actual utterance per 2026-07-11 readback; pos verified vs tasmee-words.json (script draft said 9)" },
+    { "act": "sub", "vk": "38:10", "pos": 10, "said": "إملال", "note": "الْأَسْبَابِ — actual utterance per 2026-07-11 readback; pos verified vs tasmee-words.json (script draft said 9)" },
+    { "act": "sub", "vk": "38:12", "pos": 8, "said": "أموال", "note": "الْأَوْتَادِ — actual utterance per 2026-07-11 readback" }
+  ]
+}

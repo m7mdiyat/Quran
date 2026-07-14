@@ -19,3 +19,12 @@ compare_generator/needs_review.json
 compare_generator/run_summary.json
 compare_generator/*.sqlite-shm
 compare_generator/*.sqlite-wal
+models/
+
+# tasmee dev: ort wasm + model served locally (model ships via on-device download)
+public/ort/
+public/models/
+
+# tasmee golden clips are voice recordings — keep out of the PUBLIC repo
+# (project convention: audio masters live in GCS, not git). Truth JSONs stay.
+tests/**/*.wav

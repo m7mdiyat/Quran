@@ -56,6 +56,11 @@ const QCF4_READY_FLAG = "qcf4_ready_v1"; // localStorage marker: full set cached
 function isApp() {
     if (typeof window === "undefined") return false;
     if (window.Capacitor !== undefined) return true;
+    // iOS app: the in-app HTTP server's fixed port (part of the storage
+    // origin, never changes); dev servers use 5173/5174/…. Mirrors
+    // isApp() in src/app.js — keep the two in lockstep.
+    if (window.location.hostname === "localhost"
+        && window.location.port === "17843") return true;
     return window.location.hostname === "localhost"
         && window.location.port === ""
         && navigator.userAgent.includes("Android");
@@ -171,6 +176,7 @@ const ICONS = {
     copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
     maximize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>`,
+    mic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>`,
     notePencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
 };
 
@@ -350,6 +356,34 @@ export function initMushaf(deps) {
                 refreshNoteDots();
             })
             .catch(() => { });
+    }
+
+    // وضع التسميع (Gate 4/5). Entry is app-only in production; the
+    // ?tasmee=1 query flag reveals it on the web build for the
+    // development loop (the feature is identical code either way).
+    // The module is dynamic-imported on first tap, so it stays fully
+    // dark — the button does nothing load-bearing — until opted into
+    // (the plan's rollback rule). window.__tasmee is the Piece-1 dev
+    // harness handle (scripted reveals; removed once the worker drives).
+    {
+        const tsBtn = document.getElementById("mushafTasmeeBtn");
+        let devFlag = false;
+        try { devFlag = new URLSearchParams(location.search).has("tasmee"); } catch { }
+        if (tsBtn && (isApp() || devFlag)) {
+            tsBtn.style.display = "";
+            tsBtn.addEventListener("click", async () => {
+                try {
+                    const m = await import("./tasmee-ui.js");
+                    window.__tasmee = m;
+                    _tasmeeMod = m;   // mushaf's live handle for tap/menu routing
+                    if (m.isActive()) m.exit();
+                    else await m.enter(ACTIVE_PAGE_EL, CURRENT_PAGE_DATA);
+                    const on = m.isActive();
+                    tsBtn.setAttribute("data-on", on ? "true" : "false");
+                    tsBtn.setAttribute("aria-label", on ? "إنهاء وضع التسميع" : "وضع التسميع");
+                } catch (e) { console.error("tasmee-ui load failed", e); }
+            });
+        }
     }
 
     return {
@@ -1163,6 +1197,7 @@ function buildShell() {
         </div>
       </div>
       <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--fullscreen" id="mushafFullscreenBtn" aria-label="عرض الصفحة بملء الشاشة" style="display:none;">${ICONS.maximize}</button>
+      <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--tasmee" id="mushafTasmeeBtn" aria-label="وضع التسميع" data-on="false" style="display:none;">${ICONS.mic}</button>
       <div class="mushaf-toolbar__btn-wrap" id="mushafPlayWrap">
         <button type="button" class="mushaf-toolbar__btn mushaf-toolbar__btn--play" id="mushafToolbarPlay" aria-label="تشغيل/إيقاف" data-playing="false">${ICONS.play}</button>
         <div class="mushaf-toolbar__dropdown mushaf-toolbar__dropdown--volume" id="mushafVolDropdown">
@@ -2096,11 +2131,22 @@ function scheduleBoxSettle() {
  * on the ayah itself — clicks always play.
  * ============================================================ */
 
+/* Tasmee (وضع التسميع) tap/menu routing. The module is dynamic-imported
+ * on the mic tap (see buildShell), so mushaf holds a live reference and
+ * consults it at the SAME two tap points gharib uses (§0.1). While a
+ * session is active: any tap reveals a hint (handleTap consumes it), and
+ * the hover / long-press ayah menu is suppressed — its Copy button would
+ * extract the hidden text (A2). */
+let _tasmeeMod = null;
+function tasmeeActive() { return !!(_tasmeeMod && _tasmeeMod.isActive()); }
+function tasmeeActiveTap(target) { return !!(_tasmeeMod && _tasmeeMod.isActive() && _tasmeeMod.handleTap(target)); }
+
 function wireAyahInteractions(pageEl) {
     // Desktop: hovering a target-surah ayah opens the floating action menu
     // (مختصر التفاسير + full tafsir). Dimmed (non-target) ayahs get no menu —
     // clicking them triggers a smooth focus switch (Fix 3) instead.
     pageEl.addEventListener("mouseover", (e) => {
+        if (tasmeeActive()) return;   // A2: no menu over hidden text
         const ayah = e.target.closest(".mushaf-ayah");
         if (!ayah || isAyahDimmed(ayah)) return;
         // Glowing gharib words own their own interaction — the hover
@@ -2122,6 +2168,7 @@ function wireAyahInteractions(pageEl) {
 
     // Click → either play (target surah) or smooth focus-switch (dimmed surah).
     pageEl.addEventListener("click", (e) => {
+        if (tasmeeActiveTap(e.target)) return;   // tasmee: tap reveals a hint
         const ayah = e.target.closest(".mushaf-ayah");
         const header = e.target.closest(".mushaf-surah-header");
         if (ayah) {
@@ -2179,7 +2226,7 @@ function wireAyahInteractions(pageEl) {
         LONG_PRESS_FIRED = false;
         clearTimeout(LONG_PRESS_TIMER);
         LONG_PRESS_TIMER = setTimeout(() => {
-            if (!TOUCH_MOVED) {
+            if (!TOUCH_MOVED && !tasmeeActive()) {   // A2: no copy menu in-session
                 LONG_PRESS_FIRED = true;
                 // Bug 3: remember WHERE the finger pressed so the مختصر
                 // card can anchor (and scale out of) that exact spot.
@@ -2207,6 +2254,7 @@ function wireAyahInteractions(pageEl) {
         if (LONG_PRESS_FIRED || TOUCH_MOVED) return; // menu already shown, or swipe
         const ayah = start.target;
         e.preventDefault();
+        if (tasmeeActiveTap(ayah)) return;   // tasmee: tap reveals a hint
         if (start.dimmed) {
             const sId = Number(ayah.dataset.surah);
             if (sId) transitionToTargetSurah(sId);
@@ -4080,7 +4128,11 @@ function playMushafAyah(verseKey) {
     DEPS?.stopTafsirPerAyahAudio?.();
 
     const [s, a] = verseKey.split(":").map(Number);
-    const nextAudio = new Audio(buildAyahAudioUrl(s, a));
+    // App only: COEP on the server origin blocks no-cors GCS media loads —
+    // opt into CORS (set BEFORE src). Mirrors playCurrentAyah in src/app.js.
+    const nextAudio = new Audio();
+    if (isApp()) nextAudio.crossOrigin = "anonymous";
+    nextAudio.src = buildAyahAudioUrl(s, a);
     nextAudio.volume = AUDIO_VOLUME;
     nextAudio.playbackRate = AUDIO_SPEED;
     // Seed the repeat counter for this ayah. 1× = no replays; 3×/5×/∞ = loop.

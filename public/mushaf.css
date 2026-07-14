@@ -3709,17 +3709,22 @@ body.gharib-off .gharib-word {
 .gharib-word::before {
     content: attr(data-ghc);
     position: absolute;
-    /* The glow's text-shadow / filter halo spreads up to ~0.85em past the
-       glyph. WebKit/Blink still occasionally promote this pseudo to its own
-       compositing layer (during scroll, etc.), and that layer clips to the
-       BORDER-BOX — slicing the halo into the hard vertical edge seen at word
-       ends. So make the box itself ~1em larger than the spread: inset:-1em
-       grows it outward, padding:1em (border-box) pulls the duplicated glyph
-       back into exact alignment with the real ink — so the clip can never
-       reach the visible glow, web and app, promoted or not. */
+    /* The clip has TWO overhangs to clear, not one. (1) The glow's
+       text-shadow / filter halo spreads ~0.85em past the glyph. (2) The GLYPH
+       INK ITSELF overhangs its advance box: a word-final ـن bowl's long warped
+       tail reaches ~1.64em LEFT of the box (measured, QCF4). WebKit promotes
+       this pseudo to its own compositing layer (during scroll, etc.), and that
+       layer clips to the BORDER-BOX — slicing the tail + halo at a hard
+       vertical edge (the Safari/device "cut ن" bug). The reserve must therefore
+       cover the TAIL (~1.64em) PLUS the halo (~0.85em) ≈ 2.5em, not just the
+       halo: inset:-4em grows the box past the longest tail, padding:4em
+       (border-box) pulls the duplicated glyph back into exact alignment with
+       the real ink — so the clip can never reach the visible tail or glow, web
+       and app, promoted or not. (Was 1em — sized for the halo spread ALONE,
+       which left the whole tail overhang exposed to the clip.) */
     box-sizing: border-box;
-    inset: -1em;
-    padding: 1em;
+    inset: -4em;
+    padding: 4em;
     white-space: pre;
     pointer-events: none;
     color: transparent;
@@ -3789,7 +3794,7 @@ body.dark .gharib-word::before {
  * composited) and never shows this — so scope to the app. */
 html.is-app .gharib-word {
     transform: translateZ(0);
-    /* Reserve the compositing-layer backing store 2em past the box, in the SAME
+    /* Reserve the compositing-layer backing store 4em past the box, in the SAME
        style recalc that translateZ(0) promotes the word — so the overflowing
        edge ink of long letters (final ـن bowl, leading ك flourish) is never
        clipped to the layout box. The ::before normally holds this region, but
@@ -3797,12 +3802,11 @@ html.is-app .gharib-word {
        promotion; on a flip-BACK re-decoration that gap clipped the tail for a
        frame. A transparent box-shadow paints nothing and changes no layout — it
        only enlarges the layer bounds, and it applies WITH the class (frame 0),
-       closing the gap. 2em (not 1em) because the spread is fixed-extent, unlike
-       the ::before whose ink-driven bounds follow the glyph: the ـن bowl's ink
-       overflows ≈1.33em, so 1em left ~25% clipped; 2em covers it with margin
-       (device-confirmed: 0% clip, no visible box). Can't touch the gold, halo,
-       molten fill, highlight, or tap. */
-    box-shadow: 0 0 0 2em transparent;
+       closing the gap. 4em to MATCH the ::before / ::after reserve: the ـن bowl's
+       ink tail overhangs ≈1.64em (measured) and its glow ~0.85em more (≈2.5em
+       total), so the old 2em still clipped the long tail; 4em covers it with
+       margin. Can't touch the gold, halo, molten fill, highlight, or tap. */
+    box-shadow: 0 0 0 4em transparent;
 }
 
 html.is-app .gharib-word::before {
@@ -3855,19 +3859,22 @@ body.dark .gharib-word::after {
     content: attr(data-ghc);
     position: absolute;
     /* The molten gradient is clipped to text but only PAINTS inside its box, so
-       grow the paint box 2em past the layout box (padding pulls the glyph back
+       grow the paint box 4em past the layout box (padding pulls the glyph back
        into alignment) so the gold also covers the OVERFLOW ink of long letters —
-       the leading ك flourish of كَصَيِّبٍ, the ـن bowl — which otherwise showed bare
-       near-white base ink (a white/"cut" edge). background-origin:content-box
-       anchors the gradient to the ORIGINAL glyph box (restored by the padding),
-       so the body's molten mapping is byte-identical (no shading shift) and the
-       gradient's edge colour just extends into the overflow. Honoured under
-       background-clip:text on both WKWebView (app) and Blink (web) — device- and
-       Chrome-confirmed. The ::before halo is only a glow, never the gold surface,
-       so this is the only way to gild the edge. Web + app alike (the app's Part 1
-       box-shadow + filter halo stay app-only; this molten fix is shared). */
-    inset: -2em;
-    padding: 2em;
+       the leading ك flourish of كَصَيِّبٍ, and above all the word-final ـن bowl's long
+       tail (~1.64em past the box) — which otherwise showed bare near-white base
+       ink (a white/"cut" edge). Must MATCH the ::before reserve (4em): if the
+       halo is grown but the molten surface isn't, a promoted layer clips the
+       gold letterform's tail while the glow around it survives — a half-cut ن.
+       background-origin:content-box anchors the gradient to the ORIGINAL glyph
+       box (restored by the padding), so the body's molten mapping is
+       byte-identical (no shading shift) and the gradient's edge colour just
+       extends into the overflow. Honoured under background-clip:text on both
+       WKWebView (app) and Blink (web). The ::before halo is only a glow, never
+       the gold surface, so this is the only way to gild the edge. Web + app
+       alike. (Was 2em — covered the ~1.33em bowl body but not the full tail.) */
+    inset: -4em;
+    padding: 4em;
     box-sizing: border-box;
     white-space: pre;
     pointer-events: none;
@@ -4728,4 +4735,337 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
 .mushaf-root--fullscreen #mushafNotesLamp .notes-lamp__icon {
     width: 17px;
     height: 17px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   وضع التسميع — hide / reveal  (Gate 4/5, TASMEE-PLAN §4, §0.1)
+
+   Hidden words stay real DOM text behind color:transparent: a QCF4
+   glyph is one whole word and keeps its exact advance width, so
+   hiding is ZERO reflow by construction (no re-fit, no metric
+   change). The app-only faux-bold -webkit-text-stroke (search
+   "END TEST block") tracks currentColor, so it hides under the same
+   rule. Reveal = JS adds .ts-r (+ a verdict class); opacity/colour
+   only, never layout. Colours are tuned per theme via custom props.
+   ═══════════════════════════════════════════════════════════ */
+.mushaf-page--tasmee {
+    --ts-err: #c0392b;                     /* BOTH mistakes are red — a skip is
+                                              as wrong as a substitution. Told
+                                              apart by an underline DROPPED below
+                                              the glyph, never a line through it. */
+    --ts-hint: #a5791a;                    /* gold — a hint is NOT a mistake */
+    --ts-glow-a: rgba(255, 200, 90, 0.55);  /* help-cloud radial blob (gold) */
+    --ts-glow-b: rgba(250, 170, 60, 0.4);
+    --ts-ins: #c0392b;                     /* insertion dot */
+}
+body.dark .mushaf-page--tasmee {
+    --ts-err: #ff8a8a;
+    --ts-hint: #ffd24a;
+    --ts-glow-a: rgba(255, 214, 120, 0.6);
+    --ts-glow-b: rgba(255, 185, 80, 0.45);
+    --ts-ins: #ff8a8a;
+}
+
+/* Calm fade to hidden when the session starts — colour only, so it can
+   never move a glyph. */
+.mushaf-page--tasmee .mushaf-word:not(.mushaf-end) {
+    transition: color 450ms ease;
+}
+/* On REVEAL, colour is set INSTANTLY — no transition, no opacity animation.
+   Both a colour transition (transparent→colour) AND an opacity animation
+   STICK mid-way on gharib words: their @property registered-custom-property
+   transitions (--gh-on/--gw-x) freeze other time-based CSS on the same
+   element, leaving the glyph part-faded so its thin calligraphic TAIL
+   vanishes — which reads as a CLIPPED word (the bug). A crisp reveal is
+   right anyway: the calm moment is the HIDE fade; recitation feedback should
+   be immediate. The premium "moment of help" glow lives on a real CHILD
+   element (.ts-glow), which is not a gharib word, so it animates normally. */
+.mushaf-page--tasmee .mushaf-word.ts-r { transition: none; }
+
+/* THE TAIL-OVERHANG RESERVE for revealed words (§ same bug as the gharib glow,
+   worst case here). Tasmee sets the gharib glow pseudos `display:none` (below) —
+   and those pseudos are what normally reserve the compositing layer's bounds
+   past the glyph's ink overhang. A revealed gharib word is thus left with NO
+   reserve, so when Safari promotes it the word's OWN word-final ـن bowl tail
+   (ink overhangs ~1.64em past the advance box, measured) is sliced to the box:
+   the "much cutted ن". Can't grow the word's border-box with padding (it's
+   inline → would shift layout), so reserve on the WORD like the gharib app path:
+   translateZ(0) pins it to a stable compositing layer, box-shadow:0 0 0 4em
+   reserves that layer's backing store 4em past the box (transparent → paints
+   nothing, no layout, no A2 leak). Only gharib words promote+clip; scope to them
+   so non-gharib reveals don't each spawn a layer. translateZ is not time-based,
+   so the gharib-freeze rule is unaffected; .ts-r already has transition:none. */
+.mushaf-page--tasmee .gharib-word.ts-r {
+    transform: translateZ(0);
+    box-shadow: 0 0 0 4em transparent;
+}
+
+/* THE HIDE RULE (§4). Everything not yet revealed is invisible ink;
+   text-shadow off + selection disabled so no side-channel paints or
+   leaks the glyph (A2). */
+.mushaf-page--tasmee .mushaf-word:not(.mushaf-end):not(.ts-r) {
+    color: transparent;
+    text-shadow: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Anchor for the glow / insertion-dot child elements. inline-block box is
+   unchanged by position:relative → zero layout shift. An OFFERED word is
+   still hidden (not .ts-r), so it needs anchoring too. */
+.mushaf-page--tasmee .mushaf-word.ts-r,
+.mushaf-page--tasmee .mushaf-word.ts-offer { position: relative; }
+
+/* Reveals. Correct = .ts-r only → inherits the page's normal ink. Both
+   MISTAKES are red (EQUAL severity); they are told apart by a
+   calligraphy-respecting marker — never by colour, never by a line through
+   the glyph:
+     substitution — red glyph (a wrong word was said).
+     skip         — red glyph + a red dotted underline dropped BELOW the
+                    glyph (word omitted). */
+.mushaf-page--tasmee .mushaf-word.ts-sub,
+.mushaf-page--tasmee .mushaf-word.ts-skip { color: var(--ts-err); }
+.mushaf-page--tasmee .mushaf-word.ts-hint { color: var(--ts-hint); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-sub,
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-skip { -webkit-text-stroke-color: var(--ts-err); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-hint { -webkit-text-stroke-color: var(--ts-hint); }
+
+/* Skip = a DRAWN dotted underline (child SVG .ts-skip-line), positioned by
+   JS just below THAT word's real ink extent (canvas-measured per word) so
+   the line hugs each word instead of floating at a fixed em. Drawn rather
+   than text-decoration so every dot is a full, evenly-spaced circle (round
+   caps on zero-length dashes) — never clipped, never bunched. It sits below
+   the ink, never crossing a glyph. */
+.mushaf-page--tasmee .ts-skip-line { position: absolute; pointer-events: none; overflow: visible; }
+.mushaf-page--tasmee .ts-skip-line line { stroke: var(--ts-err); }
+
+/* HINT bloom — the word ITSELF glowing: a blurred, gold duplicate of the
+   word's OWN glyph sitting behind it. The blur abstracts the glyph into a
+   soft cloud that follows the word's silhouette (long word → long bloom,
+   tall word → taller bloom), so it reads as the word glowing rather than a
+   generic box behind it. A child element (gharib-freeze-safe) that inherits
+   the word's font-size; JS copies the glyph + font-family. ONLY on a
+   REVEALED word — never a hidden one (a glyph echo would leak the answer). */
+/* ─── THE HELP CLOUD — one visual language, several states ───
+   A blurred, gold duplicate of the word's OWN glyph behind it (a real child;
+   gharib-freeze-safe). The blur abstracts the glyph into a soft cloud that
+   follows the word's silhouette. Used for BOTH the offer AND the resolution:
+     · (offer)  breathing, over a still-HIDDEN (transparent) word — a
+                word-shaped invitation to tap. Showing the silhouette is
+                DELIBERATE (plan A2-override 2026-07-13): the blur is too
+                abstract to read the word from, and a hint is meant to give
+                something away — the nudge IS the feature.
+     · --bloom  hint TAKEN (user tapped): word reveals GOLD, cloud blooms out.
+     · --part   GOT IT (user recited it correctly on their own): word reveals
+                in CORRECT INK, the cloud parts/dissipates outward — an earned
+                reveal, NOT a hint (full credit; engine logs it correct).
+     · --out    wrong word / dismissed: the cloud simply fades.
+   ن-CLIP FIX (5th sighting of this class): the filter layer clips to the
+   BORDER-BOX and QCF4's final ـن bowl overflows the advance width ~1.33em, so
+   inset:0 sliced it. Same fix the gharib glow uses (mushaf.css ~3712):
+   inset:-2em grows the box outward, padding:2em (border-box) pulls the glyph
+   back into alignment — the clip sits 2em out, beyond any tail. Every state. */
+.mushaf-page--tasmee .ts-cloud {
+    /* A soft GENERIC gold radial blob (child <i>). Its width/height/left/top
+       are set inline by makeCloud, sized + centred on the WORD's box, so the
+       blob is proportioned to the word (wide word → wide cloud) and sits over
+       it. Not a glyph shape: the word-shaped version fought WebKit's
+       border-box filter clip (5 ن-clip sightings); this blob's gradient is
+       transparent at the box edge, so the clip only cuts already-transparent
+       pixels — no visible clip. All animation lives on this child
+       (gharib-freeze-safe). */
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: 50%;
+    background: radial-gradient(ellipse 66% 70% at 50% 50%,
+        var(--ts-glow-a), var(--ts-glow-b) 40%, transparent 72%);
+    filter: blur(5px);
+    transform-origin: center;
+    animation: ts-cloud-breathe 3400ms ease-in-out infinite;   /* offer default — calm */
+}
+.mushaf-page--tasmee .ts-cloud--bloom { animation: ts-cloud-bloom 1250ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.mushaf-page--tasmee .ts-cloud--part  { animation: ts-cloud-part 1300ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.mushaf-page--tasmee .ts-cloud--out   { animation: ts-cloud-out 420ms ease forwards; }
+@keyframes ts-cloud-breathe {
+    0%, 100% { opacity: 0.36; transform: scale(0.98); }
+    50%      { opacity: 0.6;  transform: scale(1.035); }
+}
+@keyframes ts-cloud-bloom {
+    0%   { opacity: 0.6; transform: scale(1.04); }
+    40%  { opacity: 1;   transform: scale(1.26); }
+    100% { opacity: 0;   transform: scale(1.42); }
+}
+/* "You got it" — the cloud brightens a touch, then dissipates OUTWARD,
+   uncovering the correct-ink word beneath. A small, earned reward. */
+@keyframes ts-cloud-part {
+    0%   { opacity: 0.5;  transform: scale(1.0); }
+    22%  { opacity: 0.85; transform: scale(1.12); }
+    100% { opacity: 0;    transform: scale(1.6); }
+}
+@keyframes ts-cloud-out { from { opacity: 0.5; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-page--tasmee .ts-cloud { animation-duration: 4200ms; }
+    .mushaf-page--tasmee .ts-cloud--bloom,
+    .mushaf-page--tasmee .ts-cloud--part,
+    .mushaf-page--tasmee .ts-cloud--out { animation: ts-cloud-out 320ms ease forwards; }
+}
+
+/* Insertion: a small dot on the word the extra utterance preceded — a
+   real absolutely-positioned child (.ts-ins-dot), NOT a ::after: gharib
+   glow occupies ::before/::after of the same word, so a pseudo dot would
+   collide. Absolute positioning adds nothing to the flow (§4). */
+.mushaf-page--tasmee .mushaf-word.ts-ins { position: relative; }
+.mushaf-page--tasmee .ts-ins-dot {
+    position: absolute;
+    top: -2px;
+    inset-inline-start: -2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ts-ins);
+    pointer-events: none;
+}
+
+/* A2 — gharib glow OFF for the whole session. Its pseudos re-render the
+   glyph independently of colour (§0.1), so on a HIDDEN word the glow
+   would leak the answer, and on a revealed word it clutters + collides
+   with the insertion dot. Kill both pseudos on gharib words in-session.
+   (Piece 5 adds the proper faded applyGharibOff() + tooltip suppression;
+   this is the hard A2 guarantee in CSS.) */
+body.tasmee-on .mushaf-page--tasmee .gharib-word::before,
+body.tasmee-on .mushaf-page--tasmee .gharib-word::after {
+    display: none !important;
+}
+
+/* A2 — selection & long-press cannot flash a hidden glyph. The sweep
+   (2026-07-12) confirmed every PAINT vector already resolves transparent
+   on hidden words (colour, -webkit-text-fill-color, -webkit-text-stroke,
+   text-shadow, outline, filter, background-clip) and both gharib pseudos
+   are display:none. These rules close the remaining INTERACTION vectors:
+   (1) selection is off for the whole page in-session; (2) ::selection is
+   styled invisible on hidden words as defense-in-depth (a selection that
+   somehow began on a revealed word cannot paint a hidden neighbour's
+   glyph); (3) the iOS touch-callout is killed. The long-press copy menu
+   itself is suppressed in JS (mushaf.js, body.tasmee-on guard) — copy
+   would extract the hidden text outright. */
+.mushaf-page--tasmee,
+.mushaf-page--tasmee * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+.mushaf-page--tasmee .mushaf-word:not(.ts-r)::selection {
+    color: transparent;
+    background: transparent;
+}
+.mushaf-page--tasmee .mushaf-word:not(.ts-r)::-moz-selection {
+    color: transparent;
+    background: transparent;
+}
+
+/* Entry button — reuses the toolbar button skin; "on" state tints it. */
+.mushaf-toolbar__btn--tasmee[data-on="true"] {
+    color: var(--accent, #0a7);
+    background: var(--accent-soft, rgba(0,170,120,0.14));
+}
+
+/* ── PIECE 3: mic capture level / VAD meter ────────────────────────
+   A floating panel — mic toggle + a live level bar that reacts to the
+   voice (smoothed 16 kHz RMS from tasmee-audio.js) + a state line. The
+   bar grows left→right (`--lvl` 0–1); a tick marks the peak (`--peak`).
+   Green + glow while the VAD says "speaking". Plain panel, NOT a gharib
+   word, so its breathing animation is free of the gharib-freeze rule. */
+.ts-mic {
+    position: fixed;
+    left: 50%;
+    bottom: max(18px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 2200;                       /* above the mushaf (2000) + tips (2100) */
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: rgba(252, 250, 245, 0.92);
+    border: 1px solid rgba(120, 116, 104, 0.18);
+    box-shadow: 0 8px 28px rgba(30, 26, 16, 0.16), 0 2px 8px rgba(30, 26, 16, 0.08);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+body.dark .ts-mic {
+    background: rgba(32, 32, 38, 0.92);
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.40), 0 2px 8px rgba(0, 0, 0, 0.30);
+}
+.ts-mic-btn {
+    flex: none;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: none;
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: #6b6656;
+    background: rgba(120, 116, 104, 0.12);
+    transition: background 0.2s ease, color 0.2s ease;
+}
+body.dark .ts-mic-btn { color: #b8b3a4; background: rgba(255, 255, 255, 0.08); }
+.ts-mic--on .ts-mic-btn { color: #0a7d5a; background: rgba(16, 160, 110, 0.16); animation: ts-mic-breathe 2s ease-in-out infinite; }
+body.dark .ts-mic--on .ts-mic-btn { color: #4fe0a8; background: rgba(16, 160, 110, 0.20); }
+.ts-mic--error .ts-mic-btn { color: #c0392b; background: rgba(192, 57, 43, 0.14); }
+@keyframes ts-mic-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 160, 110, 0.0); }
+    50%      { box-shadow: 0 0 0 7px rgba(16, 160, 110, 0.13); }
+}
+.ts-mic-body { display: flex; flex-direction: column; gap: 6px; min-width: 190px; }
+.ts-mic-track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(120, 116, 104, 0.16);
+    overflow: hidden;
+}
+body.dark .ts-mic-track { background: rgba(255, 255, 255, 0.10); }
+.ts-mic-fill {
+    position: absolute;
+    top: 0; bottom: 0; left: 0;              /* physical left → conventional L→R meter */
+    width: calc(var(--lvl, 0) * 100%);
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3aa0c8, #2bb58a);
+    transition: width 90ms linear;
+}
+.ts-mic--voice .ts-mic-fill { background: linear-gradient(90deg, #2bb58a, #46d17f); }
+.ts-mic-peak {
+    position: absolute;
+    top: 1px; bottom: 1px;
+    width: 2px;
+    left: calc(var(--peak, 0) * 100%);
+    background: rgba(255, 255, 255, 0.75);
+    border-radius: 1px;
+    opacity: 0.6;
+    transition: left 90ms linear;
+}
+.ts-mic-state { font-size: 12.5px; color: #8a8474; white-space: nowrap; text-align: start; }
+body.dark .ts-mic-state { color: #9a9484; }
+/* Raw ASR transcript — what the model heard, live, before matching (diagnostic). */
+.ts-heard {
+    font-size: 13.5px;
+    line-height: 1.4;
+    color: #1f8f66;
+    max-width: 300px;
+    max-height: 2.8em;
+    overflow: hidden;
+    direction: rtl;
+    text-align: right;
+    word-break: break-word;
+}
+body.dark .ts-heard { color: #56d9a3; }
+.ts-heard:empty { display: none; }
+.ts-mic--voice .ts-mic-state { color: #0a7d5a; }
+body.dark .ts-mic--voice .ts-mic-state { color: #4fe0a8; }
+.ts-mic--error .ts-mic-state { color: #c0392b; }
+body.dark .ts-mic--error .ts-mic-state { color: #ff8a8a; }
+@media (prefers-reduced-motion: reduce) {
+    .ts-mic--on .ts-mic-btn { animation: none; }
+    .ts-mic-fill, .ts-mic-peak { transition: none; }
 }

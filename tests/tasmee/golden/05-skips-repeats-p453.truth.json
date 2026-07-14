@@ -1,0 +1,15 @@
+{
+  "schema": "tasmee-truth-v1",
+  "clip": "05-skips-repeats-p453.wav",
+  "page": 453,
+  "range": { "vkFrom": "38:1", "vkTo": "38:16" },
+  "corrections": "2026-07-11 ear-check (Mohammed) — RESOLVED: (1) اختلاق@38:7:10, أسباب@38:10:10, أوتاد@38:12:8 all recited CORRECTLY in this clip (the accidental subs were clip 04's — transcript evidence agreed). (2) Both repetitions (38:5 ×2, 38:6 ×2) were already recorded below — ASR captured them (engine rep events; repetition acceptance PASS). (3) POSITION CORRECTION on the بل plant: the skip is the SECOND بل of 38:8 — dataset position 12 (Mohammed's readback said 'word 10', corrected against tasmee-words.json: pos 10 is من; the second بل is pos 12) — NOT pos 6, which he confirmed he recited. The pre-2026-07-11-fix engine had flagged 38:8:12 all along; the wrong truth position converted that TP into an FP and manufactured a phantom FN at pos 6.",
+  "events": [
+    { "act": "skip", "vk": "38:2", "pos": 4, "note": "فِي" },
+    { "act": "skip", "vk": "38:3", "pos": 8, "note": "وَّلَاتَ — pos verified vs tasmee-words.json (script draft said 7)" },
+    { "act": "repeat", "vk": "38:5", "from": 5, "to": 8, "times": 2, "note": "إِنَّ هَٰذَا لَشَيْءٌ عُجَابٌ — span verified vs tasmee-words.json (script draft said 4-7)" },
+    { "act": "repeat", "vk": "38:6", "from": 9, "to": 12, "times": 2, "note": "إِنَّ هَٰذَا لَشَيْءٌ يُرَادُ" },
+    { "act": "skip", "vk": "38:8", "pos": 12, "note": "بَلْ — the SECOND بل of the ayah (ear-check 2026-07-11; pos corrected vs tasmee-words.json — earlier truth said 6, the first بل, which was recited)" },
+    { "act": "skip", "vk": "38:11", "pos": 2, "note": "مَّا" }
+  ]
+}

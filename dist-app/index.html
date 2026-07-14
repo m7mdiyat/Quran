@@ -22,18 +22,20 @@
     // notch — must remain visually unchanged).
     //
     // window.Capacitor is injected by the native bridge AFTER scripts evaluate,
-    // so we fall back to the URL: the Capacitor WebView serves from
-    // capacitor://localhost or https://localhost (NO port) and the user agent
-    // contains "Android". The Vite dev server also uses http://localhost but
-    // with an explicit port (5173/5174/…), so the port check excludes it; the
-    // production site origin is m7mdiyat.com, which never matches. Mirrors
-    // isApp() in src/app.js so the inline-script gate stays consistent with
-    // the runtime gate.
+    // so we fall back to the URL. App origins: iOS serves from its in-app HTTP
+    // server http://localhost:17843 (fixed port — part of the storage origin;
+    // legacy capacitor://localhost kept for the pre-server fallback boot),
+    // Android from https://localhost with NO port + "Android" UA. The Vite dev
+    // server uses ports 5173/5174/… which never equal 17843, and the production
+    // site origin is m7mdiyat.com — neither matches. Mirrors isApp() in
+    // src/app.js so the inline-script gate stays consistent with the runtime
+    // gate.
     (function () {
       try {
         var loc = window.location;
         var inApp = (typeof window.Capacitor !== "undefined")
           || (loc.protocol === "capacitor:")
+          || (loc.hostname === "localhost" && loc.port === "17843")
           || (loc.hostname === "localhost"
               && loc.port === ""
               && navigator.userAgent.indexOf("Android") !== -1);
@@ -6072,7 +6074,7 @@
 
     /* ═══════ TEST — Mushaf ayah faux-bold (Option 2) — DELETE THIS BLOCK TO REVERT ═══════
        Thin synthetic bold on ayah TEXT ONLY, app-only (authoritative copy; this
-       inline \3c style> loads last so it wins). -webkit-text-stroke is paint-only
+       inline <style> loads last so it wins). -webkit-text-stroke is paint-only
        (no glyph-metric change), so it canNOT break the nowrap exact-page layout —
        only the visual diacritic thickness is being judged. paint-order:stroke
        draws the stroke UNDER the fill so glyph counters stay open. Scope excludes
@@ -6086,7 +6088,7 @@
     }
     /* ═══════ END TEST block ═══════ */
   </style>
-  <script type="module" crossorigin src="/assets/index-BAj1pWZg.js"></script>
+  <script type="module" crossorigin src="/assets/index-Bcu41e-N.js"></script>
 </head>
 
 <body>

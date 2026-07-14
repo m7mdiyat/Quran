@@ -22,6 +22,22 @@ const AUDIO_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/audio/su
 const TIMINGS_BASE = "https://storage.googleapis.com/m7mdiyat-tafsir-data/timings";
 const TICK_INTERVAL_MS = 100;
 
+/* App detection — call-time, private copy: mirrors isApp() in src/app.js and
+ * src/mushaf.js (keep the three in lockstep). Needed here because the app's
+ * server origin ships COEP require-corp (thread isolation), which blocks the
+ * default no-cors media load of GCS audio; CORS-approved loads pass, so the
+ * engine's element opts in via crossOrigin (bucket CORS allows *). The
+ * website keeps its no-cors loads untouched. */
+function isApp() {
+  if (typeof window === "undefined") return false;
+  if (window.Capacitor !== undefined) return true;
+  if (window.location.hostname === "localhost"
+    && window.location.port === "17843") return true;
+  return window.location.hostname === "localhost"
+    && window.location.port === ""
+    && navigator.userAgent.includes("Android");
+}
+
 const SURAH_RECITERS = new Set(["qasim", "alijaber", "shuraim", "ayoub", "dosari", "luhaidan", "abdulbasit", "husary", "minshawi", "maher"]);
 export function isSurahAudioReciter(reciter) {
   return SURAH_RECITERS.has(reciter);
@@ -332,6 +348,9 @@ export async function play({ surah, ayah, reciter, continuous, volume, speed, ca
   audio.volume = _volume;
   audio.defaultPlaybackRate = _speed;
   audio.playbackRate = _speed;
+  // COEP opt-in (see isApp above) — set BEFORE src or the first request goes
+  // out no-cors. Harmless on blob: sources (same-origin, attribute ignored).
+  if (isApp()) audio.crossOrigin = "anonymous";
   audio.src = srcUrl;
   _audio = audio;
   bindAudioEvents(audio);

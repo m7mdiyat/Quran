@@ -773,6 +773,10 @@ const TAFSIR_OFFLINE_FILES = [
 export function isApp() {
   if (typeof window === "undefined") return false;
   if (window.Capacitor !== undefined) return true;
+  // iOS app: served by the in-app HTTP server on this fixed port (the port is
+  // part of the storage origin and never changes); dev servers use 5173/5174/….
+  if (window.location.hostname === "localhost"
+    && window.location.port === "17843") return true;
   return window.location.hostname === "localhost"
     && window.location.port === ""
     && navigator.userAgent.includes("Android");
@@ -1638,7 +1642,14 @@ function playCurrentAyah() {
 
   const url = getAyahAudioUrl(CURRENT.s, CURRENT.a);
   const ayahKey = `${CURRENT.s}:${CURRENT.a}`;
-  const nextAudio = new Audio(url);
+  // App only: the server origin ships COEP require-corp (thread isolation),
+  // which blocks the default no-cors media load of GCS audio — CORS-approved
+  // loads pass, so the element opts in (bucket CORS allows *). crossOrigin
+  // must be set BEFORE src or the first request goes out no-cors. The website
+  // keeps its no-cors loads untouched.
+  const nextAudio = new Audio();
+  if (isApp()) nextAudio.crossOrigin = "anonymous";
+  nextAudio.src = url;
   nextAudio.volume = AUDIO_VOLUME;
   nextAudio.playbackRate = AUDIO_SPEED;
   AUDIO_PLAYER = nextAudio;
@@ -5495,6 +5506,12 @@ async function init() {
         getAyahPlainText: (s, a) => getAyahTextFromQuran(s, a) || "",
       }))
       .catch((e) => console.error("notes init failed", e));
+    // One-time post-migration notice (iOS origin change): saved data came
+    // along, offline content needs re-downloading. Self-gating — no-op unless
+    // the wrapper's migration import flag is present (see src/update-notice.js).
+    import("./update-notice.js")
+      .then((m) => m.initUpdateNotice())
+      .catch((e) => console.error("update-notice init failed", e));
   } else {
     // Website only: smart app-download banner. Mobile visitors (iOS/Android)
     // get a dismissible bottom banner linking to the correct store; desktop and
