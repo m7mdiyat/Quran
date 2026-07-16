@@ -78,7 +78,9 @@ function founderShape() {
         { text: "حتي", startS: 3.8, endS: 4.3 },
     ];
     const late = early.map((w) => (w.startS === 1.2 ? { ...w, text: "منا" } : w));
-    return { ref, stages: [{ fromEnd: 0, words: early }, { fromEnd: 3.6, words: late }] };
+    // late stage right after the blob commits (~2.4s): a real mis-split blob
+    // does not keep reconfirming (founder evidence: eff=0), so fixtures model that
+    return { ref, stages: [{ fromEnd: 0, words: early }, { fromEnd: 2.7, words: late }] };
 }
 
 /* ── 1. amend-improves (the founder-47:4 shape) */
@@ -111,7 +113,7 @@ test("worsening re-reading: evidence recorded, verdict NOT changed (default)", a
         { text: "تنزيل", startS: 2.0, endS: 2.6 },
     ];
     const late = early.map((w) => (w.startS === 1.1 ? { ...w, text: "العليم" } : w)); // what was really said
-    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.7, words: late }], { untilS: 4.5 });
+    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.4, words: late }], { untilS: 4.5 });
     assert.equal(amendsOf(events).filter((e) => e.pos === 2).length, 0, "no applied amendment");
     const ev = events.find((e) => e.type === "amend_evidence" && e.pos === 2);
     assert.ok(ev, "worsening evidence recorded");
@@ -129,7 +131,7 @@ test("strict mode applies the late catch (amendApplyWorsen)", async () => {
         { text: "تنزيل", startS: 2.0, endS: 2.6 },
     ];
     const late = early.map((w) => (w.startS === 1.1 ? { ...w, text: "العليم" } : w));
-    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.7, words: late }],
+    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.4, words: late }],
         { untilS: 4.5, sessionOptions: { amendApplyWorsen: true } });
     const am = amendsOf(events).find((e) => e.pos === 2);
     assert.ok(am, "late-catch amend event");
@@ -203,7 +205,12 @@ test("horizon: no amendment once the anchor passed the span", async () => {
 /* ── 6. resync interplay (the flagged risky interaction): resync commits
  * skips; amendments + the every-commit-reconciles rule resolve them. */
 test("resync skips flip to correct when their spans are later read correctly", async () => {
-    const ref = [W("24:35", 1, "كتاب"), W("24:35", 2, "نور"), W("24:35", 3, "هدي"), W("24:35", 4, "رحمه"), W("24:35", 5, "بشري"), W("24:35", 6, "وذكري")];
+    // ref gap between the last matched word and the resume point EXCEEDS the
+    // K=4 lookahead (رحمه at j=5) so recovery goes through STALL-RESYNC, not
+    // corroborated omission — the interplay this fixture pins.
+    const ref = [W("24:35", 1, "كتاب"), W("24:35", 2, "نور"), W("24:35", 3, "هدي"),
+                 W("24:35", 4, "عظه"), W("24:35", 5, "نبا"), W("24:35", 6, "خبر"),
+                 W("24:35", 7, "رحمه"), W("24:35", 8, "بشري"), W("24:35", 9, "وذكري")];
     const g = (t, s) => ({ text: t, startS: s, endS: s + 0.25 });
     const early = [
         { text: "كتاب", startS: 0.4, endS: 0.8 },
@@ -218,12 +225,15 @@ test("resync skips flip to correct when their spans are later read correctly", a
         { text: "هدي", startS: 2.15, endS: 3.1 },    // spans the second
         ...early.slice(7),
     ];
-    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 3.9, words: late }], { untilS: 6.6 });
+    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 3.3, words: late }], { untilS: 6.6 });
     assert.ok(events.some((e) => e.type === "resync"), "stall-resync fired");
     const skipsFirst = events.filter((e) => e.type === "reveal" && e.verdict === "skipped").map((e) => e.pos);
     assert.ok(skipsFirst.includes(2) && skipsFirst.includes(3), `نور+هدي initially skipped (${skipsFirst})`);
+    // amendments flip the words whose spans were later read correctly…
     assert.equal(verdictOf(words, "24:35", 2), "correct");
     assert.equal(verdictOf(words, "24:35", 3), "correct");
+    // …and the words NEVER recited (no decode evidence) honestly stay skipped
+    for (const pos of [4, 5, 6]) assert.equal(verdictOf(words, "24:35", pos), "skipped", `pos ${pos} stays skipped`);
 });
 
 /* ── 7. hesitation unaffected: identical timeline, channel on vs off →
@@ -262,7 +272,7 @@ test("3× repetition stays zero-mistake; amendments never re-feed tokens", async
     const late = early.map((w) => (w.startS === 3.3 ? { ...w, text: "الله" } : w));
     // late stage begins only after اله has committed (stage flips mid-
     // stability would break ITS commit, which is a different scenario)
-    const { events, words, session, ctl } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 5.1, words: late }], { untilS: 6.9 });
+    const { events, words, session, ctl } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 4.8, words: late }], { untilS: 6.9 });
     const reps = events.filter((e) => e.type === "repetition");
     assert.ok(reps.length >= 2, `repetitions logged (${reps.length})`);
     for (const r of ref) assert.equal(verdictOf(words, r.vk, r.pos), "correct", `${r.form} correct`);

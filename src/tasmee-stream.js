@@ -150,7 +150,11 @@ export function createStreamController({
         // committed records still covered by the current window (scan a
         // bounded recent tail; committed is commit-ordered ≈ time-ordered)
         const covered = [];
-        for (let ci = committed.length - 1; ci >= 0 && covered.length < 20; ci--) {
+        // bounded by the ANCHOR (the physical horizon), with a generous
+        // record cap as a cost backstop only — a tight cap (20) measurably
+        // dropped the founder's منا record mid-horizon during a junk-commit
+        // burst, losing its amendment (2026-07-16 page trace).
+        for (let ci = committed.length - 1; ci >= 0 && covered.length < 64; ci--) {
             const c = committed[ci];
             const cEnd = Math.max(c.endS, c.extEndS || 0);
             if (cEnd < anchorS) break;
@@ -193,20 +197,34 @@ export function createStreamController({
             const joined = ws.map((w) => norm(w.text)).join(" ");
             const c = committed[ci];
             const effective = (c.amendTexts ?? [c.text]).map(norm).join(" ");
-            if (amend.trace) amend.trace({ at: chunkEnd, ci, text: c.text, span: [c.startS, c.endS], joined, effective, cand: amendCand.get(ci)?.count ?? 0 });
-            if (joined === effective) { amendCand.delete(ci); continue; }   // current reading reconfirmed
-            const prev = amendCand.get(ci);
-            if (prev && prev.joined === joined && Math.abs(prev.firstStart - ws[0].startS) <= 2 * frameS + 1e-6) {
-                prev.count++;
-                if (prev.count >= amend.stability) {
-                    c.amendTexts = ws.map((w) => w.text);
-                    c.amendedAtS = chunkEnd;
-                    amendCand.delete(ci);
-                    amendedAny = true;
-                    reverdictNeeded = true;
-                }
-            } else {
-                amendCand.set(ci, { joined, firstStart: ws[0].startS, count: 1 });
+            /* ACCUMULATIVE MAJORITY bar (2026-07-16, from the founder-clip
+             * page-vs-lab divergence): window re-readings of a marginal
+             * word flap non-consecutively (…منن، مان، منا، ما، منا…) and a
+             * strict consecutive bar dies to one junk window — and which
+             * window flaps varies with WASM thread context on knife-edge
+             * audio. Each reading accumulates sightings across the horizon
+             * (start-aligned within ±2·frameS); a reading amends when it
+             * reaches amend.stability sightings AND strictly outnumbers
+             * both the current reading's reconfirmations and every rival.
+             * A healthy commit keeps reconfirming (eff count grows) so
+             * junk flaps can never outvote it. */
+            let st = amendCand.get(ci);
+            if (!st) amendCand.set(ci, st = { eff: 0, readings: new Map() });
+            if (amend.trace) amend.trace({ at: chunkEnd, ci, text: c.text, span: [c.startS, c.endS], joined, effective, eff: st.eff, cands: [...st.readings.entries()].map(([k, v]) => `${k}:${v.count}`).join("|") });
+            if (joined === effective) { st.eff++; continue; }   // current reading reconfirmed
+            let r = st.readings.get(joined);
+            if (!r || Math.abs(r.firstStart - ws[0].startS) > 2 * frameS + 1e-6) {
+                st.readings.set(joined, r = { count: 0, firstStart: ws[0].startS });
+            }
+            r.count++;
+            r.texts = ws.map((w) => w.text);
+            const rivals = [...st.readings.values()].filter((x) => x !== r).map((x) => x.count);
+            if (r.count >= amend.stability && r.count > st.eff && r.count > Math.max(0, ...rivals)) {
+                c.amendTexts = r.texts;
+                c.amendedAtS = chunkEnd;
+                amendCand.delete(ci);
+                amendedAny = true;
+                reverdictNeeded = true;
             }
         }
     }
