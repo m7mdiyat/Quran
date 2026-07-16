@@ -154,24 +154,37 @@ export function createStreamController({
             const c = committed[ci];
             const cEnd = Math.max(c.endS, c.extEndS || 0);
             if (cEnd < anchorS) break;
-            if (cEnd > c.startS) covered.push(ci);          // zero-span (CTC spike) words are unamendable
+            covered.push(ci);
         }
         if (!covered.length) return;
+        /* Overlap of a re-read word with a committed record. CTC spike
+         * records (startS === endS — single-token emissions get zero width;
+         * the founder's mis-split منا committed exactly so) are matched by
+         * POINT CONTAINMENT with a ±2·frameS tolerance and given a small
+         * nominal overlap so argmax assignment still works. */
+        const ovWith = (w, c) => {
+            const s0 = c.startS, s1 = Math.max(c.endS, c.extEndS || 0);
+            if (s1 - s0 < frameS) {
+                const tol = 2 * frameS;
+                return (w.startS - tol <= s0 && s0 <= w.endS + tol) ? Math.min(w.endS - w.startS, 3 * frameS) : 0;
+            }
+            return Math.min(w.endS, s1) - Math.max(w.startS, s0);
+        };
         // dominant-overlap assignment: each settled word → one committed record
         const byCi = new Map();
         for (const w of settled) {
             let best = -1, bestOv = 0;
             for (const ci of covered) {
-                const c = committed[ci];
-                const cEnd = Math.max(c.endS, c.extEndS || 0);
-                const ov = Math.min(w.endS, cEnd) - Math.max(w.startS, c.startS);
+                const ov = ovWith(w, committed[ci]);
                 if (ov > bestOv) { bestOv = ov; best = ci; }
             }
             if (best < 0) continue;
             const c = committed[best];
-            const cEnd = Math.max(c.endS, c.extEndS || 0);
-            const minDur = Math.min(w.endS - w.startS, cEnd - c.startS);
-            if (bestOv < amend.minOverlapFrac * minDur) continue;
+            const cDur = Math.max(c.endS, c.extEndS || 0) - c.startS;
+            if (cDur >= frameS) {                    // real spans keep the dominance bar
+                const minDur = Math.min(w.endS - w.startS, cDur);
+                if (bestOv < amend.minOverlapFrac * minDur) continue;
+            }
             if (!byCi.has(best)) byCi.set(best, []);
             byCi.get(best).push(w);
         }
@@ -180,6 +193,7 @@ export function createStreamController({
             const joined = ws.map((w) => norm(w.text)).join(" ");
             const c = committed[ci];
             const effective = (c.amendTexts ?? [c.text]).map(norm).join(" ");
+            if (amend.trace) amend.trace({ at: chunkEnd, ci, text: c.text, span: [c.startS, c.endS], joined, effective, cand: amendCand.get(ci)?.count ?? 0 });
             if (joined === effective) { amendCand.delete(ci); continue; }   // current reading reconfirmed
             const prev = amendCand.get(ci);
             if (prev && prev.joined === joined && Math.abs(prev.firstStart - ws[0].startS) <= 2 * frameS + 1e-6) {

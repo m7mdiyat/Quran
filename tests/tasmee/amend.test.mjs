@@ -276,6 +276,28 @@ test("3× repetition stays zero-mistake; amendments never re-feed tokens", async
     assert.equal(sum.counts.substituted + sum.counts.skipped, 0);
 });
 
+/* ── 10. CTC-spike record (the founder's actual منا shape): a committed
+ * word with a ZERO-LENGTH span (startS === endS — single-token CTC
+ * emission) is amendable via point-containment assignment. */
+test("zero-span (CTC spike) committed word is amendable", async () => {
+    const ref = [W("47:4", 12, "فاما"), W("47:4", 13, "منا"), W("47:4", 14, "بعد"), W("47:4", 15, "واما"), W("47:4", 16, "فدا"), W("47:4", 17, "حتي")];
+    const early = [
+        { text: "فاما", startS: 0.5, endS: 1.0 },
+        { text: "من", startS: 1.3, endS: 1.3 },      // SPIKE — exactly what the founder clip committed
+        { text: "بعد", startS: 1.7, endS: 2.1 },
+        { text: "واما", startS: 2.4, endS: 2.8 },
+        { text: "فدا", startS: 3.0, endS: 3.6 },
+        { text: "حتي", startS: 3.9, endS: 4.5 },     // speech continues through the amendment stage
+    ];
+    const late = early.map((w) => (w.startS === 1.3 ? { text: "منا", startS: 1.2, endS: 1.6 } : w));
+    const { events, words, ctl } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 3.9, words: late }], { untilS: 6.3 });
+    const am = amendsOf(events).find((e) => e.pos === 13);
+    assert.ok(am, "amend event for the spike-committed منا");
+    assert.equal(verdictOf(words, "47:4", 13), "correct");
+    const rec = ctl.results().committed.find((c) => tasmeeNorm(c.text) === "من");
+    assert.ok(rec && rec.amendTexts && tasmeeNorm(rec.amendTexts[0]) === "منا");
+});
+
 /* ── 9. summary reconciliation: counts move with amendments. */
 test("summary counts move with amendments", async () => {
     const { ref, stages } = founderShape();
