@@ -24,5 +24,23 @@ export const TASMEE_LIVE = {
         mode: "incremental",
         incContextS: 1.5,
         incEdgeGuardS: 0.2,
+        /* AMENDMENT CHANNEL (2026-07-16): stability = sightings required
+         * before a re-reading amends a committed word (same bar as the
+         * commit gate's two-sighting contract); minOverlapFrac = time-
+         * overlap fraction for assigning a re-read word to a committed
+         * span (0.5 = dominant overlap; founder-clip fusion pairs align
+         * at ~0.8–1.0, junk grazes fall below). */
+        amend: { stability: 2, minOverlapFrac: 0.5 },
     },
+    /* UI negative-verdict deferral ("flag when sure, wait while unsure").
+     * capS: murky-case hold before painting a flag — founder-47:4's
+     * amendment landed 1.8 s after the bad commit, so 2.0 covers the
+     * measured case with margin (tunable; tighten after a louder-mic
+     * retest). earlyDelayS/blatantSimMax: the EARLY-FLAG path — a
+     * substitution whose token sim ≤ blatantSimMax is a gross mismatch
+     * (boundary artifacts measured at sim 0.60–0.70: نا/منا 0.67,
+     * منم/منا 0.67 — all ABOVE 0.5; real wrong-word subs score below),
+     * so it paints after only earlyDelayS. Skips and insertions always
+     * wait capS: skips are precisely the amendable class. */
+    flagDefer: { capS: 2.0, earlyDelayS: 0.5, blatantSimMax: 0.5 },
 };

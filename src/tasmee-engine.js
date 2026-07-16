@@ -735,6 +735,16 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 } else if (e.type === "insertion") counts.insertions++;
                 else if (e.type === "repetition") counts.repetitions++;
                 else if (e.type === "hesitation") counts.hesitations++;
+                else if (e.type === "amend") {
+                    // amendment verdict change: move the count (from may be
+                    // null — a previously-unrevealed word now supported)
+                    if (e.from) { counts[e.from]--; (perAyah[e.vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 })[e.from]--; }
+                    counts[e.to] = (counts[e.to] || 0) + 1;
+                    (perAyah[e.vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 })[e.to]++;
+                } else if (e.type === "amend_insertions") {
+                    // authoritative recount from the amended transcript
+                    counts.insertions = e.insertions.length;
+                }
             }
             const attempted = counts.correct + counts.substituted + counts.skipped + counts.hinted;
             return {
@@ -754,5 +764,67 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         },
         getEvents() { return events.slice(); },
         getWords() { return ref.map((w) => ({ vk: w.vk, pos: w.pos, verdict: w.verdict })); },
+
+        /* ---------- AMENDMENT API (2026-07-16) ----------
+         * The amendment channel (stream controller) upgrades a committed
+         * token's heard-text when later decode windows stably re-read it.
+         * Verdicts are then RE-DERIVED by replaying the full amended token
+         * sequence through a SHADOW session — the SAME matcher, the SAME
+         * thresholds, this very constructor — and diffing per-word
+         * verdicts. Nothing is re-fed to the LIVE session (repetition
+         * tolerance untouched by construction), no live pointer state
+         * moves, and the reference is never consulted to FORM a reading —
+         * it only scores whatever the model re-decoded, exactly as it
+         * scores first decodes. */
+        reverdict(tokens) {
+            const shadow = createTasmeeSession({
+                words: ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
+                basmala, options,
+            });
+            let last = 0;
+            for (const tk of tokens) {
+                const t = tk.tMs ?? last + 500;
+                shadow.feedToken(tk.text, t);
+                if (t > last) last = t;
+            }
+            shadow.stop(last + 1500);
+            const heard = new Map(), insertions = [];
+            for (const e of shadow.getEvents()) {
+                if (e.type === "reveal") heard.set(e.idx, e.heard);
+                else if (e.type === "insertion") insertions.push({ idx: e.idx, heard: e.heard });
+            }
+            return { words: shadow.getWords(), heard, insertions };
+        },
+
+        /* Diff a shadow re-verdict against the live state and emit
+         * `amend` events for every changed word. Rules:
+         *  - hinted words are FROZEN (user-action verdicts are not
+         *    token-derived; a shadow replay cannot know about hints);
+         *  - a word the live session revealed but the shadow never
+         *    reached is left untouched (never un-reveal; counted in the
+         *    amend_insertions event as `unsupported` for diagnostics);
+         *  - verdicts may IMPROVE (skip/sub → correct: false flag dies)
+         *    and may WORSEN (fuzzy-passed correct → substituted: late
+         *    catch — never-lenient is symmetric). */
+        applyReverdict(tokens, tMs = 0) {
+            const sh = this.reverdict(tokens);
+            const changes = [];
+            let unsupported = 0;
+            for (let i = 0; i < ref.length; i++) {
+                const cur = ref[i].verdict, nv = sh.words[i] && sh.words[i].verdict;
+                if (cur === "hinted") continue;
+                if (!nv) { if (cur) unsupported++; continue; }
+                if (nv === cur) continue;
+                ref[i].verdict = nv;
+                const ev = {
+                    type: "amend", t: tMs, idx: i, vk: ref[i].vk, pos: ref[i].pos,
+                    from: cur ?? null, to: nv, heard: sh.heard.get(i),
+                };
+                emit(ev);
+                changes.push(ev);
+            }
+            emit({ type: "amend_insertions", t: tMs, insertions: sh.insertions, unsupported });
+            return changes;
+        },
     };
 }

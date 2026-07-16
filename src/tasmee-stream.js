@@ -74,6 +74,19 @@ export function createStreamController({
     incEdgeGuardS = 0.2,
     incDupWinS = 0.45,
     incMaxContextS = 4,
+    /* AMENDMENT CHANNEL (2026-07-16, from the live-vs-frozen diagnosis):
+     * while decode windows still cover a committed word's span, later
+     * STABLE re-readings may amend its heard-text (the correct fuller
+     * readings the pending filter otherwise structurally discards).
+     * null = off. {stability: sightings required (same bar as commits),
+     * minOverlapFrac: time-overlap fraction to assign a re-read word to
+     * a committed record}. Amendments never touch the commit gate,
+     * committedEndS, dup suppression (which reads .text, not the
+     * amendment), or the live engine pointer — verdicts are re-derived
+     * via session.applyReverdict (shadow replay, same matcher). The
+     * reference is structurally unreachable here: this module never
+     * sees reference words at all. */
+    amend = null,
     debug = null,
 }) {
     let committedEndS = 0;
@@ -110,6 +123,92 @@ export function createStreamController({
         if (firstCommitAtS === null &&
             session.getEvents().filter((e) => e.type === "reveal").length > evBefore) firstCommitAtS = atS;
         committedEndS = Math.max(committedEndS, w.endS); // settled end — never the extension
+        // RESYNC-vs-AMEND semantics (deliberate, fixture-pinned): once ANY
+        // amendment exists, the amended transcript is authoritative — every
+        // later commit (incl. resync-triggered skips) re-derives verdicts
+        // from it, so a resync can never durably stomp an amended word.
+        if (amendedAny) reverdictNeeded = true;
+    }
+
+    /* ---------- amendment channel ---------- */
+    const amendCand = new Map();   // committedIndex → {joined, firstStart, count}
+    let amendedAny = false;        // once true, every new commit re-reconciles
+    let reverdictNeeded = false;   // batched: at most one shadow replay per step
+
+    /* Track later re-readings of committed spans in this step's RAW decode
+     * (`rawWords` is the pre-filter output — exactly what the pending
+     * filter discards for committed spans). A reading must be SETTLED
+     * (cleared holdback), assigned by dominant time-overlap, DIFFER from
+     * the current effective heard-text, and repeat stably (amend.stability
+     * sightings, start within ±2·frameS — the commit gate's own identity
+     * bar) before it amends. A contradicting reading resets the candidate;
+     * an absent one (flapping-empty window) does not. Horizon closes
+     * naturally when the anchor passes the word's span. */
+    function trackAmend(rawWords, chunkEnd) {
+        const settled = rawWords.filter((w) => w.endS <= chunkEnd - holdbackS + 1e-9 && w.endS > w.startS);
+        if (!settled.length) return;
+        // committed records still covered by the current window (scan a
+        // bounded recent tail; committed is commit-ordered ≈ time-ordered)
+        const covered = [];
+        for (let ci = committed.length - 1; ci >= 0 && covered.length < 20; ci--) {
+            const c = committed[ci];
+            const cEnd = Math.max(c.endS, c.extEndS || 0);
+            if (cEnd < anchorS) break;
+            if (cEnd > c.startS) covered.push(ci);          // zero-span (CTC spike) words are unamendable
+        }
+        if (!covered.length) return;
+        // dominant-overlap assignment: each settled word → one committed record
+        const byCi = new Map();
+        for (const w of settled) {
+            let best = -1, bestOv = 0;
+            for (const ci of covered) {
+                const c = committed[ci];
+                const cEnd = Math.max(c.endS, c.extEndS || 0);
+                const ov = Math.min(w.endS, cEnd) - Math.max(w.startS, c.startS);
+                if (ov > bestOv) { bestOv = ov; best = ci; }
+            }
+            if (best < 0) continue;
+            const c = committed[best];
+            const cEnd = Math.max(c.endS, c.extEndS || 0);
+            const minDur = Math.min(w.endS - w.startS, cEnd - c.startS);
+            if (bestOv < amend.minOverlapFrac * minDur) continue;
+            if (!byCi.has(best)) byCi.set(best, []);
+            byCi.get(best).push(w);
+        }
+        for (const [ci, ws] of byCi) {
+            ws.sort((a, b) => a.startS - b.startS);
+            const joined = ws.map((w) => norm(w.text)).join(" ");
+            const c = committed[ci];
+            const effective = (c.amendTexts ?? [c.text]).map(norm).join(" ");
+            if (joined === effective) { amendCand.delete(ci); continue; }   // current reading reconfirmed
+            const prev = amendCand.get(ci);
+            if (prev && prev.joined === joined && Math.abs(prev.firstStart - ws[0].startS) <= 2 * frameS + 1e-6) {
+                prev.count++;
+                if (prev.count >= amend.stability) {
+                    c.amendTexts = ws.map((w) => w.text);
+                    c.amendedAtS = chunkEnd;
+                    amendCand.delete(ci);
+                    amendedAny = true;
+                    reverdictNeeded = true;
+                }
+            } else {
+                amendCand.set(ci, { joined, firstStart: ws[0].startS, count: 1 });
+            }
+        }
+    }
+
+    /* Re-derive verdicts from the full effective (amended) transcript.
+     * Formed ONLY from decode outputs; feeds the SHADOW session, never
+     * the live one (repetition tolerance and pointer state untouched). */
+    function fireReverdict(chunkEnd) {
+        if (typeof session.applyReverdict !== "function") return;
+        const tokens = [];
+        for (const c of committed) {
+            for (const t of (c.amendTexts ?? [c.text])) {
+                tokens.push({ text: t, tMs: Math.round(c.endS * 1000) });
+            }
+        }
+        session.applyReverdict(tokens, Math.round(chunkEnd * 1000));
     }
 
     return {
@@ -230,6 +329,8 @@ export function createStreamController({
                 commitWord(pending[i], chunkEnd, Math.max(pending[i].endS, prevPending[i]?.endS ?? 0));
             }
             prevPending = pending.slice(commitN);
+            if (amend && mode === "incremental") trackAmend(words, chunkEnd);
+            if (reverdictNeeded) { reverdictNeeded = false; fireReverdict(chunkEnd); }
             if (debug) debug(chunkEnd, commitN, pending, anchorS);
         },
 
@@ -245,6 +346,7 @@ export function createStreamController({
                 commitWord(heldTail, loopEndS);
             }
             prevPending = [];
+            if (reverdictNeeded) { reverdictNeeded = false; fireReverdict(loopEndS); }
         },
 
         results() {
