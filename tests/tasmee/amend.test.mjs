@@ -40,9 +40,9 @@ function makeStaged(stages) {
     };
 }
 
-async function run(refWords, stages, { untilS, amend = AMEND, ctlExtra = {} } = {}) {
+async function run(refWords, stages, { untilS, amend = AMEND, ctlExtra = {}, sessionOptions = {} } = {}) {
     const events = [];
-    const session = createTasmeeSession({ words: refWords, onEvent: (e) => events.push(e) });
+    const session = createTasmeeSession({ words: refWords, onEvent: (e) => events.push(e), options: sessionOptions });
     const tl = makeStaged(stages);
     const ctl = createStreamController({
         session,
@@ -98,8 +98,12 @@ test("amend improves: committed blob later re-read correctly → flag dies", asy
     assert.ok(rec && rec.amendTexts && tasmeeNorm(rec.amendTexts[0]) === "منا");
 });
 
-/* ── 2. amend-worsens (late catch — never-lenient is symmetric) */
-test("amend worsens: fuzzy-passed word later re-read as clear mismatch → late flag", async () => {
+/* ── 2a. worsening evidence — DEFAULT mode: recorded, NOT applied.
+ * Measured rationale (2026-07-16 rig): symmetric worsening let degraded
+ * deep-window re-readings overwrite good commits on marginal audio
+ * (02-whisper 0→10 false flags). Default: verdict stays; evidence event
+ * emitted for diagnostics / the future repair layer. */
+test("worsening re-reading: evidence recorded, verdict NOT changed (default)", async () => {
     const ref = [W("2:32", 1, "قال"), W("2:32", 2, "الحكيم"), W("2:32", 3, "تنزيل")];
     const early = [
         { text: "قال", startS: 0.5, endS: 0.9 },
@@ -108,6 +112,25 @@ test("amend worsens: fuzzy-passed word later re-read as clear mismatch → late 
     ];
     const late = early.map((w) => (w.startS === 1.1 ? { ...w, text: "العليم" } : w)); // what was really said
     const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.7, words: late }], { untilS: 4.5 });
+    assert.equal(amendsOf(events).filter((e) => e.pos === 2).length, 0, "no applied amendment");
+    const ev = events.find((e) => e.type === "amend_evidence" && e.pos === 2);
+    assert.ok(ev, "worsening evidence recorded");
+    assert.equal(ev.to, "substituted");
+    assert.equal(verdictOf(words, "2:32", 2), "correct", "verdict unchanged in default mode");
+});
+
+/* ── 2b. strict mode (amendApplyWorsen — future repair-layer territory,
+ * NOT the ship default): the same scenario applies the late catch. */
+test("strict mode applies the late catch (amendApplyWorsen)", async () => {
+    const ref = [W("2:32", 1, "قال"), W("2:32", 2, "الحكيم"), W("2:32", 3, "تنزيل")];
+    const early = [
+        { text: "قال", startS: 0.5, endS: 0.9 },
+        { text: "الحكيم", startS: 1.1, endS: 1.7 },
+        { text: "تنزيل", startS: 2.0, endS: 2.6 },
+    ];
+    const late = early.map((w) => (w.startS === 1.1 ? { ...w, text: "العليم" } : w));
+    const { events, words } = await run(ref, [{ fromEnd: 0, words: early }, { fromEnd: 2.7, words: late }],
+        { untilS: 4.5, sessionOptions: { amendApplyWorsen: true } });
     const am = amendsOf(events).find((e) => e.pos === 2);
     assert.ok(am, "late-catch amend event");
     assert.equal(am.from, "correct");

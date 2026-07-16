@@ -119,6 +119,17 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         resyncWindow: 60,  // forward scan depth for stall recovery
         offerThreshold: 3, // consecutive unplaceable attempts at a frozen
                            // pointer before a hint is OFFERED (auto-offer #2)
+        /* Amendment channel: apply WORSENING verdict changes (correct/
+         * unrevealed → flagged) from re-verdicts? MEASURED HARM when true
+         * (2026-07-16): on marginal audio (02-whisper), degraded deep-
+         * window re-readings stabilize twice and overwrite good commits —
+         * 0→10 false flags; smoke 20/20→19/20. Default FALSE: worsening
+         * evidence is EMITTED (amend_evidence) but not applied — improve-
+         * only keeps the real-mistake catch rate exactly at baseline
+         * (mistakes are caught at commit time) while false flags fall.
+         * True re-enables symmetric application (future repair layer /
+         * strict mode — needs its own gate run before ever shipping). */
+        amendApplyWorsen: false,
         ...options,
     };
 
@@ -815,6 +826,14 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 if (cur === "hinted") continue;
                 if (!nv) { if (cur) unsupported++; continue; }
                 if (nv === cur) continue;
+                // WORSENING (correct or unrevealed → flagged): apply only in
+                // strict mode; otherwise record as evidence (diagnostics /
+                // future repair layer) without touching the verdict.
+                const worsens = (nv === "substituted" || nv === "skipped") && (cur === "correct" || cur == null);
+                if (worsens && !opt.amendApplyWorsen) {
+                    emit({ type: "amend_evidence", t: tMs, idx: i, vk: ref[i].vk, pos: ref[i].pos, from: cur ?? null, to: nv, heard: sh.heard.get(i) });
+                    continue;
+                }
                 ref[i].verdict = nv;
                 const ev = {
                     type: "amend", t: tMs, idx: i, vk: ref[i].vk, pos: ref[i].pos,

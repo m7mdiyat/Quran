@@ -31,6 +31,7 @@
 import { createTasmeeSession } from "./tasmee-engine.js";
 import { tasmeeNorm } from "./tasmee-norm.js";
 import { createMic } from "./tasmee-audio.js";
+import { TASMEE_LIVE } from "./tasmee-live-config.js";
 
 let S = null; // active session, or null when the mode is off
 
@@ -210,6 +211,7 @@ export function exit() {
     if (!S) return;
     stopMic();                       // release the mic + tear down the meter
     _killWorker();                   // drop the worker so re-entering re-arms on the new page's ref
+    flushDeferred(false);            // discard held flag timers — the mode is torn down
     for (const r of S.ref) clearWord(r.span);
     S.pageEl.classList.remove("mushaf-page--tasmee");
     document.body.classList.remove("tasmee-on");
@@ -380,7 +382,7 @@ export function spawnWorker(ref) {
         if (m.type === "event" && m.event) applyEvent(m.event);
         else if (m.type === "transcript") onHeard(m.token, m.tMs);      // raw ASR word
         else if (m.type === "decoded") window.__tasmeeLastDecode = m;
-        else if (m.type === "stopped") window.__tasmeeStopped = m;
+        else if (m.type === "stopped") { window.__tasmeeStopped = m; onSessionStopped(); }
     });
     const initOnce = (modelUrl) => new Promise((resolve, reject) => {
         const to = setTimeout(() => { cleanup(); reject(new Error("worker init timeout (60s)")); }, 60000);
@@ -483,45 +485,120 @@ export function stopListening() {
     console.log(`[tasmee] heard ${_heard.length} words · recorded ${(_recorded.reduce((a, c) => a + c.length, 0) / 48000).toFixed(1)}s — __tasmee._downloadRecording() to save the WAV`);
 }
 
+/* Session finalized (the worker's `stopped` arrived): no further
+ * amendments can come — paint anything still held. */
+function onSessionStopped() { flushDeferred(true); }
+
 const VERDICT_CLASS = {
     correct: "ts-correct", substituted: "ts-sub", skipped: "ts-skip", hinted: "ts-hint",
 };
 
+/* ---------- deferred negative-verdict painting (amendment channel,
+ * 2026-07-16). Policy: "flag when sure, wait while unsure" —
+ * correct/hinted reveals paint INSTANTLY (unchanged); negative
+ * verdicts (wrong flags, skip underlines, insertion dots) are HELD so
+ * an amendment arriving inside the hold window cancels them before
+ * anything was ever painted (no visible flag→unflag by construction
+ * within the cap). EARLY-FLAG path: a substitution whose token sim ≤
+ * blatantSimMax is a gross mismatch (measured boundary artifacts sit
+ * at sim 0.60–0.70; genuinely wrong words score below 0.5) → paints
+ * after only earlyDelayS. Skips and insertions always wait capS —
+ * skips are precisely the amendable class. */
+const _defer = TASMEE_LIVE.flagDefer;
+let _pendingNeg = new Map();   // idx → {verdict, extra, timer}
+let _pendingIns = new Map();   // idx → {heardNorm, timer}
+
+function paintReveal(idx, verdict, extra = {}) {
+    const r = S && S.ref[idx];
+    if (!r || !r.span) return;
+    const span = r.span, cloud = cloudOf(span);   // a cloud here ⇒ word was offered
+    span.classList.remove("ts-offer");
+    // amendment repaint: drop a previous verdict class first
+    for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint"]) span.classList.remove(c);
+    span.querySelector(":scope > .ts-skip-line")?.remove();
+    span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
+    if (verdict === "skipped") addSkipLine(span);             // drawn dotted underline
+    if (verdict === "hinted") {
+        resolveCloud(cloud || makeCloud(span), "bloom", 1350);
+    } else if (verdict === "correct" && cloud) {
+        resolveCloud(cloud, "part", 1400);
+    } else if (cloud) {
+        resolveCloud(cloud, "out", 460);
+    }
+}
+
+function paintInsertion(idx) {
+    const r = S && S.ref[idx];
+    if (r && r.span && !r.span.querySelector(":scope > .ts-ins-dot")) {
+        r.span.classList.add("ts-ins");
+        const dot = document.createElement("i");
+        dot.className = "ts-ins-dot";
+        dot.setAttribute("aria-hidden", "true");
+        r.span.appendChild(dot);
+    }
+}
+
+const _isPainted = (idx, neg) => {
+    const span = S?.ref[idx]?.span;
+    return !!span && (neg ? (span.classList.contains("ts-sub") || span.classList.contains("ts-skip"))
+                          : span.classList.contains("ts-r"));
+};
+
+function deferNegative(idx, verdict, extra) {
+    const prev = _pendingNeg.get(idx);
+    if (prev) clearTimeout(prev.timer);
+    const blatant = verdict === "substituted" && typeof extra.sim === "number" && extra.sim <= _defer.blatantSimMax;
+    const delayMs = (blatant ? _defer.earlyDelayS : _defer.capS) * 1000;
+    const timer = setTimeout(() => { _pendingNeg.delete(idx); paintReveal(idx, verdict, extra); }, delayMs);
+    _pendingNeg.set(idx, { verdict, extra, timer });
+}
+
+/* Session end (stop/summary): nothing further can amend — paint what's
+ * still held. exit() instead DISCARDS timers (the mode is torn down). */
+export function flushDeferred(paint = true) {
+    for (const [idx, p] of _pendingNeg) { clearTimeout(p.timer); if (paint) paintReveal(idx, p.verdict, p.extra); }
+    for (const [idx, p] of _pendingIns) { clearTimeout(p.timer); if (paint) paintInsertion(idx); }
+    _pendingNeg.clear(); _pendingIns.clear();
+}
+
 /* The seam every later piece drives. Consumes an engine event
- * (Piece 2+) or a scripted one (Piece 1). Only reveal/insertion
- * paint in Piece 1; repetition/hesitation/ayah_completed are logged
- * by the engine and handled in later pieces (hint pulse, summary). */
+ * (Piece 2+) or a scripted one (Piece 1). */
 export function applyEvent(e) {
     if (!S || !e) return;
     if (e.type === "reveal") {
-        const r = S.ref[e.idx];
-        if (r && r.span) {
-            const span = r.span, cloud = cloudOf(span);   // a cloud here ⇒ word was offered
-            const verdict = e.verdict || "correct";
-            span.classList.remove("ts-offer");
-            span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
-            if (verdict === "skipped") addSkipLine(span);             // drawn dotted underline
-            if (verdict === "hinted") {
-                // hint TAKEN (tap): gold word + the cloud blooms (create one if
-                // the tap wasn't preceded by an offer).
-                resolveCloud(cloud || makeCloud(span), "bloom", 1350);
-            } else if (verdict === "correct" && cloud) {
-                // GOT IT THEMSELVES — an offered word recited correctly. Word
-                // reveals in correct INK (already set); the cloud PARTS. NOT a
-                // hint: the engine already logged it correct = full credit.
-                resolveCloud(cloud, "part", 1400);
-            } else if (cloud) {
-                resolveCloud(cloud, "out", 460);   // wrong/skip on an offered word → dismiss
+        const verdict = e.verdict || "correct";
+        if (verdict === "substituted" || verdict === "skipped") deferNegative(e.idx, verdict, e);
+        else {
+            const p = _pendingNeg.get(e.idx);
+            if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }
+            paintReveal(e.idx, verdict, e);
+        }
+    } else if (e.type === "amend") {
+        const p = _pendingNeg.get(e.idx);
+        if (e.to === "correct") {
+            if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }
+            if (_isPainted(e.idx, true)) {
+                // outside-cap improve — allowed but expected NEVER on test
+                // clips (cap covers the measured amendment lag); observable.
+                console.warn(`[tasmee] late amend past flag cap (idx ${e.idx}) — visible unflag`);
             }
+            paintReveal(e.idx, "correct", e);
+        } else if (e.to === "substituted" || e.to === "skipped") {
+            // went through amendment stability already → short guard only
+            if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }
+            const timer = setTimeout(() => { _pendingNeg.delete(e.idx); paintReveal(e.idx, e.to, e); }, _defer.earlyDelayS * 1000);
+            _pendingNeg.set(e.idx, { verdict: e.to, extra: e, timer });
         }
     } else if (e.type === "insertion") {
-        const r = S.ref[e.idx];
-        if (r && r.span && !r.span.querySelector(":scope > .ts-ins-dot")) {
-            r.span.classList.add("ts-ins");
-            const dot = document.createElement("i");
-            dot.className = "ts-ins-dot";
-            dot.setAttribute("aria-hidden", "true");
-            r.span.appendChild(dot);
+        const prev = _pendingIns.get(e.idx);
+        if (prev) clearTimeout(prev.timer);
+        const timer = setTimeout(() => { _pendingIns.delete(e.idx); paintInsertion(e.idx); }, _defer.capS * 1000);
+        _pendingIns.set(e.idx, { heardNorm: e.heard ? tasmeeNorm(e.heard) : "", timer });
+    } else if (e.type === "amend_insertions") {
+        // reconcile HELD dots against the amended transcript's insertions
+        const now = new Set((e.insertions || []).map((i) => `${i.idx}|${i.heard ? tasmeeNorm(i.heard) : ""}`));
+        for (const [idx, p] of _pendingIns) {
+            if (!now.has(`${idx}|${p.heardNorm}`)) { clearTimeout(p.timer); _pendingIns.delete(idx); }
         }
     } else if (e.type === "hesitation" || e.type === "hint_offer") {
         // Both engine offer signals (long pause / repeated stuck attempts)

@@ -23,6 +23,7 @@ import { tasmeeNorm } from "../src/tasmee-norm.js";
 import { createTasmeeSession } from "../src/tasmee-engine.js";
 import { readWavMono, resampleTo16k, melFrontend, makeGreedyDecoder, NMEL, buildVad } from "../src/tasmee-pipeline.js";
 import { createStreamController } from "../src/tasmee-stream.js";
+import { TASMEE_LIVE } from "../src/tasmee-live-config.js";
 import { buildBenchBlock, buildEnvLines } from "../src/tasmee-report.js";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -195,11 +196,19 @@ async function decode(startS, endS) {
 }
 
 /* ---------- run ---------- */
-const session = createTasmeeSession({ words: ref });
+const session = createTasmeeSession({
+    words: ref,
+    onEvent: args.includes("--log-amends")
+        ? (e) => { if (e.type === "amend") console.error(`[amend] ${e.vk}:${e.pos} ${e.from}→${e.to} heard=${e.heard} @${(e.t / 1000).toFixed(1)}s`); }
+        : undefined,
+});
 const ctl = createStreamController({
     session, decode, isSpeech, findSilenceBefore, norm: tasmeeNorm,
     chunkS: CHUNK_S, windowS: WINDOW_S, contextS: CONTEXT_S, holdbackS: HOLDBACK_S, frameS: FRAME_S,
     mode: DECODE_MODE, incContextS: INC_CONTEXT_S, incEdgeGuardS: INC_EDGE_GUARD_S,
+    // AMENDMENT CHANNEL (2026-07-16): ships ON (config-of-record);
+    // --no-amend gives the pre-amendment baseline for A/B.
+    amend: args.includes("--no-amend") ? null : TASMEE_LIVE.controller.amend,
     debug: args.includes("--debug")
         ? (chunkEnd, commitN, pending) => console.error(`[${chunkEnd.toFixed(1)}s] commit ${commitN} | pending: ` +
             pending.map((w) => `${w.text}(${w.startS.toFixed(1)}-${w.endS.toFixed(1)})`).join(" "))
