@@ -3079,6 +3079,77 @@ invoked here with evidence** (§4).
 > → enter tasmee → tap the mic. **Nothing BREAKS on npm install** — the app runs; the
 > tasmee worker's model fetch just 404s until steps 1–2, and the bench needs step 3.
 
+> **🟢 AMENDMENT CHANNEL SHIPPED TO tasmee-wip (2026-07-16, commits
+> b3de2d1..67300cf — where a fresh session RESUMES).** The live-mic
+> false-skip root cause (per-window readings flap → marginal commit →
+> later correct re-decodes structurally discarded at the pending filter)
+> is fixed by a post-commit AMENDMENT CHANNEL:
+> - **Controller (tasmee-stream.js)**: settled re-readings of committed
+>   spans vote ACCUMULATIVELY per reading across the anchor horizon
+>   (64-record cost backstop); a reading amends at 2 sightings AND
+>   outnumbering both the current reading's reconfirmations and every
+>   rival; CTC-spike (zero-width) records matched by point-containment;
+>   `.amendTexts` aside (dup-suppression byte-identical); once anything
+>   amended, EVERY later commit re-reconciles (resync-vs-amend
+>   semantics). Reference structurally unreachable where readings form.
+> - **Engine**: `reverdict`/`applyReverdict` — shadow replay of the
+>   amended transcript through the SAME matcher; hinted frozen; no
+>   re-feeds (repetition tolerance intact). **IMPROVE-ONLY default**
+>   (measured ruling: symmetric worsening broke binding budgets —
+>   02-whisper 0→10 flags from degraded deep-window re-readings that
+>   stabilize twice; worsening now emits `amend_evidence`, applied only
+>   under `amendApplyWorsen:true` — future strict/repair mode).
+> - **UI deferral**: correct reveals instant; flags held (blatant subs
+>   sim≤0.5 → 0.5 s, else capS 2.0 s; insertion dots capS); amendments
+>   cancel held flags pre-paint; flush at stop. Config:
+>   `TASMEE_LIVE.flagDefer` + `controller.amend`.
+> - **GATES**: fixtures 79/79 (11 new amend fixtures). Full rig BOTH
+>   surfaces: every binding budget holds AND the standing #15 breaches
+>   are FIXED (01-wasm 4→1, 03-wasm 3→1, 03-node 4→0); 04/05 P/R
+>   1.00/1.00 (= --no-amend baseline; leniency guard intact); 05-wasm P
+>   .57 residual (was .50). RTF/p50 within noise; zero extra inference.
+>   Live-faithful lab (permanent `scoreLive`, trace-replay promoted;
+>   frozen replay = logprob-inspection only): founder-47:4 منا false
+>   skip RESOLVED (amend lag 1.8 s); ayoub 47:4 بعد+فضرب resolved; ayoub
+>   منا correctly still fails (Class-B honesty); correct-pile flags ≤
+>   baseline everywhere; exact-heard (de-fuzz) never decreased.
+> - **⚠ OPEN #A1 (next design decision, stop-and-present)**: per-word
+>   argmax time-overlap ASSIGNMENT cross-binds neighboring re-readings
+>   under CTC time volatility (page traces: الله→سبيل class) — harmless
+>   to verdicts under improve-only (all gates hold) but starves marginal
+>   amendments per thread-context: **the founder منا amendment lands on
+>   the lab surface + wide-ref worker capture but NOT reliably on the
+>   live page** (span still ts-skip there). Candidates: (a) monotonic
+>   DTW-lite global assignment [recommended], (b) relatedness-gated
+>   hybrid (kills junk→correct amendments — probably wrong).
+>
+> **🔬 MISSED-MISTAKES AUTOPSY (2026-07-16/17, founder live-tested:
+> subtle planted mistakes pass as correct — bench and reality tested
+> DIFFERENT CLASSES, no fidelity gap):** golden 04/05 ingested to the
+> live-faithful surface → all 7 historic plants caught there too. The
+> smoking gun: plant إمتلاق↔اختلاق simIfFaithful **0.833 → would have
+> PASSED**; it was caught only because the ASR mangled it to «الاق»
+> (0.667). VERIFIED BY CONSTRUCTION: harakat-only changes are INVISIBLE
+> (tasmeeNorm strips diacritics → sim 1.0 always); single-letter changes
+> PASS at ≥4 skeleton letters (sim=1−1/L ≥ θ 0.75). θ SWEEP (551
+> correct-word hearings vs 7 plants): 96.7% of correct words heard
+> skeleton-EXACT (amendment channel raised this) → θ 0.80 costs 3 FF
+> (0.5%), 0.85 → 13 (2.4%), even 1.00 → 18 (3.3%) on this corpus (quiet
+> founder mic will be worse — unpriced). TASHKEEL: 94/139 words (68%)
+> decode with MULTIPLE diacritizations across windows on CORRECT
+> recitation → text-level harakat strictness DEAD; harakat mode = the
+> acoustic verifier (Stage-B fingerprint; logprob ring + machinery
+> already in place). FIX ORDER (proposed, awaiting ruling): (1)
+> length-tiered θ tightening ≈0.85 through the full rig, (2) acoustic
+> verifier for the non-exact band + harakat, (3) amendApplyWorsen strict
+> mode re-gated. **AWAITING: founder mistakes-A.wav (letter swaps) +
+> mistakes-B.wav (harakat + skips) + written manifests — the autopsy
+> driver is ready (scratchpad run-autopsy.mjs pattern; goldens 04/05
+> live in the lab corpus as labeled mistake clips). NOTE: the lab's
+> IndexedDB corpus lives in an EPHEMERAL Playwright profile under the
+> session scratchpad — clips re-ingest automatically from committed
+> WAV sources; founder WAVs are in ~/Downloads (NOT committed).**
+
 **GATE 5 — Mushaf UI integration.** Mode lifecycle, hide/reveal CSS, summary sheet,
 settings, suppressions (gharib/menu/audio/swipe). Accept: zero layout shift on
 hide/reveal (word rects identical — you verify in dev console; no automated browser run
