@@ -736,26 +736,29 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         summary() {
             const counts = { correct: 0, substituted: 0, skipped: 0, hinted: 0, insertions: 0, repetitions: 0, hesitations: 0 };
             const perAyah = {};
+            /* Word verdicts count by FINAL state per word (a Map replayed
+             * from the event stream): an amendment moving a verdict — or an
+             * amend landing BEFORE the live reveal (null→correct then a
+             * later reveal) — must not double-count. Event-derived, so a
+             * fixture-scripted stream still sums identically. */
+            const byIdx = new Map();
             for (const e of events) {
-                if (e.type === "reveal") {
-                    counts[e.verdict === "correct" ? "correct"
-                        : e.verdict === "substituted" ? "substituted"
-                            : e.verdict === "skipped" ? "skipped" : "hinted"]++;
-                    const a = (perAyah[e.vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 });
-                    a[e.verdict]++;
+                if (e.type === "reveal" || e.type === "amend") {
+                    byIdx.set(e.idx, { verdict: e.type === "amend" ? e.to : e.verdict, vk: e.vk });
                 } else if (e.type === "insertion") counts.insertions++;
                 else if (e.type === "repetition") counts.repetitions++;
                 else if (e.type === "hesitation") counts.hesitations++;
-                else if (e.type === "amend") {
-                    // amendment verdict change: move the count (from may be
-                    // null — a previously-unrevealed word now supported)
-                    if (e.from) { counts[e.from]--; (perAyah[e.vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 })[e.from]--; }
-                    counts[e.to] = (counts[e.to] || 0) + 1;
-                    (perAyah[e.vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 })[e.to]++;
-                } else if (e.type === "amend_insertions") {
+                else if (e.type === "amend_insertions") {
                     // authoritative recount from the amended transcript
                     counts.insertions = e.insertions.length;
                 }
+            }
+            for (const { verdict, vk } of byIdx.values()) {
+                counts[verdict === "correct" ? "correct"
+                    : verdict === "substituted" ? "substituted"
+                        : verdict === "skipped" ? "skipped" : "hinted"]++;
+                const a = (perAyah[vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 });
+                a[verdict]++;
             }
             const attempted = counts.correct + counts.substituted + counts.skipped + counts.hinted;
             return {
