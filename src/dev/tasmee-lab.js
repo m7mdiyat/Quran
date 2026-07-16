@@ -18,6 +18,7 @@
 import { fetchPassagePcm48k, encodeWav16, localFileToPcm48k } from "./tasmee-lab-audio.js";
 import { putClip, getClip, listClips, deleteClip, downloadClipJson } from "./tasmee-lab-db.js";
 import { replayClip, scoreCorrectPile, validateWindows } from "./tasmee-lab-score.js";
+import { scoreLiveClip } from "./tasmee-lab-replay.js";
 
 const VOCAB_URL = "/models/tasmee/vocab.json";
 
@@ -191,6 +192,22 @@ function framesMapOf(clip) {
     return map;
 }
 
+/* PERMANENT: LIVE-FAITHFUL scoring (the verdict surface — real ORT
+ * re-decode through the real controller+engine; see tasmee-lab-replay.js).
+ * `overrides` flips controller options, e.g. {amend:null} for baselines. */
+export async function scoreLive(id, overrides = {}) {
+    log(`── scoreLive ${id} (live-faithful surface)`);
+    const { rep, score: s } = await scoreLiveClip(id, { controllerOverrides: overrides });
+    log(`reproduction vs capture: ${rep.reproduction ? "IDENTICAL" : "differs (expected under overrides)"}`);
+    log(`verdicts: skip[${s.false_skip.join(",") || "—"}] wrong[${s.false_wrong.join(",") || "—"}] ` +
+        `unrev[${s.unrevealed.join(",") || "—"}] · ins ${s.insertions} · amends ${s.amends} ` +
+        `· exact-heard ${s.exactHeard.exact}/${s.exactHeard.correct}`,
+        s.flags === 0 ? "good" : "warn");
+    return { rep, score: s };
+}
+
+/* Frozen-logprob replay — LOGPROB-INSPECTION ONLY, never a verdict
+ * surface (latest-decode-wins rows manufacture phantom flags). */
 export async function score(id, { detection = null, runs = 2 } = {}) {
     const clip = await getClip(id);
     if (!clip) throw new Error(`no clip ${id}`);
@@ -269,7 +286,8 @@ async function renderClips() {
         tr.innerHTML = `<td>${c.id}</td><td>${c.frames}</td><td>${c.refWords}</td><td>${c.durS.toFixed(1)}s</td>`;
         const td = document.createElement("td");
         for (const [txt, fn] of [
-            ["score", () => score(c.id)],
+            ["score·live", () => scoreLive(c.id)],
+            ["inspect·frozen", () => score(c.id)],
             ["export", async () => downloadClipJson(await getClip(c.id))],
             ["✕", async () => { await deleteClip(c.id); renderClips(); }],
         ]) {
@@ -311,5 +329,5 @@ document.getElementById("btnLocal")?.addEventListener("click", async () => {
 });
 renderClips();
 
-window.__lab = { capture, captureFromLocalWav, score, scoreAll, runSmoke, listClips, getClip, deleteClip, SMOKE_PASSAGES };
+window.__lab = { capture, captureFromLocalWav, score, scoreLive, scoreAll, runSmoke, listClips, getClip, deleteClip, SMOKE_PASSAGES };
 log("tasmee-lab ready. Ship target is Safari/WebKit — run REAL captures there so numbers reflect the target engine.");
