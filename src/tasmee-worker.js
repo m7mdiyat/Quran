@@ -20,9 +20,11 @@
 
 import * as ort from "onnxruntime-web/wasm";   // WASM-only build (no WebGPU/JSEP): plain ort-wasm-simd-threaded.*
 import { createTasmeeSession } from "./tasmee-engine.js";
-import { readWavMono, resampleTo16k, makeStreamResampler16k, melFrontend, makeGreedyDecoder, NMEL, buildVad } from "./tasmee-pipeline.js";
+import { readWavMono, resampleTo16k, makeStreamResampler16k, melFrontend, makeGreedyDecoder, NMEL, FRAME_S, buildVad } from "./tasmee-pipeline.js";
 import { createStreamController } from "./tasmee-stream.js";
 import { tasmeeNorm } from "./tasmee-norm.js";
+import { createLogprobBuffer, createUnboundedLogprobSink } from "./tasmee-logprob-buffer.js";
+import { TASMEE_LIVE } from "./tasmee-live-config.js";
 
 /* ADAPTIVE threads — never hardcode single-threaded. In the app the FlyingFox
  * local server sets COOP/COEP → crossOriginIsolated=true → SharedArrayBuffer →
@@ -33,6 +35,19 @@ ort.env.wasm.numThreads = self.crossOriginIsolated
     : 1;
 
 let sess = null, VOCAB = null, BLANK = 0, GREEDY = null, RAW_INPUT = false;
+
+/* Per-frame logprob retention (ADDITIVE side buffer for the coming
+ * boundary-repair layer; see tasmee-logprob-buffer.js). Non-null only
+ * during a live session — the warmup decode and the sessionless
+ * decode/decodeWav dev paths skip it. Nothing reads it yet. */
+let lpBuf = null;
+
+/* DEV-ONLY capture state (tasmee-lab harness). Non-null ONLY when an init
+ * message carries `dev: {...}` — the live UI (tasmee-ui.js) never sends it,
+ * so every DEV branch below is inert in the live path. When active, the
+ * logprob side buffer becomes an UNBOUNDED per-clip sink and the worker
+ * records the decode-window log + final PCM for offline replay/scoring. */
+let DEV = null;
 
 /* Point ORT at its WASM assets. The Emscripten GLUE (.mjs) is dynamic-imported
  * by ORT at runtime; under Vite's dev server a plain URL to it gets rewritten
@@ -90,6 +105,15 @@ async function decodeSlice(pcm16k, startS = 0) {
     }
     const out = await sess.run(feeds);
     const lp = out[sess.outputNames[0]];      // logprobs [1,T,V]
+    if (lpBuf) {
+        // Side buffer only — the words path below is untouched. Keyed by
+        // ABSOLUTE frame index so overlapping incremental re-decodes
+        // OVERWRITE (latest wins); set() copies the bytes out of lp.data.
+        const T = lp.dims[1], V = lp.dims[2];
+        const base = Math.round(startS / FRAME_S);
+        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V));
+        if (DEV) DEV.windows.push({ startS, n: pcm16k.length, T, base }); // dev capture: decode-window log
+    }
     return GREEDY(lp.data, lp.dims[1], lp.dims[2], startS).words;
 }
 
@@ -98,7 +122,7 @@ async function decodeSlice(pcm16k, startS = 0) {
  * re-decodes short segments and drives the engine, whose events post to main
  * for applyEvent() → DOM reveals. Engine + controller are co-located because
  * the controller reads session.getEvents() synchronously. */
-const STEP_S = 0.3, TAIL_PAD_S = 1.2, SR = 16000;
+const STEP_S = TASMEE_LIVE.stepS, TAIL_PAD_S = TASMEE_LIVE.tailPadS, SR = TASMEE_LIVE.sr;   // values unchanged — see tasmee-live-config.js
 let resampler = null, pcm = new Float32Array(1 << 18), pcmLen = 0;
 let liveSession = null, liveCtl = null, liveVad = null, nextStepS = 0, finishing = false, stepping = false;
 
@@ -118,6 +142,10 @@ async function liveDecode(startS, endS) {
 function setupLive(ref) {
     resampler = makeStreamResampler16k(48000);
     pcmLen = 0; nextStepS = STEP_S; finishing = false; stepping = false;
+    lpBuf = DEV
+        ? (DEV.sink = createUnboundedLogprobSink({ vocabSize: VOCAB.length }))  // dev capture: whole-clip sink
+        : createLogprobBuffer({ vocabSize: VOCAB.length });     // session start → fresh retention buffer
+    if (DEV) DEV.windows = [];
     liveSession = createTasmeeSession({
         words: ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
         onEvent: (ev) => self.postMessage({ type: "event", event: ev }),
@@ -130,15 +158,14 @@ function setupLive(ref) {
         self.postMessage({ type: "transcript", token, tMs });
         return _feed(token, tMs);
     };
-    liveVad = buildVad(pcm.subarray(0, 0), { policy: "v2" });
+    liveVad = buildVad(pcm.subarray(0, 0), { policy: TASMEE_LIVE.vadPolicy });
     liveCtl = createStreamController({
         session: liveSession,
         decode: liveDecode,
         isSpeech: (a, b) => liveVad.isSpeech(a, b),
         findSilenceBefore: (a, b) => liveVad.findSilenceBefore(a, b),
         norm: tasmeeNorm,
-        chunkS: STEP_S, windowS: 15, contextS: 1.0, holdbackS: 0.3, frameS: 0.08,
-        mode: "incremental", incContextS: 1.5, incEdgeGuardS: 0.2,   // config-of-record
+        ...TASMEE_LIVE.controller,   // config-of-record — values unchanged, see tasmee-live-config.js
     });
 }
 
@@ -149,7 +176,7 @@ async function pump() {
     stepping = true;
     try {
         while (nextStepS <= pcmLen / SR) {
-            liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: "v2" });
+            liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: TASMEE_LIVE.vadPolicy });
             await liveCtl.step(nextStepS);
             nextStepS += STEP_S;
         }
@@ -165,12 +192,13 @@ function ingestRaw48k(block) {             // push raw + append streamed 16 k (n
 async function finishLive() {
     if (!liveCtl) return null;
     finishing = true;
+    if (DEV) DEV.pumpEndLen = pcmLen;                   // dev capture: pump-phase boundary (pre-flush/pad)
     appendPcm(resampler.flush());                       // truncated-edge tail
     const pad = Math.round(TAIL_PAD_S * SR);            // #6 end-of-clip flush: pad trailing silence
     ensurePcm(pad); pcm.fill(0, pcmLen, pcmLen + pad); pcmLen += pad;
     const endS = pcmLen / SR;
     while (nextStepS < endS + STEP_S) {                 // drain remaining + tail-pad
-        liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: "v2" });
+        liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: TASMEE_LIVE.vadPolicy });
         await liveCtl.step(Math.min(nextStepS, endS));
         nextStepS += STEP_S;
     }
@@ -178,6 +206,11 @@ async function finishLive() {
     const summary = liveSession.stop(Math.round(endS * 1000));
     const { committed } = liveCtl.results();
     resampler = null; liveCtl = null; liveSession = null;
+    if (lpBuf) {
+        if (DEV) DEV.pcmDone = pcm.slice(0, pcmLen);  // dev capture: keep sink + final PCM for devExport
+        else lpBuf.reset();                           // session stop → release retention buffer
+        lpBuf = null;
+    }
     return { summary, committed };
 }
 
@@ -185,6 +218,7 @@ self.onmessage = async (e) => {
     const m = e.data || {};
     try {
         if (m.type === "init") {
+            DEV = m.dev ? { windows: [] } : null;   // DEV-ONLY (tasmee-lab); live UI sends no `dev`
             const t0 = performance.now();
             await loadModel(m.modelUrl, m.vocabUrl);
             const tLoaded = performance.now();
@@ -222,7 +256,27 @@ self.onmessage = async (e) => {
                 type: "stopped", rate, ms: Math.round(performance.now() - t0),
                 committed: r && r.committed ? r.committed.length : 0,
                 committedText: r && r.committed ? r.committed.map((w) => w.text || w.form || "").join(" ") : "",
+                // DEV-ONLY extras (tasmee-lab capture); absent in live use:
+                ...(DEV ? { summary: r && r.summary, committedFull: r && r.committed } : {}),
             });
+        } else if (m.type === "devExport") {
+            // DEV-ONLY (tasmee-lab): ship the captured whole-clip logprob sink,
+            // decode-window log and final PCM for offline replay/scoring.
+            // Requires init{dev:…} + a completed capture; inert otherwise.
+            if (!DEV || !DEV.sink || !DEV.pcmDone) {
+                self.postMessage({ type: "devExported", error: "no dev capture present" });
+            } else {
+                const ex = DEV.sink.exportFrames();
+                self.postMessage({
+                    type: "devExported",
+                    V: ex.V, setCalls: ex.setCalls,
+                    indices: ex.indices, data: ex.data,
+                    windows: DEV.windows, pcm16k: DEV.pcmDone,
+                    pumpEndLen: DEV.pumpEndLen,
+                    blank: BLANK,
+                }, [ex.indices.buffer, ex.data.buffer, DEV.pcmDone.buffer]);
+                DEV = null;
+            }
         } else if (m.type === "decode") {
             // dev/test path: decode a supplied 16 kHz slice, return words + timing
             const t0 = performance.now();

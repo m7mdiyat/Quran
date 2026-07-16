@@ -316,7 +316,14 @@ export function micState() { return _mic ? _mic.getState() : "idle"; }
  * Spawned on the mic-tap path (PINNED: never at page load — iOS suspends
  * load-time module workers). Loads the ONNX model + vocab, warms up, then
  * (full wiring) consumes live audio and posts engine events back. */
-const MODEL_URL = "/models/tasmee/fastconformer_ar_ctc_q8.onnx";
+/* Model artifacts (dev-served from public/models/tasmee/, git-ignored).
+ * PRIMARY = q8pc-head, the record artifact (adopted 2026-07-11: short-word
+ * truncation class fixed, best measured grid). The OLD q8 export stays as
+ * FALLBACK only — it has the known wasm short-word truncation instability
+ * (إله→إل class), so if the console reports a fallback load, treat the
+ * session's accuracy as suspect. */
+const MODEL_URL = "/models/tasmee/fastconformer_ar_ctc_q8pc-head.onnx";
+const MODEL_URL_FALLBACK = "/models/tasmee/fastconformer_ar_ctc_q8.onnx";
 const VOCAB_URL = "/models/tasmee/vocab.json";
 let _worker = null, _workerReady = null;
 // Diagnostics: the raw ASR transcript (what the model heard) + a raw-48k
@@ -375,19 +382,32 @@ export function spawnWorker(ref) {
         else if (m.type === "decoded") window.__tasmeeLastDecode = m;
         else if (m.type === "stopped") window.__tasmeeStopped = m;
     });
-    _workerReady = new Promise((resolve, reject) => {
-        const to = setTimeout(() => reject(new Error("worker init timeout (60s)")), 60000);
+    const initOnce = (modelUrl) => new Promise((resolve, reject) => {
+        const to = setTimeout(() => { cleanup(); reject(new Error("worker init timeout (60s)")); }, 60000);
         const onReady = (e) => {
             const m = e.data || {};
-            if (m.type === "ready") { clearTimeout(to); _worker.removeEventListener("message", onReady); window.__tasmeeWorker = m; resolve(m); }
-            else if (m.type === "error" && m.where === "init") { clearTimeout(to); _worker.removeEventListener("message", onReady); reject(new Error(m.message)); }
+            if (m.type === "ready") { cleanup(); m.modelUrl = modelUrl; window.__tasmeeWorker = m; resolve(m); }
+            else if (m.type === "error" && m.where === "init") { cleanup(); reject(new Error(m.message)); }
         };
+        const onErr = (err) => { cleanup(); reject(new Error(err.message || "worker error")); };
+        const cleanup = () => { clearTimeout(to); _worker.removeEventListener("message", onReady); _worker.removeEventListener("error", onErr); };
         _worker.addEventListener("message", onReady);
-        _worker.addEventListener("error", (err) => { clearTimeout(to); reject(new Error(err.message || "worker error")); });
+        _worker.addEventListener("error", onErr);
         // strip the DOM span (not structured-cloneable) — the worker only needs vk/pos/form.
         const refWords = ref ? ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })) : null;
-        _worker.postMessage({ type: "init", modelUrl: MODEL_URL, vocabUrl: VOCAB_URL, ref: refWords });
+        _worker.postMessage({ type: "init", modelUrl, vocabUrl: VOCAB_URL, ref: refWords });
     });
+    _workerReady = initOnce(MODEL_URL)
+        .catch((e) => {
+            // Primary artifact failed to load — fall back to the old q8 (the
+            // worker survives a failed init; re-init reloads cleanly).
+            console.warn(`[tasmee] PRIMARY model failed (${e.message}) — falling back to old q8`);
+            return initOnce(MODEL_URL_FALLBACK);
+        })
+        .then((m) => {
+            console.log(`[tasmee] model loaded: ${m.modelUrl} · vocab ${m.vocabSize} · threads ${m.numThreads} · xoi ${m.crossOriginIsolated}`);
+            return m;
+        });
     return _workerReady;
 }
 

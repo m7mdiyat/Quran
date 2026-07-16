@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>tasmee-lab — DEV replay/scoring harness</title>
+<meta name="robots" content="noindex">
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 16px; background: #0f1115; color: #d7dae0; }
+  h1 { font-size: 15px; } h1 em { color: #e6a23c; font-style: normal; }
+  fieldset { border: 1px solid #333; margin-bottom: 10px; }
+  button { margin: 2px; padding: 3px 10px; background: #1d2635; color: #d7dae0; border: 1px solid #445; cursor: pointer; }
+  button:hover { background: #27354d; }
+  input, select { background: #161a22; color: #d7dae0; border: 1px solid #445; padding: 2px 6px; width: 60px; }
+  select { width: auto; }
+  #log { white-space: pre-wrap; background: #0a0c10; border: 1px solid #222; padding: 10px; min-height: 200px; max-height: 55vh; overflow: auto; }
+  table { border-collapse: collapse; margin: 8px 0; } td, th { border: 1px solid #333; padding: 2px 8px; font-size: 12px; }
+  .bad { color: #ff6b6b; } .good { color: #7bd88f; } .warn { color: #e6a23c; }
+</style>
+</head>
+<body>
+<h1>tasmee-lab <em>· DEV ONLY — replay reciter audio through the LIVE tasmee pipeline and score it. Never shipped (not a build input).</em></h1>
+<fieldset>
+  <legend>passage</legend>
+  reciter <select id="reciter"><option>qasim</option><option>ayoub</option><option>luhaidan</option><option>husary</option><option>minshawi</option></select>
+  surah <input id="surah" value="99"> ayah <input id="from" value="6"> → <input id="to" value="8">
+  model <select id="model">
+    <option value="/models/tasmee/fastconformer_ar_ctc_q8pc-head.onnx">q8pc-head (record)</option>
+    <option value="/models/tasmee/fastconformer_ar_ctc_q8.onnx">q8 (old / current live UI)</option>
+  </select>
+  <button id="btnCapture">① capture (ORT)</button>
+  <button id="btnSmoke">run TEMP smoke set</button>
+  <br>
+  local file (founder mic WAV): <input type="file" id="localWav" accept="audio/*" style="width:auto">
+  name <input id="localName" value="founder" style="width:80px">
+  label <select id="localLabel"><option>correct</option><option>mistakes</option></select>
+  <button id="btnLocal">ingest local file</button>
+  <span style="opacity:.6">(uses the surah/ayah fields above for the reference text)</span>
+</fieldset>
+<fieldset>
+  <legend>clips (IndexedDB)</legend>
+  <div id="clips"></div>
+</fieldset>
+<div id="log"></div>
+<script type="module" src="/src/dev/tasmee-lab.js"></script>
+<!-- ⚠️ THROWAWAY diagnostic (delete with src/dev/tasmee-lab-diag.js) -->
+<script type="module" src="/src/dev/tasmee-lab-diag.js"></script>
+<!-- ⚠️ THROWAWAY diagnostic #2 (delete with src/dev/tasmee-lab-diag2.js) -->
+<script type="module" src="/src/dev/tasmee-lab-diag2.js"></script>
+<!-- ⚠️ THROWAWAY diagnostic #3 (delete with src/dev/tasmee-lab-diag3.js) -->
+<script type="module" src="/src/dev/tasmee-lab-diag3.js"></script>
+</body>
+</html>
