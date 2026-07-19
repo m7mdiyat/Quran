@@ -114,14 +114,30 @@ export async function captureFromLocalWav(arrayBuffer, info, modelUrl = "/models
     log(`── capture(local) ${id} [label: ${label}]`);
     const ref = await buildPassageRef(surah, from, to);
     log(`ref: ${ref.length} words (${surah}:${from} → ${surah}:${to})`);
+    /* BYTE-FAITHFUL WAV PATH (2026-07-19). A RIFF/WAVE source is handed to
+     * the worker UNCHANGED, exactly as the live page does — its readWavMono
+     * then produces the identical PCM. Routing a WAV through
+     * decodeAudioData → OfflineAudioContext resample → 16-bit re-encode
+     * (the generic path below, still used for m4a/mp3) perturbs samples
+     * enough to flip KNIFE-EDGE decodes: the founder's منا amended on the
+     * round-tripped audio and did NOT on the real file, which is the whole
+     * "passes in the lab, fails on the page" divergence. Anything that is
+     * not already a WAV still has to be decoded, and stays approximate. */
+    const isWav = arrayBuffer.byteLength > 12 &&
+        String.fromCharCode(...new Uint8Array(arrayBuffer, 0, 4)) === "RIFF" &&
+        String.fromCharCode(...new Uint8Array(arrayBuffer, 8, 4)) === "WAVE";
+    if (isWav) {
+        log("audio: RIFF/WAVE → passed to the worker BYTE-FAITHFULLY (no decode/re-encode)");
+        return captureRun({ id, passage: { reciter: name, surah, from, to, local: true }, modelUrl, wavBuf: arrayBuffer, ref, label });
+    }
     const { pcm48k, srcRate, durS } = await localFileToPcm48k(arrayBuffer);
-    log(`audio: ${durS.toFixed(1)}s @48k (local file, src ${srcRate} Hz)`);
+    log(`audio: ${durS.toFixed(1)}s @48k (decoded+re-encoded, src ${srcRate} Hz — NOT byte-faithful)`);
     return captureRun({ id, passage: { reciter: name, surah, from, to, local: true }, modelUrl, pcm48k, ref, label });
 }
 
 /* Shared worker capture flow (GCS passage + local-file paths). */
-async function captureRun({ id, passage, modelUrl, pcm48k, ref, label }) {
-    const wav = encodeWav16(pcm48k, 48000);
+async function captureRun({ id, passage, modelUrl, pcm48k, wavBuf, ref, label }) {
+    const wav = wavBuf || encodeWav16(pcm48k, 48000);
 
     // The REAL live worker — same construction as tasmee-ui.js:369, reused
     // across captures (see labWorker note).

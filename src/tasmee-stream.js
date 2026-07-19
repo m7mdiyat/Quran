@@ -174,29 +174,78 @@ export function createStreamController({
             }
             return Math.min(w.endS, s1) - Math.max(w.startS, s0);
         };
-        // dominant-overlap assignment: each settled word → one committed record
-        const byCi = new Map();
-        for (const w of settled) {
-            let best = -1, bestOv = 0;
-            for (const ci of covered) {
-                const ov = ovWith(w, committed[ci]);
-                if (ov > bestOv) { bestOv = ov; best = ci; }
+        /* MONOTONIC BLOCK ASSIGNMENT (2026-07-19 — replaces per-word
+         * argmax). Argmax chose each re-read word's record INDEPENDENTLY,
+         * so under CTC time volatility adjacent re-readings could both
+         * claim one record while its true partner got nothing (the
+         * الله→سبيل cross-binding class); the starved record never
+         * accumulated sightings and its amendment died.
+         *
+         * Speech is monotonic, so the assignment must be. We take the
+         * OVERLAP-CONNECTED COMPONENTS of the (word × record) bipartite
+         * graph: because both sequences are time-ordered, every component
+         * is automatically a contiguous run of words against a contiguous
+         * run of records. That expresses all three real shapes with one
+         * rule — 1↔1 (the founder's منا spike), many-words↔1-record (a
+         * mis-split commit re-read whole), and 1-word↔many-records (a
+         * wide re-reading absorbing a junk-commit burst, which the
+         * one-word-per-record model could not represent at all and which
+         * argmax only ever handled by accident, by landing on whichever
+         * record happened to carry the fewest reconfirmations).
+         *
+         * Deterministic and STABLE across steps: the component of a given
+         * word is fixed by span containment, not by a tie-break that can
+         * move as the record set grows — which is what lets a reading
+         * accumulate its sightings on one key. Blocks larger than
+         * blockCap in either direction are DROPPED, never amended: a long
+         * accidental overlap chain must fall back to pre-amendment
+         * behaviour rather than rewrite a wide span. */
+        const recs = covered.slice().sort((a, b) => committed[a].startS - committed[b].startS);
+        const ws0 = settled.slice().sort((a, b) => a.startS - b.startS);
+        const cap = amend.blockCap ?? 4;
+        const wOf = new Int32Array(ws0.length).fill(-1);   // word → component
+        const rOf = new Int32Array(recs.length).fill(-1);  // record → component
+        let nComp = 0;
+        for (let i = 0; i < ws0.length; i++) {
+            for (let j = 0; j < recs.length; j++) {
+                if (ovWith(ws0[i], committed[recs[j]]) <= 0) continue;
+                const a = wOf[i], b = rOf[j];
+                if (a < 0 && b < 0) { wOf[i] = rOf[j] = nComp++; }
+                else if (a < 0) wOf[i] = b;
+                else if (b < 0) rOf[j] = a;
+                else if (a !== b) {                        // merge: chain through a shared span
+                    for (let k = 0; k < ws0.length; k++) if (wOf[k] === b) wOf[k] = a;
+                    for (let k = 0; k < recs.length; k++) if (rOf[k] === b) rOf[k] = a;
+                }
             }
-            if (best < 0) continue;
-            const c = committed[best];
-            const cDur = Math.max(c.endS, c.extEndS || 0) - c.startS;
-            if (cDur >= frameS) {                    // real spans keep the dominance bar
-                const minDur = Math.min(w.endS - w.startS, cDur);
-                if (bestOv < amend.minOverlapFrac * minDur) continue;
-            }
-            if (!byCi.has(best)) byCi.set(best, []);
-            byCi.get(best).push(w);
         }
-        for (const [ci, ws] of byCi) {
-            ws.sort((a, b) => a.startS - b.startS);
+        const blocks = new Map();                          // comp → {ws, cis}
+        for (let i = 0; i < ws0.length; i++) if (wOf[i] >= 0) (blocks.get(wOf[i]) ?? blocks.set(wOf[i], { ws: [], cis: [] }).get(wOf[i])).ws.push(ws0[i]);
+        for (let j = 0; j < recs.length; j++) if (rOf[j] >= 0) (blocks.get(rOf[j]) ?? blocks.set(rOf[j], { ws: [], cis: [] }).get(rOf[j])).cis.push(recs[j]);
+        const byCi = new Map();                            // first record of the block → {ws, cis}
+        for (const blk of blocks.values()) {
+            if (!blk.ws.length || !blk.cis.length) continue;
+            if (blk.ws.length > cap || blk.cis.length > cap) continue;   // refuse, don't guess
+            const wS = Math.min(...blk.ws.map((w) => w.startS)), wE = Math.max(...blk.ws.map((w) => w.endS));
+            const cS = Math.min(...blk.cis.map((ci) => committed[ci].startS));
+            const cE = Math.max(...blk.cis.map((ci) => Math.max(committed[ci].endS, committed[ci].extEndS || 0)));
+            const ov = Math.min(wE, cE) - Math.max(wS, cS);
+            const cDur = cE - cS;
+            if (cDur >= frameS) {                          // real spans keep the dominance bar
+                const minDur = Math.min(wE - wS, cDur);
+                if (ov < amend.minOverlapFrac * minDur) continue;
+            }
+            blk.cis.sort((a, b) => committed[a].startS - committed[b].startS);
+            byCi.set(blk.cis[0], blk);
+        }
+        for (const [ci, blk] of byCi) {
+            const ws = blk.ws.slice().sort((a, b) => a.startS - b.startS);
             const joined = ws.map((w) => norm(w.text)).join(" ");
             const c = committed[ci];
-            const effective = (c.amendTexts ?? [c.text]).map(norm).join(" ");
+            // a block's effective reading is every record in it, in time order
+            const effective = blk.cis
+                .flatMap((k) => committed[k].amendTexts ?? [committed[k].text])
+                .map(norm).filter(Boolean).join(" ");
             /* ACCUMULATIVE MAJORITY bar (2026-07-16, from the founder-clip
              * page-vs-lab divergence): window re-readings of a marginal
              * word flap non-consecutively (…منن، مان، منا، ما، منا…) and a
@@ -208,21 +257,48 @@ export function createStreamController({
              * both the current reading's reconfirmations and every rival.
              * A healthy commit keeps reconfirming (eff count grows) so
              * junk flaps can never outvote it. */
+            /* Tally keyed by the block's FIRST RECORD, never by its shape.
+             * The hypothesis identity is the READING TEXT (st.readings is
+             * keyed by it), and the shape rides along on the reading. Keying
+             * the tally by shape instead fragments it: block membership
+             * flaps step to step as neighbouring records enter and leave the
+             * window, so the correct reading kept restarting from zero while
+             * junk spellings accumulated (measured on the founder's منا —
+             * منا reached 2 sightings across two shapes and could never
+             * outvote a junk منن that had 2 on one). */
             let st = amendCand.get(ci);
-            if (!st) amendCand.set(ci, st = { eff: 0, readings: new Map() });
-            if (amend.trace) amend.trace({ at: chunkEnd, ci, text: c.text, span: [c.startS, c.endS], joined, effective, eff: st.eff, cands: [...st.readings.entries()].map(([k, v]) => `${k}:${v.count}`).join("|") });
-            if (joined === effective) { st.eff++; continue; }   // current reading reconfirmed
+            if (!st) amendCand.set(ci, st = { effOf: new Map(), readings: new Map() });
+            /* Reconfirmations are counted PER EFFECTIVE TEXT, not once per
+             * record. `eff` protects a healthy commit by making its own
+             * re-sightings outvote junk flaps — but a block that has grown
+             * covers a DIFFERENT span, whose combined reading has never been
+             * reconfirmed at all. Charging the block hypothesis for the
+             * single-record history is what let a stale sub-span tally veto a
+             * correct wide re-reading (the resync/junk-burst class). */
+            const eff = st.effOf.get(effective) || 0;
+            if (amend.trace) amend.trace({ at: chunkEnd, ci, cis: blk.cis, text: c.text, span: [c.startS, c.endS], joined, effective, eff, cands: [...st.readings.entries()].map(([k, v]) => `${k}:${v.count}`).join("|") });
+            if (joined === effective) { st.effOf.set(effective, eff + 1); continue; }   // reconfirmed
             let r = st.readings.get(joined);
             if (!r || Math.abs(r.firstStart - ws[0].startS) > 2 * frameS + 1e-6) {
                 st.readings.set(joined, r = { count: 0, firstStart: ws[0].startS });
             }
             r.count++;
             r.texts = ws.map((w) => w.text);
+            r.cis = blk.cis.slice();                   // shape to apply if this reading wins
             const rivals = [...st.readings.values()].filter((x) => x !== r).map((x) => x.count);
-            if (r.count >= amend.stability && r.count > st.eff && r.count > Math.max(0, ...rivals)) {
+            if (r.count >= amend.stability && r.count > eff && r.count > Math.max(0, ...rivals)) {
+                // the whole block's span now reads as `r.texts`: the first
+                // record carries the reading, the rest are ABSORBED (empty →
+                // fireReverdict emits nothing for them). committedEndS, dup
+                // suppression and the live pointer are untouched.
                 c.amendTexts = r.texts;
                 c.amendedAtS = chunkEnd;
-                amendCand.delete(ci);
+                for (const k of r.cis) {
+                    if (k === ci) continue;
+                    committed[k].amendTexts = [];
+                    committed[k].amendedAtS = chunkEnd;
+                }
+                for (const k of r.cis) amendCand.delete(k);
                 amendedAny = true;
                 reverdictNeeded = true;
             }
