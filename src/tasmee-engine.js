@@ -130,7 +130,36 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * True re-enables symmetric application (future repair layer /
          * strict mode — needs its own gate run before ever shipping). */
         amendApplyWorsen: false,
+        /* LENGTH-TIERED ACCEPTANCE (M2, 2026-07-19). `thMatch` alone cannot
+         * separate a real letter swap from ordinary ASR fuzz: one changed
+         * letter in a 6–8 letter skeleton scores 0.833–0.857, so θ=0.75
+         * forgave 3 of the founder's 7 deliberate swaps that the model had
+         * heard PERFECTLY. Measured over 474 correct reference words, the
+         * cost of tightening is wildly uneven by word length, so the
+         * threshold is tiered rather than raised globally:
+         *   ≤3 letters  exact — 0 false flags even at 1.00 (n=127). Short
+         *               words are always heard exactly or not at all.
+         *   4–5         unchanged — only 1 plant lives here and tightening
+         *               starts costing false flags immediately (n=226).
+         *   6–7         0.875 — 6 of the 7 letter plants live in this tier;
+         *               0.875 clears 0.857 (one swap in 7 letters) (n=84).
+         *   8+          unchanged — 5 false flags in only 10 words at 0.90.
+         *               NEVER tighten this tier.
+         * Applied ONLY where a token is accepted AS the expected word.
+         * Scanning thresholds (lookahead, behind-scan, ambiguity, shadow)
+         * stay at thMatch: tightening those changes omission and repetition
+         * dynamics, a different risk surface with no measured benefit.
+         * null ⇒ flat thMatch (the pre-M2 behaviour every fixture pins). */
+        thTiers: null,
         ...options,
+    };
+
+    /* Acceptance threshold for a REFERENCE word, by skeleton length. */
+    const thAccept = (form) => {
+        if (!opt.thTiers) return opt.thMatch;
+        const L = form ? form.length : 0;
+        for (const t of opt.thTiers) if (L <= t.maxLen) return t.th;
+        return opt.thMatch;
     };
 
     /* Reference sequence. `form` is the tasmee-words.json match form
@@ -313,7 +342,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             return;
         }
         const s1 = simAt(t, p);
-        if (s1 >= opt.thMatch) { reveal(p, "correct", { heard: t, sim: s1 }, tMs); advanceTo(p + 1, tMs); return; }
+        if (s1 >= thAccept(ref[p].form)) { reveal(p, "correct", { heard: t, sim: s1 }, tMs); advanceTo(p + 1, tMs); return; }
         if (allowAhead) {
             const ahead = bestAhead(t);
             if (ahead) { pendingOmit = { token: t, idx: ahead.idx }; return; }
@@ -483,7 +512,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * exactly continues an active re-recitation run, which keeps
          * priority (rule 2 consumes it). */
         const s1 = simAt(t, p);
-        if (s1 >= opt.thMatch) {
+        if (s1 >= thAccept(ref[p].form)) {
             const exactAtP = t === ref[p].form;
             const shadowExact = !!shadow && shadow.cursor < p && t === ref[shadow.cursor].form;
             if (exactAtP || !shadowExact) {

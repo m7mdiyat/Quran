@@ -198,6 +198,7 @@ async function decode(startS, endS) {
 /* ---------- run ---------- */
 const session = createTasmeeSession({
     words: ref,
+    options: TASMEE_LIVE.engine,     // config-of-record (length-tiered θ)
     onEvent: args.includes("--log-amends")
         ? (e) => { if (e.type === "amend") console.error(`[amend] ${e.vk}:${e.pos} ${e.from}→${e.to} heard=${e.heard} @${(e.t / 1000).toFixed(1)}s`); }
         : undefined,

@@ -78,7 +78,7 @@ export async function replayLiveTraced(clip, { controllerOverrides = {}, engineO
         // DEV: engine option overrides (e.g. {thMatch: 0.875}) so a strictness
         // change can be MEASURED through the real matcher rather than
         // estimated from a single run's similarity numbers. Default {} = live.
-        options: engineOptions,
+        options: { ...TASMEE_LIVE.engine, ...engineOptions },
     });
     const rawLog = [];
     const decode = makeOrtDecode(clip.pcm16k, rawLog);

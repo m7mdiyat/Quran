@@ -32,6 +32,19 @@ export const TASMEE_LIVE = {
          * at ~0.8–1.0, junk grazes fall below). */
         amend: { stability: 2, minOverlapFrac: 0.5 },
     },
+    /* ENGINE options — createTasmeeSession({options}). Single source of
+     * truth: the worker, the bench and the lab replay all spread this, so
+     * strictness cannot drift between the surface that ships and the
+     * surfaces that measure it. See tasmee-engine.js `thTiers` for the
+     * per-tier evidence behind each number. */
+    engine: {
+        thTiers: [
+            { maxLen: 3, th: 1.00 },      // exact — free (0 FF at 1.00, n=127)
+            { maxLen: 5, th: 0.75 },      // unchanged — tightening costs FF here
+            { maxLen: 7, th: 0.875 },     // 6 of 7 letter plants live in this tier
+            { maxLen: Infinity, th: 0.75 }, // NEVER tighten: 5 FF in 10 words at 0.90
+        ],
+    },
     /* UI negative-verdict deferral ("flag when sure, wait while unsure").
      * capS: murky-case hold before painting a flag — founder-47:4's
      * amendment landed 1.8 s after the bad commit, so 2.0 covers the

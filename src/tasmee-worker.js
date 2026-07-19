@@ -149,6 +149,7 @@ function setupLive(ref) {
     liveSession = createTasmeeSession({
         words: ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
         onEvent: (ev) => self.postMessage({ type: "event", event: ev }),
+        options: TASMEE_LIVE.engine,     // config-of-record (length-tiered θ)
     });
     // RAW ASR TRANSCRIPT — capture every token the model commits BEFORE the engine
     // matches it against the reference, so "what the model actually heard" is
