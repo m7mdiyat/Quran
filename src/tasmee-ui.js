@@ -30,6 +30,7 @@
 
 import { createTasmeeSession } from "./tasmee-engine.js";
 import { tasmeeNorm } from "./tasmee-norm.js";
+import { checkTashkeel } from "./tasmee-tashkeel.js";
 import { createMic } from "./tasmee-audio.js";
 import { TASMEE_LIVE } from "./tasmee-live-config.js";
 
@@ -80,7 +81,10 @@ async function buildRef(pageEl, pageData) {
             if (String(w.text || "")[0] === "#") continue;    // sajda glyph: span slot, not recited
             const form = DATASET?.verses?.[w.verse_key]?.[(w.position || 0) - 1] || tasmeeNorm(w.text || "");
             if (!form) continue;                              // no matchable form → drop from BOTH lists
-            ref.push({ vk: w.verse_key, pos: w.position || 0, span: spansFor(w.verse_key)[dom] || null, form });
+            // `vocal` = the mushaf's own diacritised text for this word — the
+            // canonical side of the M3 harakat check. No new fetch: it is already
+            // in the page data we render from.
+            ref.push({ vk: w.verse_key, pos: w.position || 0, span: spansFor(w.verse_key)[dom] || null, form, vocal: String(w.text || "") });
         }
     }
     return ref;
@@ -191,7 +195,7 @@ function addSkipLine(span) {
     span.appendChild(svg);
 }
 
-const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-ins", "ts-offer"];
+const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-ins", "ts-offer"];
 
 /* Strip every reveal artifact from a word: verdict classes AND the
  * insertion dot child. The dot is a real element (not a ::after) so
@@ -563,6 +567,47 @@ export function flushDeferred(paint = true) {
     _pendingNeg.clear(); _pendingIns.clear();
 }
 
+/* ---------- M3: the honest harakat check (OFF by default) ----------
+ * Reads ONLY what the model volunteered (see tasmee-tashkeel.js for the
+ * measured rationale and for the acoustic verifier that was built,
+ * measured and rejected). Three states, and it speaks in the same
+ * vocabulary as M1b: verified / mistake / couldn't-verify.
+ *
+ * Off by default because it is a strictness OPTION, not a correctness
+ * fix: with it off nothing about reveals changes at all. */
+const TASHKEEL_KEY = "m7_tasmee_tashkeel";
+let _tashkeelOn = (() => {
+    try { return localStorage.getItem(TASHKEEL_KEY) === "on"; } catch { return false; }
+})();
+export function tashkeelCheck(on) {
+    if (on === undefined) return _tashkeelOn;
+    _tashkeelOn = !!on;
+    try { localStorage.setItem(TASHKEEL_KEY, _tashkeelOn ? "on" : "off"); } catch { }
+    if (!_tashkeelOn && S) {
+        for (const r of S.ref) r.span && r.span.classList.remove("ts-tash-bad", "ts-tash-ok");
+    }
+    return _tashkeelOn;
+}
+
+/* Applied only to words whose LETTERS already matched — this checks
+ * vowels, never spelling. A mismatch is additive: the word keeps its
+ * correct reveal and gains a harakat marker, so turning the option on
+ * can never change whether a word counts as recited. */
+function applyTashkeel(idx, e) {
+    if (!_tashkeelOn || !S) return;
+    const r = S.ref[idx];
+    if (!r || !r.span || !r.vocal || !e.heardRaw) return;
+    const res = checkTashkeel(r.vocal, e.heardRaw);
+    r.span.classList.remove("ts-tash-bad", "ts-tash-ok");
+    if (res.state === "mismatch") {
+        r.span.classList.add("ts-tash-bad");
+        r.span.setAttribute("title", `الحركة: المتوقع ${res.expected} — المسموع ${res.got}`);
+    } else if (res.state === "match") {
+        r.span.classList.add("ts-tash-ok");
+    }
+    // "abstain" paints NOTHING: the model stayed silent, so we do too.
+}
+
 /* The seam every later piece drives. Consumes an engine event
  * (Piece 2+) or a scripted one (Piece 1). */
 export function applyEvent(e) {
@@ -574,6 +619,7 @@ export function applyEvent(e) {
             const p = _pendingNeg.get(e.idx);
             if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }
             paintReveal(e.idx, verdict, e);
+            if (verdict === "correct") applyTashkeel(e.idx, e);
         }
     } else if (e.type === "amend") {
         const p = _pendingNeg.get(e.idx);

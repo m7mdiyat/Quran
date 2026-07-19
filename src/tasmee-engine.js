@@ -175,6 +175,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     addWords(words || []);
 
     let p = 0;               // next expected word index
+    let curRaw = "";         // current token's pre-normalisation text (M3)
     let done = false;
     const events = [];
     const insertions = [];
@@ -216,7 +217,16 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     function reveal(idx, verdict, extra, tMs) {
         const w = ref[idx];
         w.verdict = verdict;
-        emit({ type: "reveal", t: tMs, idx, vk: w.vk, pos: w.pos, verdict, ...extra });
+        /* M3: carry the token's ORIGINAL, still-diacritised text alongside the
+         * normalised `heard`, so the harakat check has something to read (the
+         * matcher itself is diacritic-blind by design). Attached ONLY when the
+         * raw token still normalises to the revealed token — on deferred paths
+         * (omission corroboration, split-fragment joins) the current raw text
+         * belongs to a LATER token, and a wrong pairing would be worse than no
+         * check at all, so it is simply omitted and the check abstains. */
+        const ex = { ...extra };
+        if (ex.heard != null && curRaw && tasmeeNorm(curRaw) === ex.heard) ex.heardRaw = curRaw;
+        emit({ type: "reveal", t: tMs, idx, vk: w.vk, pos: w.pos, verdict, ...ex });
         if (lastOfAyah(idx)) emit({ type: "ayah_completed", t: tMs, vk: w.vk });
         lastActivityTs = tMs;
         hesitationArmed = true;
@@ -677,6 +687,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     return {
         feedToken(rawToken, tMs = 0) {
             if (done) return;
+            curRaw = String(rawToken || "");
             const t = tasmeeNorm(rawToken);
             if (!t) return;
             lastActivityTs = tMs;

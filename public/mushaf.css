@@ -4757,6 +4757,10 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
     --ts-glow-a: rgba(255, 200, 90, 0.55);  /* help-cloud radial blob (gold) */
     --ts-glow-b: rgba(250, 170, 60, 0.4);
     --ts-ins: #c0392b;                     /* insertion dot */
+    --ts-tash-bad: #8e44ad;                /* violet — the LETTERS were right,
+                                              the vowel was not. Deliberately
+                                              outside the mistake palette: a
+                                              harakat slip is its own class. */
     --ts-unverified: #7a8794;              /* muted slate — "couldn't verify".
                                               Deliberately NOT in the mistake
                                               palette and NOT normal ink: the
@@ -4766,6 +4770,7 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
 }
 body.dark .mushaf-page--tasmee {
     --ts-unverified: #93a1b0;
+    --ts-tash-bad: #c98bdd;
     --ts-err: #ff8a8a;
     --ts-hint: #ffd24a;
     --ts-glow-a: rgba(255, 214, 120, 0.6);
@@ -4837,6 +4842,14 @@ body.dark .mushaf-page--tasmee {
    marker of any kind, because no mistake is being claimed. Colour only,
    so it cannot move a glyph (same zero-reflow contract as every reveal). */
 .mushaf-page--tasmee .mushaf-word.ts-unverified { color: var(--ts-unverified); opacity: 0.85; }
+
+/* M3 harakat check (opt-in). ADDITIVE to the verdict colour — the word is
+   still correctly recited, its VOWEL is what differs — so this rides as a
+   tint, never as a mistake colour, and paints nothing at all when the
+   model stayed silent. Colour only: zero reflow, same contract as every
+   other reveal. */
+.mushaf-page--tasmee .mushaf-word.ts-tash-bad { color: var(--ts-tash-bad); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-tash-bad { -webkit-text-stroke-color: var(--ts-tash-bad); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-sub,
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-skip { -webkit-text-stroke-color: var(--ts-err); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-hint { -webkit-text-stroke-color: var(--ts-hint); }
