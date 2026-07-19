@@ -4749,14 +4749,29 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
    only, never layout. Colours are tuned per theme via custom props.
    ═══════════════════════════════════════════════════════════ */
 .mushaf-page--tasmee {
-    --ts-err: #c0392b;                     /* BOTH mistakes are red — a skip is
-                                              as wrong as a substitution. Told
-                                              apart by an underline DROPPED below
-                                              the glyph, never a line through it. */
+    /* M4 colour language. The two mistake classes are now told apart by
+       COLOUR rather than by an added marker, which frees the calligraphy
+       from any drawn line:
+         RED    — something MISSING (a skipped word)
+         ORANGE — something WRONG SAID (a substituted word, and the
+                  insertion dot: an extra word that isn't in the text)
+         GREEN  — where you are now, and a word you re-recited
+       Red stays reserved for omission so the most severe class keeps the
+       most alarming colour. */
+    --ts-err: #c0392b;                     /* legacy alias (skip) */
+    --ts-skip: #c0392b;                    /* red — word omitted */
+    --ts-sub: #d97a1a;                     /* orange — wrong word said */
+    --ts-cur: rgba(46, 160, 90, 0.20);     /* green wash — the word you're on */
+    --ts-cur-edge: rgba(46, 160, 90, 0.55);
+    --ts-rep: rgba(46, 160, 90, 0.34);     /* green — re-recitation, NOT a mistake */
     --ts-hint: #a5791a;                    /* gold — a hint is NOT a mistake */
     --ts-glow-a: rgba(255, 200, 90, 0.55);  /* help-cloud radial blob (gold) */
     --ts-glow-b: rgba(250, 170, 60, 0.4);
-    --ts-ins: #c0392b;                     /* insertion dot */
+    --ts-ins: #d97a1a;                     /* insertion dot — an EXTRA word was
+                                              said here; orange, same family as
+                                              a substitution (both are "what you
+                                              said was wrong"), never red (red
+                                              means something is missing). */
     --ts-tash-bad: #8e44ad;                /* violet — the LETTERS were right,
                                               the vowel was not. Deliberately
                                               outside the mistake palette: a
@@ -4772,10 +4787,15 @@ body.dark .mushaf-page--tasmee {
     --ts-unverified: #93a1b0;
     --ts-tash-bad: #c98bdd;
     --ts-err: #ff8a8a;
+    --ts-skip: #ff8a8a;
+    --ts-sub: #ffb066;
+    --ts-cur: rgba(80, 220, 140, 0.22);
+    --ts-cur-edge: rgba(80, 220, 140, 0.6);
+    --ts-rep: rgba(80, 220, 140, 0.38);
     --ts-hint: #ffd24a;
     --ts-glow-a: rgba(255, 214, 120, 0.6);
     --ts-glow-b: rgba(255, 185, 80, 0.45);
-    --ts-ins: #ff8a8a;
+    --ts-ins: #ffb066;
 }
 
 /* Calm fade to hidden when the session starts — colour only, so it can
@@ -4826,7 +4846,54 @@ body.dark .mushaf-page--tasmee {
    unchanged by position:relative → zero layout shift. An OFFERED word is
    still hidden (not .ts-r), so it needs anchoring too. */
 .mushaf-page--tasmee .mushaf-word.ts-r,
+.mushaf-page--tasmee .mushaf-word.ts-cur,
+.mushaf-page--tasmee .mushaf-word.ts-rep,
 .mushaf-page--tasmee .mushaf-word.ts-offer { position: relative; }
+
+/* CURRENT WORD + RE-RECITATION FLASH (M4). Both ride on a CHILD <i>, never
+   on the word itself: a registered custom property on a gharib word freezes
+   its transitions, so no time-based CSS may ever touch the word element.
+   The box is absolutely positioned with NEGATIVE insets so it reserves for
+   QCF4's calligraphic tail overhang (~1.6em past the glyph box) instead of
+   cutting it — an absolute child changes no layout, so this stays zero
+   reflow. It is a BACKGROUND WASH, never a colour on the glyph: the word is
+   still hidden, and painting its ink would leak the text (A2). */
+.mushaf-page--tasmee .ts-cur-box {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: -0.22em;
+    height: 0.08em;
+    min-height: 2px;
+    border-radius: 1em;
+    background: var(--ts-cur-edge);
+    pointer-events: none;
+}
+/* A REVEALED word has visible ink, so a re-recitation gets a soft wash over
+   the glyph — a highlighter, not a backdrop. NOTE: z-index:-1 was tried and
+   is invisible here, because the mushaf line paints a background and a
+   negative-z child drops behind it. Painting OVER at low alpha is both
+   robust and the correct metaphor. Plain background on an absolute child:
+   it cannot clip the calligraphic tail (only filters and promoted layers
+   do that) and it cannot move anything. */
+.mushaf-page--tasmee .ts-rep .ts-cur-box {
+    /* explicit edges, NOT `inset` + left/right:auto — that combination
+       removes the horizontal anchoring and collapses the box to zero width
+       (it renders, measures as 0×N, and is simply never seen). */
+    left: -0.2em; right: -0.2em; top: -0.08em; bottom: -0.16em;
+    height: auto;
+    min-height: 0;
+    border-radius: 0.28em;
+    background: var(--ts-rep);
+    animation: tsRepFlash 1.6s ease-out 1;
+}
+@keyframes tsRepFlash {
+    0% { opacity: 0; }
+    18% { opacity: 1; }
+    100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .mushaf-page--tasmee .ts-rep .ts-cur-box { animation: none; opacity: 1; }
+}
 
 /* Reveals. Correct = .ts-r only → inherits the page's normal ink. Both
    MISTAKES are red (EQUAL severity); they are told apart by a
@@ -4835,8 +4902,8 @@ body.dark .mushaf-page--tasmee {
      substitution — red glyph (a wrong word was said).
      skip         — red glyph + a red dotted underline dropped BELOW the
                     glyph (word omitted). */
-.mushaf-page--tasmee .mushaf-word.ts-sub,
-.mushaf-page--tasmee .mushaf-word.ts-skip { color: var(--ts-err); }
+.mushaf-page--tasmee .mushaf-word.ts-sub { color: var(--ts-sub); }
+.mushaf-page--tasmee .mushaf-word.ts-skip { color: var(--ts-skip); }
 .mushaf-page--tasmee .mushaf-word.ts-hint { color: var(--ts-hint); }
 /* Unverified: muted ink + a dotted UNDERLINE-less treatment — no mistake
    marker of any kind, because no mistake is being claimed. Colour only,
@@ -4850,8 +4917,8 @@ body.dark .mushaf-page--tasmee {
    other reveal. */
 .mushaf-page--tasmee .mushaf-word.ts-tash-bad { color: var(--ts-tash-bad); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-tash-bad { -webkit-text-stroke-color: var(--ts-tash-bad); }
-html.is-app .mushaf-page--tasmee .mushaf-word.ts-sub,
-html.is-app .mushaf-page--tasmee .mushaf-word.ts-skip { -webkit-text-stroke-color: var(--ts-err); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-sub { -webkit-text-stroke-color: var(--ts-sub); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-skip { -webkit-text-stroke-color: var(--ts-skip); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-hint { -webkit-text-stroke-color: var(--ts-hint); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-unverified { -webkit-text-stroke-color: var(--ts-unverified); }
 

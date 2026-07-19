@@ -195,7 +195,7 @@ function addSkipLine(span) {
     span.appendChild(svg);
 }
 
-const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-ins", "ts-offer"];
+const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-cur", "ts-rep", "ts-ins", "ts-offer"];
 
 /* Strip every reveal artifact from a word: verdict classes AND the
  * insertion dot child. The dot is a real element (not a ::after) so
@@ -205,13 +205,16 @@ const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-u
 function clearWord(span) {
     if (!span) return;
     span.classList.remove(...ALL_CLASSES);
-    span.querySelectorAll(":scope > .ts-ins-dot, :scope > .ts-cloud, :scope > .ts-skip-line")
+    span.querySelectorAll(":scope > .ts-ins-dot, :scope > .ts-cloud, :scope > .ts-skip-line, :scope > .ts-cur-box")
         .forEach((n) => n.remove());
 }
 
 /* Leave tasmee mode: strip every reveal and the mode classes,
  * restoring the page to its normal rendered state. */
 export function exit() {
+    _curIdx = -1;
+    for (const t of _repTimers.values()) clearTimeout(t);
+    _repTimers.clear();
     if (!S) return;
     stopMic();                       // release the mic + tear down the meter
     _killWorker();                   // drop the worker so re-entering re-arms on the new page's ref
@@ -523,7 +526,10 @@ function paintReveal(idx, verdict, extra = {}) {
     for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified"]) span.classList.remove(c);
     span.querySelector(":scope > .ts-skip-line")?.remove();
     span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
-    if (verdict === "skipped") addSkipLine(span);             // drawn dotted underline
+    // M4: a skip is now carried by RED ink alone. The drawn dotted underline
+    // is gone — with skip red and substitution orange the two classes are
+    // already distinct, and dropping the child SVG removes the only reveal
+    // artifact that had to be measured and positioned per glyph.
     if (verdict === "hinted") {
         resolveCloud(cloud || makeCloud(span), "bloom", 1350);
     } else if (verdict === "correct" && cloud) {
@@ -531,6 +537,11 @@ function paintReveal(idx, verdict, extra = {}) {
     } else if (cloud) {
         resolveCloud(cloud, "out", 460);
     }
+    // Negative verdicts paint on a DELAY (flagDefer), so the frontier can
+    // have been sitting on this word while it was still unpainted. Re-derive
+    // the "you are here" wash once the paint lands, or it strands on a word
+    // that has just been resolved.
+    setCurrent(nextExpectedIdx());
 }
 
 function paintInsertion(idx) {
@@ -565,6 +576,53 @@ export function flushDeferred(paint = true) {
     for (const [idx, p] of _pendingNeg) { clearTimeout(p.timer); if (paint) paintReveal(idx, p.verdict, p.extra); }
     for (const [idx, p] of _pendingIns) { clearTimeout(p.timer); if (paint) paintInsertion(idx); }
     _pendingNeg.clear(); _pendingIns.clear();
+}
+
+/* ---------- M4: current-word + re-recitation highlights ----------
+ * Both are BACKGROUND washes on a child <i>, never ink on the word: an
+ * unrevealed word is transparent by the hide rule, and colouring its glyph
+ * would leak the text (A2). The child also keeps every time-based style off
+ * the word element itself, which the gharib freeze rule requires. */
+function curBox(span) {
+    let b = span.querySelector(":scope > .ts-cur-box");
+    if (!b) {
+        b = document.createElement("i");
+        b.className = "ts-cur-box";
+        b.setAttribute("aria-hidden", "true");
+        span.appendChild(b);
+    }
+    return b;
+}
+let _curIdx = -1;
+function setCurrent(idx) {
+    if (!S || idx === _curIdx) return;
+    const prev = S.ref[_curIdx];
+    if (prev && prev.span) {
+        prev.span.classList.remove("ts-cur");
+        if (!prev.span.classList.contains("ts-rep")) prev.span.querySelector(":scope > .ts-cur-box")?.remove();
+    }
+    _curIdx = idx;
+    const r = S.ref[idx];
+    if (r && r.span) { r.span.classList.add("ts-cur"); curBox(r.span); }
+}
+/* Re-recitation is NOT a mistake (the engine's core invariant): the earlier
+ * occurrence flashes green and nothing is ever flagged. */
+const _repTimers = new Map();
+function flashRepeat(idx) {
+    if (!S) return;
+    const r = S.ref[idx];
+    if (!r || !r.span) return;
+    clearTimeout(_repTimers.get(idx));
+    r.span.classList.add("ts-rep");
+    const box = curBox(r.span);
+    box.style.animation = "none";
+    void box.offsetWidth;               // restart the child's animation
+    box.style.animation = "";
+    _repTimers.set(idx, setTimeout(() => {
+        _repTimers.delete(idx);
+        r.span.classList.remove("ts-rep");
+        if (!r.span.classList.contains("ts-cur")) r.span.querySelector(":scope > .ts-cur-box")?.remove();
+    }, 1700));
 }
 
 /* ---------- M3: the honest harakat check (OFF by default) ----------
@@ -651,11 +709,17 @@ export function applyEvent(e) {
         for (const [idx, p] of _pendingIns) {
             if (!now.has(`${idx}|${p.heardNorm}`)) { clearTimeout(p.timer); _pendingIns.delete(idx); }
         }
+    } else if (e.type === "repetition") {
+        flashRepeat(e.idx);
     } else if (e.type === "hesitation" || e.type === "hint_offer") {
         // Both engine offer signals (long pause / repeated stuck attempts)
         // OFFER a hint — a gentle pulse, never a forced reveal (§4).
         offerHint(e.idx);
     }
+    // M4: the green "you are here" wash follows the frontier after ANY event
+    // that can move it. Cheap and idempotent — setCurrent() no-ops when the
+    // index has not changed, so this never repaints on unrelated events.
+    setCurrent(nextExpectedIdx());
 }
 
 /* Index of the next word still hidden (the current expected position in
@@ -789,6 +853,7 @@ export function finish() {
  * starts from pointer 0 (stays in the mode). */
 export function _reset() {
     if (!S) return;
+    _curIdx = -1;
     for (const r of S.ref) clearWord(r.span);
     S.offered.clear();
     S.clock = 0;
