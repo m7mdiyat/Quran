@@ -191,7 +191,7 @@ function addSkipLine(span) {
     span.appendChild(svg);
 }
 
-const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-ins", "ts-offer"];
+const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-ins", "ts-offer"];
 
 /* Strip every reveal artifact from a word: verdict classes AND the
  * insertion dot child. The dot is a real element (not a ::after) so
@@ -491,6 +491,8 @@ function onSessionStopped() { flushDeferred(true); }
 
 const VERDICT_CLASS = {
     correct: "ts-correct", substituted: "ts-sub", skipped: "ts-skip", hinted: "ts-hint",
+    // M1b: the model could not settle this span — say so, never imply a verdict
+    unverified: "ts-unverified",
 };
 
 /* ---------- deferred negative-verdict painting (amendment channel,
@@ -514,7 +516,7 @@ function paintReveal(idx, verdict, extra = {}) {
     const span = r.span, cloud = cloudOf(span);   // a cloud here ⇒ word was offered
     span.classList.remove("ts-offer");
     // amendment repaint: drop a previous verdict class first
-    for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint"]) span.classList.remove(c);
+    for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified"]) span.classList.remove(c);
     span.querySelector(":scope > .ts-skip-line")?.remove();
     span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
     if (verdict === "skipped") addSkipLine(span);             // drawn dotted underline
@@ -575,14 +577,17 @@ export function applyEvent(e) {
         }
     } else if (e.type === "amend") {
         const p = _pendingNeg.get(e.idx);
-        if (e.to === "correct") {
+        // `unverified` is a DE-ESCALATION (a flag withdrawn for want of
+        // evidence), so it cancels any held negative and paints at once —
+        // the same treatment `correct` gets, never the negative guard.
+        if (e.to === "correct" || e.to === "unverified") {
             if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }
             if (_isPainted(e.idx, true)) {
                 // outside-cap improve — allowed but expected NEVER on test
                 // clips (cap covers the measured amendment lag); observable.
                 console.warn(`[tasmee] late amend past flag cap (idx ${e.idx}) — visible unflag`);
             }
-            paintReveal(e.idx, "correct", e);
+            paintReveal(e.idx, e.to, e);
         } else if (e.to === "substituted" || e.to === "skipped") {
             // went through amendment stability already → short guard only
             if (p) { clearTimeout(p.timer); _pendingNeg.delete(e.idx); }

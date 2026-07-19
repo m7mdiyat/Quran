@@ -4757,8 +4757,15 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
     --ts-glow-a: rgba(255, 200, 90, 0.55);  /* help-cloud radial blob (gold) */
     --ts-glow-b: rgba(250, 170, 60, 0.4);
     --ts-ins: #c0392b;                     /* insertion dot */
+    --ts-unverified: #7a8794;              /* muted slate — "couldn't verify".
+                                              Deliberately NOT in the mistake
+                                              palette and NOT normal ink: the
+                                              model contradicted itself here, so
+                                              the page states uncertainty rather
+                                              than asserting either way. */
 }
 body.dark .mushaf-page--tasmee {
+    --ts-unverified: #93a1b0;
     --ts-err: #ff8a8a;
     --ts-hint: #ffd24a;
     --ts-glow-a: rgba(255, 214, 120, 0.6);
@@ -4826,9 +4833,14 @@ body.dark .mushaf-page--tasmee {
 .mushaf-page--tasmee .mushaf-word.ts-sub,
 .mushaf-page--tasmee .mushaf-word.ts-skip { color: var(--ts-err); }
 .mushaf-page--tasmee .mushaf-word.ts-hint { color: var(--ts-hint); }
+/* Unverified: muted ink + a dotted UNDERLINE-less treatment — no mistake
+   marker of any kind, because no mistake is being claimed. Colour only,
+   so it cannot move a glyph (same zero-reflow contract as every reveal). */
+.mushaf-page--tasmee .mushaf-word.ts-unverified { color: var(--ts-unverified); opacity: 0.85; }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-sub,
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-skip { -webkit-text-stroke-color: var(--ts-err); }
 html.is-app .mushaf-page--tasmee .mushaf-word.ts-hint { -webkit-text-stroke-color: var(--ts-hint); }
+html.is-app .mushaf-page--tasmee .mushaf-word.ts-unverified { -webkit-text-stroke-color: var(--ts-unverified); }
 
 /* Skip = a DRAWN dotted underline (child SVG .ts-skip-line), positioned by
    JS just below THAT word's real ink extent (canvas-measured per word) so

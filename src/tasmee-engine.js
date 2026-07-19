@@ -734,7 +734,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         },
 
         summary() {
-            const counts = { correct: 0, substituted: 0, skipped: 0, hinted: 0, insertions: 0, repetitions: 0, hesitations: 0 };
+            const counts = { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0, insertions: 0, repetitions: 0, hesitations: 0 };
             const perAyah = {};
             /* Word verdicts count by FINAL state per word (a Map replayed
              * from the event stream): an amendment moving a verdict — or an
@@ -754,12 +754,13 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 }
             }
             for (const { verdict, vk } of byIdx.values()) {
-                counts[verdict === "correct" ? "correct"
-                    : verdict === "substituted" ? "substituted"
-                        : verdict === "skipped" ? "skipped" : "hinted"]++;
-                const a = (perAyah[vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0 });
+                counts[["correct", "substituted", "skipped", "unverified"].includes(verdict) ? verdict : "hinted"]++;
+                const a = (perAyah[vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0 });
                 a[verdict]++;
             }
+            // `unverified` is deliberately OUTSIDE attempted/accuracy: it is an
+            // abstention, not a graded outcome — averaging it in either
+            // direction would state a confidence the evidence does not carry.
             const attempted = counts.correct + counts.substituted + counts.skipped + counts.hinted;
             return {
                 counts,
@@ -796,18 +797,51 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 basmala, options,
             });
             let last = 0;
+            /* UNVERIFIED ATTRIBUTION (M1b). A token the controller marked
+             * unverified covers a span whose re-readings never agreed; the
+             * question is which reference words its uncertainty reaches.
+             * Token adjacency is NOT enough: an omission is only revealed
+             * once a LATER token corroborates the jump (§"OMISSIONS always
+             * need corroboration"), so the founder's منا is skipped two
+             * tokens after the unsettled من. Attribution is therefore
+             * POSITIONAL — open a window at the reference position the
+             * pointer had reached when the unverified token arrived, mark
+             * the negative verdicts revealed inside it, and close on the
+             * first CORRECT reveal past its start (evidence has resumed).
+             * Capped so one unsettled span can never blanket a passage. */
+            const unverifiedIdx = new Set();
+            const WINDOW_CAP = 3;
+            let seen = 0, maxRevealed = -1, win = null;
+            const scan = (from, to) => {
+                const evs = shadow.getEvents();
+                for (let j = from; j < to; j++) {
+                    const e = evs[j];
+                    if (e.type !== "reveal") continue;
+                    if (win && e.idx >= win.start) {
+                        if (e.verdict === "skipped" || e.verdict === "substituted") {
+                            if (unverifiedIdx.size - win.base < WINDOW_CAP) unverifiedIdx.add(e.idx);
+                        } else if (e.verdict === "correct" && e.idx > win.start) win = null;
+                    }
+                    if (e.idx > maxRevealed) maxRevealed = e.idx;
+                }
+            };
             for (const tk of tokens) {
                 const t = tk.tMs ?? last + 500;
+                if (tk.unverified && !win) win = { start: maxRevealed + 1, base: unverifiedIdx.size };
                 shadow.feedToken(tk.text, t);
+                const n = shadow.getEvents().length;
+                scan(seen, n);
+                seen = n;
                 if (t > last) last = t;
             }
             shadow.stop(last + 1500);
+            scan(seen, shadow.getEvents().length);   // end-of-session flush reveals
             const heard = new Map(), insertions = [];
             for (const e of shadow.getEvents()) {
                 if (e.type === "reveal") heard.set(e.idx, e.heard);
                 else if (e.type === "insertion") insertions.push({ idx: e.idx, heard: e.heard });
             }
-            return { words: shadow.getWords(), heard, insertions };
+            return { words: shadow.getWords(), heard, insertions, unverifiedIdx };
         },
 
         /* Diff a shadow re-verdict against the live state and emit
@@ -825,10 +859,18 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             const changes = [];
             let unsupported = 0;
             for (let i = 0; i < ref.length; i++) {
-                const cur = ref[i].verdict, nv = sh.words[i] && sh.words[i].verdict;
+                const cur = ref[i].verdict;
+                let nv = sh.words[i] && sh.words[i].verdict;
+                /* M1b: a negative verdict the model could not settle is
+                 * reported as UNVERIFIED rather than asserted as a mistake.
+                 * Downgrade-only — it can never turn a correct word negative,
+                 * and it never manufactures a positive one either. */
+                if (sh.unverifiedIdx && sh.unverifiedIdx.has(i) &&
+                    (nv === "skipped" || nv === "substituted")) nv = "unverified";
                 if (cur === "hinted") continue;
                 if (!nv) { if (cur) unsupported++; continue; }
                 if (nv === cur) continue;
+                if (nv === "unverified" && cur === "correct") continue;   // never downgrade a correct word
                 // WORSENING (correct or unrevealed → flagged): apply only in
                 // strict mode; otherwise record as evidence (diagnostics /
                 // future repair layer) without touching the verdict.

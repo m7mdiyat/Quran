@@ -316,3 +316,55 @@ test("summary counts move with amendments", async () => {
     assert.equal(s.counts.correct, ref.length, "all words correct after amendment");
     assert.equal(s.counts.substituted + s.counts.skipped, 0);
 });
+
+/* ── 12. DISAGREEMENT ⇒ UNVERIFIED (M1b, 2026-07-19).
+ * The founder's منا signature: a committed span whose later re-readings
+ * contradict BOTH the commit and each other — several DISTINCT spellings,
+ * none repeating, the committed text never re-appearing. Nothing can be
+ * amended (no reading reaches the stability bar) but asserting a mistake on
+ * self-contradicting evidence is equally unsupported, so the negative
+ * verdict is SUPPRESSED and reported as `unverified`. No reading is ever
+ * selected and the reference is never consulted. */
+test("persistent disagreement suppresses the flag → unverified, not skipped", async () => {
+    const ref = [W("47:4", 12, "فاما"), W("47:4", 13, "منا"), W("47:4", 14, "بعد"),
+                 W("47:4", 15, "واما"), W("47:4", 16, "فدا"), W("47:4", 17, "حتي")];
+    const base = (mid) => [
+        { text: "فاما", startS: 0.5, endS: 1.0 },
+        ...(mid ? [{ text: mid, startS: 1.2, endS: 1.6 }] : []),
+        { text: "بعد", startS: 1.7, endS: 2.1 },
+        { text: "واما", startS: 2.4, endS: 2.8 },
+        { text: "فدا", startS: 3.0, endS: 3.5 },
+        { text: "حتي", startS: 3.8, endS: 4.3 },
+    ];
+    const { events, words } = await run(ref, [
+        { fromEnd: 0, words: base("من") },      // commits as a mis-split «من»
+        { fromEnd: 2.4, words: base("منن") },   // …then distinct re-readings,
+        { fromEnd: 2.7, words: base("مان") },   //    none of them twice
+        { fromEnd: 3.0, words: base("منا") },
+        { fromEnd: 3.3, words: base(null) },    // and finally nothing at all
+    ], { untilS: 5.4 });
+    assert.equal(verdictOf(words, "47:4", 13), "unverified",
+        "منا reported unverified rather than asserted as skipped");
+    // it was flagged first (live), then suppressed — never silently correct
+    const first = events.find((e) => e.type === "reveal" && e.pos === 13);
+    assert.ok(first && first.verdict !== "correct", `first reveal was a flag (${first?.verdict})`);
+    // no reading was adopted: the committed record keeps its own text
+    assert.ok(!amendsOf(events).some((e) => e.pos === 13 && e.to === "correct"),
+        "no reading was selected as a correction");
+});
+
+/* ── 13. RECALL GUARD (the non-negotiable half of #12): a REAL mistake the
+ * model hears CONSISTENTLY keeps reconfirming its own commit, so the
+ * disagreement criterion never fires and the flag stands. This is what
+ * stops "unverified" from becoming a leniency channel. */
+test("consistently-heard wrong word stays flagged (never softened to unverified)", async () => {
+    const ref = [W("2:32", 1, "قال"), W("2:32", 2, "الحكيم"), W("2:32", 3, "تنزيل")];
+    const words0 = [
+        { text: "قال", startS: 0.4, endS: 0.8 },
+        { text: "العليم", startS: 1.0, endS: 1.5 },   // sim 0.667 → substitution range, heard identically every time
+        { text: "تنزيل", startS: 1.8, endS: 2.3 },
+    ];
+    const { words } = await run(ref, [{ fromEnd: 0, words: words0 }], { untilS: 4.2 });
+    assert.equal(verdictOf(words, "2:32", 2), "substituted",
+        "a stably-misheard word keeps its flag");
+});

@@ -305,6 +305,48 @@ export function createStreamController({
         }
     }
 
+    /* ---------- disagreement ⇒ UNVERIFIED (M1b, 2026-07-19) ----------
+     * Some spans the model simply cannot settle. The founder's منا is the
+     * signature case: five re-readings over the horizon, FIVE DISTINCT
+     * spellings (منان بعدد / منن / مان / منا / ما), the correct one
+     * appearing exactly once and never repeating, and the committed text
+     * itself never re-appearing. The stability bar rightly refuses to amend
+     * — but asserting "you skipped this" on evidence that self-contradicts
+     * five ways is a claim the data does not support either.
+     *
+     * So when a span's re-readings persistently contradict BOTH the commit
+     * and each other, its negative verdict is SUPPRESSED and reported as
+     * unverified. Nothing is invented: no reading is selected, the
+     * reference is never consulted, the commit gate is untouched. The
+     * criterion is exactly the observed signature:
+     *   · the committed text was never CONFIRMED — its own re-sightings
+     *     never reached the same bar an amendment must clear. A healthy
+     *     word (and a real mistake the model hears consistently) keeps
+     *     re-reading as itself and sails past this, which is what stops
+     *     `unverified` from becoming a leniency channel;
+     *   · no reading ever reached the stability bar (else it would have
+     *     amended);
+     *   · at least `disagreeMin` DISTINCT contradicting readings — one or
+     *     two flaps are ordinary CTC noise, not irreducible disagreement.
+     * Evaluated when the anchor passes the span (horizon close), so a span
+     * still accumulating evidence is never prematurely written off. */
+    function finalizeAmendCands(force = false) {
+        for (const [ci, st] of amendCand) {
+            const c = committed[ci];
+            if (!c) { amendCand.delete(ci); continue; }
+            const cEnd = Math.max(c.endS, c.extEndS || 0);
+            if (!force && cEnd >= anchorS) continue;         // horizon still open
+            const counts = [...st.readings.values()].map((r) => r.count);
+            const effMax = Math.max(0, ...st.effOf.values());
+            if (effMax < amend.stability && counts.length >= (amend.disagreeMin ?? 3) &&
+                Math.max(0, ...counts) < amend.stability) {
+                c.unverified = true;
+                reverdictNeeded = true;
+            }
+            amendCand.delete(ci);
+        }
+    }
+
     /* Re-derive verdicts from the full effective (amended) transcript.
      * Formed ONLY from decode outputs; feeds the SHADOW session, never
      * the live one (repetition tolerance and pointer state untouched). */
@@ -313,7 +355,7 @@ export function createStreamController({
         const tokens = [];
         for (const c of committed) {
             for (const t of (c.amendTexts ?? [c.text])) {
-                tokens.push({ text: t, tMs: Math.round(c.endS * 1000) });
+                tokens.push({ text: t, tMs: Math.round(c.endS * 1000), unverified: !!c.unverified });
             }
         }
         session.applyReverdict(tokens, Math.round(chunkEnd * 1000));
@@ -437,7 +479,7 @@ export function createStreamController({
                 commitWord(pending[i], chunkEnd, Math.max(pending[i].endS, prevPending[i]?.endS ?? 0));
             }
             prevPending = pending.slice(commitN);
-            if (amend && mode === "incremental") trackAmend(words, chunkEnd);
+            if (amend && mode === "incremental") { trackAmend(words, chunkEnd); finalizeAmendCands(); }
             if (reverdictNeeded) { reverdictNeeded = false; fireReverdict(chunkEnd); }
             if (debug) debug(chunkEnd, commitN, pending, anchorS);
         },
@@ -454,6 +496,7 @@ export function createStreamController({
                 commitWord(heldTail, loopEndS);
             }
             prevPending = [];
+            if (amend) finalizeAmendCands(true);   // end of stream: every horizon closes
             if (reverdictNeeded) { reverdictNeeded = false; fireReverdict(loopEndS); }
         },
 
