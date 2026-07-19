@@ -70,11 +70,15 @@ export function makeOrtDecode(pcm16k, rawLog = null) {
 /* Live-faithful replay. `controllerOverrides` lets a caller flip
  * controller options (e.g. {amend:null} for a pre-amendment baseline) —
  * default = the exact live config. */
-export async function replayLiveTraced(clip, { controllerOverrides = {} } = {}) {
+export async function replayLiveTraced(clip, { controllerOverrides = {}, engineOptions = {} } = {}) {
     const events = [];
     const session = createTasmeeSession({
         words: clip.ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
         onEvent: (e) => events.push(e),
+        // DEV: engine option overrides (e.g. {thMatch: 0.875}) so a strictness
+        // change can be MEASURED through the real matcher rather than
+        // estimated from a single run's similarity numbers. Default {} = live.
+        options: engineOptions,
     });
     const rawLog = [];
     const decode = makeOrtDecode(clip.pcm16k, rawLog);
@@ -144,10 +148,10 @@ export function scoreVerdicts(clip, words, events) {
 }
 
 /* High-level: live-faithful scoring of a stored clip. */
-export async function scoreLiveClip(clipId, { controllerOverrides = {} } = {}) {
+export async function scoreLiveClip(clipId, { controllerOverrides = {}, engineOptions = {} } = {}) {
     const clip = await getClip(clipId);
     if (!clip) throw new Error(`no clip ${clipId}`);
-    const rep = await replayLiveTraced(clip, { controllerOverrides });
+    const rep = await replayLiveTraced(clip, { controllerOverrides, engineOptions });
     const score = scoreVerdicts(clip, rep.words, rep.events);
     return { clip, rep, score };
 }
