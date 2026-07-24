@@ -52,8 +52,12 @@ const argVal = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] :
 const MODEL_PATH = argVal("--model") || path.join(ROOT, "models", "tasmee", "fastconformer_ar_ctc_q8pc-head.onnx");
 const VOCAB_PATH = path.join(path.dirname(MODEL_PATH), "vocab.json");
 
-/* Streaming parameters (mirrored by the harness worker). */
-const CHUNK_S = 0.3, WINDOW_S = 15, TAIL_PAD_S = 1.2, CONTEXT_S = 1.0, HOLDBACK_S = 0.3, FRAME_S = 0.08;
+/* Streaming parameters (mirrored by the harness worker).
+ * DEV SWEEP HOOK: TASMEE_OVERRIDE='{"chunkS":0.15,"holdbackS":0.2,"tailGuard":false}'
+ * overrides them for latency/accuracy sweeps. Absent ⇒ shipped values. */
+const OV = process.env.TASMEE_OVERRIDE ? JSON.parse(process.env.TASMEE_OVERRIDE) : {};
+const CHUNK_S = OV.chunkS ?? 0.3, WINDOW_S = 15, TAIL_PAD_S = 1.2, CONTEXT_S = 1.0,
+      HOLDBACK_S = OV.holdbackS ?? 0.3, FRAME_S = 0.08;
 /* Incremental-mode pinned parameters (seam tests assert these). */
 const INC_CONTEXT_S = 1.5, INC_EDGE_GUARD_S = 0.2;
 const DECODE_MODE = (argVal("--decode") === "incremental" || args.includes("--decode=incremental")) ? "incremental" : "window";
@@ -196,17 +200,25 @@ async function decode(startS, endS) {
 }
 
 /* ---------- run ---------- */
+/* INK vs VERDICT latency. A reveal carries the word's AUDIO-END time
+ * (feedToken passes w.endS), a preview carries the DECODE time it fired at
+ * — so preview.t − reveal.t is exactly how long after finishing a word its
+ * glyph appeared. That is the number the reciter actually feels. */
+const _prev = new Map(), _rev = new Map();
 const session = createTasmeeSession({
     words: ref,
     options: TASMEE_LIVE.engine,     // config-of-record (length-tiered θ)
-    onEvent: args.includes("--log-amends")
-        ? (e) => { if (e.type === "amend") console.error(`[amend] ${e.vk}:${e.pos} ${e.from}→${e.to} heard=${e.heard} @${(e.t / 1000).toFixed(1)}s`); }
-        : undefined,
+    onEvent: (e) => {
+        if (e.type === "preview" && !_prev.has(e.idx)) _prev.set(e.idx, e.t);
+        else if (e.type === "reveal" && !_rev.has(e.idx)) _rev.set(e.idx, e.t);
+        if (args.includes("--log-amends") && e.type === "amend") console.error(`[amend] ${e.vk}:${e.pos} ${e.from}→${e.to} heard=${e.heard} @${(e.t / 1000).toFixed(1)}s`);
+    },
 });
 const ctl = createStreamController({
     session, decode, isSpeech, findSilenceBefore, norm: tasmeeNorm,
     chunkS: CHUNK_S, windowS: WINDOW_S, contextS: CONTEXT_S, holdbackS: HOLDBACK_S, frameS: FRAME_S,
-    mode: DECODE_MODE, incContextS: INC_CONTEXT_S, incEdgeGuardS: INC_EDGE_GUARD_S,
+    mode: DECODE_MODE, incContextS: OV.incContextS ?? INC_CONTEXT_S, incEdgeGuardS: INC_EDGE_GUARD_S,
+    tailGuard: OV.tailGuard ?? true,
     // AMENDMENT CHANNEL (2026-07-16): ships ON (config-of-record);
     // --no-amend gives the pre-amendment baseline for A/B.
     amend: args.includes("--no-amend") ? null : TASMEE_LIVE.controller.amend,
@@ -245,6 +257,11 @@ const summary = session.stop(Math.round(loopEndS * 1000));
 const { committed, latencies, firstCommitAtS } = ctl.results();
 
 /* ---------- report (shared block) ---------- */
+{
+    const d = [...(_prev.keys())].filter((k) => _rev.has(k)).map((k) => (_prev.get(k) - _rev.get(k)) / 1000).sort((a, b) => a - b);
+    const q = (x) => d.length ? d[Math.min(d.length - 1, Math.floor(x * d.length))] : NaN;
+    console.log(`  INK latency (glyph on screen) p50 ${q(0.5).toFixed(2)}s · p95 ${q(0.95).toFixed(2)}s · previewed ${d.length}/${ref.length}`);
+}
 const block = buildBenchBlock({
     clipName: path.basename(clipPath),
     modelName: path.basename(MODEL_PATH),

@@ -87,6 +87,13 @@ export function createStreamController({
      * reference is structurally unreachable here: this module never
      * sees reference words at all. */
     amend = null,
+    /* TAIL GUARD on/off (measurement knob, default = ON = shipped
+     * behaviour). The guard holds the frontier word until a successor has
+     * itself cleared holdback, which during continuous recitation costs a
+     * FULL WORD of reveal latency — the dominant term in the measured p50.
+     * Exposed so the latency/accuracy trade can be swept rather than
+     * argued about. */
+    tailGuard = true,
     debug = null,
 }) {
     let committedEndS = 0;
@@ -438,7 +445,7 @@ export function createStreamController({
                     a.endS <= chunkEnd - holdbackS) commitN = i + 1;
                 else break;
             }
-            if (mode === "incremental" && commitN > 0 && anchorS > 0) {
+            if (tailGuard && mode === "incremental" && commitN > 0 && anchorS > 0) {
                 // tail guard (sliding phase only — at anchor 0 the decode
                 // is full-context from clip start, byte-equivalent to
                 // window mode's opening, where the fragment hazard does
@@ -477,6 +484,12 @@ export function createStreamController({
             }
             for (let i = 0; i < commitN; i++) {
                 commitWord(pending[i], chunkEnd, Math.max(pending[i].endS, prevPending[i]?.endS ?? 0));
+            }
+            /* PROVISIONAL INK (latency): hand the still-uncommitted words to
+             * the engine's PURE preview so the UI can show them now. Nothing
+             * about the commit path above or below this line changes. */
+            if (typeof session.preview === "function" && pending.length > commitN) {
+                session.preview(pending.slice(commitN).map((w) => w.text), Math.round(chunkEnd * 1000));
             }
             prevPending = pending.slice(commitN);
             if (amend && mode === "incremental") { trackAmend(words, chunkEnd); finalizeAmendCands(); }

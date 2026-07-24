@@ -4842,6 +4842,19 @@ body.dark .mushaf-page--tasmee {
     user-select: none;
 }
 
+/* PROVISIONAL INK — the word is heard but not yet judged. Beats the hide
+   rule on specificity (5 classes vs 4) and carries NO verdict colour: it is
+   the page's normal ink, dimmed, so "appeared" and "graded" stay visually
+   distinct. transition:none — a word element must never carry time-based
+   CSS (the gharib registered-property freeze); the firm-up on reveal is an
+   instant class swap, which reads as the word settling rather than a flash. */
+.mushaf-page--tasmee .mushaf-word.ts-prov:not(.mushaf-end):not(.ts-r) {
+    color: inherit;
+    opacity: 0.5;
+    text-shadow: none;
+    transition: none;
+}
+
 /* Anchor for the glow / insertion-dot child elements. inline-block box is
    unchanged by position:relative → zero layout shift. An OFFERED word is
    still hidden (not .ts-r), so it needs anchoring too. */
@@ -5153,6 +5166,17 @@ body.dark .ts-mic-state { color: #9a9484; }
 }
 body.dark .ts-heard { color: #56d9a3; }
 .ts-heard:empty { display: none; }
+
+/* Tasmee options row (harakat check). Plain control, no animation — it
+   lives in the meter panel, not on a word, so the gharib freeze rule
+   doesn't apply, but there is nothing here worth animating anyway. */
+.ts-opt {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12.5px; color: #8a8474; cursor: pointer;
+    -webkit-user-select: none; user-select: none;
+}
+.ts-opt input { margin: 0; accent-color: #8e44ad; cursor: pointer; }
+body.dark .ts-opt { color: #9a9484; }
 .ts-mic--voice .ts-mic-state { color: #0a7d5a; }
 body.dark .ts-mic--voice .ts-mic-state { color: #4fe0a8; }
 .ts-mic--error .ts-mic-state { color: #c0392b; }

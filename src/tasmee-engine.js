@@ -176,6 +176,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
 
     let p = 0;               // next expected word index
     let curRaw = "";         // current token's pre-normalisation text (M3)
+    const previewed = new Set();   // indices already announced as provisional
     let done = false;
     const events = [];
     const insertions = [];
@@ -685,6 +686,46 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     }
 
     return {
+        /* ---------- PROVISIONAL PREVIEW (latency, 2026-07-20) ----------
+         * PURE: reads the reference, mutates NOTHING — not the pointer, not
+         * a verdict, not the insertion list, not the deferral state. It
+         * exists so the UI can put INK on screen the moment a word is heard,
+         * while the verdict keeps waiting for the full commit gate.
+         *
+         * Why this and not faster gates: a measured sweep (2026-07-20) of
+         * chunk size / holdback / tail guard showed every latency reduction
+         * costs precision on the planted-mistake clips — p50 1.12s→0.40s
+         * takes 04/05 precision from 1.00 to 0.20/0.17, and dropping the
+         * tail guard alone MISSES a real mistake (recall 0.67). The commit
+         * gate is where accuracy lives, so it does not move. Only the ink
+         * moves earlier.
+         *
+         * Conservative by construction: a run of pending tokens is matched
+         * against the reference from the pointer FORWARD, stopping at the
+         * first token that does not clear the same acceptance bar the
+         * matcher uses. A half-spoken word decodes as a fragment, misses the
+         * bar, and previews nothing — so the glyph never appears before the
+         * word is actually said. Each index announces once. */
+        preview(rawTokens, tMs = 0) {
+            if (done || !rawTokens || !rawTokens.length) return [];
+            const out = [];
+            let q = p;
+            for (const raw of rawTokens) {
+                if (q >= ref.length) break;
+                const t = tasmeeNorm(raw);
+                if (!t) continue;
+                if (wordSim(t, ref[q].form) < thAccept(ref[q].form)) break;
+                out.push(q);
+                q++;
+            }
+            for (const idx of out) {
+                if (previewed.has(idx) || ref[idx].verdict) continue;
+                previewed.add(idx);
+                emit({ type: "preview", t: tMs, idx, vk: ref[idx].vk, pos: ref[idx].pos });
+            }
+            return out;
+        },
+
         feedToken(rawToken, tMs = 0) {
             if (done) return;
             curRaw = String(rawToken || "");

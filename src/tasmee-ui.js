@@ -195,7 +195,7 @@ function addSkipLine(span) {
     span.appendChild(svg);
 }
 
-const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-cur", "ts-rep", "ts-ins", "ts-offer"];
+const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-cur", "ts-rep", "ts-prov", "ts-ins", "ts-offer"];
 
 /* Strip every reveal artifact from a word: verdict classes AND the
  * insertion dot child. The dot is a real element (not a ::after) so
@@ -253,12 +253,23 @@ function ensureMeter() {
         '  <div class="ts-mic-track"><i class="ts-mic-fill"></i><i class="ts-mic-peak"></i></div>' +
         '  <div class="ts-mic-state">اضغط للاستماع</div>' +
         '  <div class="ts-heard" dir="rtl" aria-live="polite" title="ما سمعه النموذج (النص الخام قبل المطابقة)"></div>' +
+        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-tashkeel">' +
+        '    <span>تدقيق الحركات</span></label>' +
         "</div>";
     el.querySelector(".ts-mic-btn").addEventListener("click", () => {
         const st = _mic && _mic.getState();
         if (st === "listening" || st === "requesting") stopListening();
         else startListening();
     });
+    /* M3 harakat check — a REAL control, not a console incantation. Off by
+     * default and persisted; the label says what it does and the title says
+     * what it deliberately does NOT do, because a checker that stays silent
+     * half the time must not be mistaken for one that verified everything. */
+    const box = el.querySelector(".ts-opt-tashkeel");
+    box.checked = tashkeelCheck();
+    el.querySelector(".ts-opt").title =
+        "يُقارن الحركات التي ينطق بها القارئ بحركات المصحف. يصمت عندما لا يسمعها بوضوح — الصمت ليس تزكية.";
+    box.addEventListener("change", () => tashkeelCheck(box.checked));
     document.body.appendChild(el);
     return (_meter = el);
 }
@@ -521,7 +532,7 @@ function paintReveal(idx, verdict, extra = {}) {
     const r = S && S.ref[idx];
     if (!r || !r.span) return;
     const span = r.span, cloud = cloudOf(span);   // a cloud here ⇒ word was offered
-    span.classList.remove("ts-offer");
+    span.classList.remove("ts-offer", "ts-prov");
     // amendment repaint: drop a previous verdict class first
     for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified"]) span.classList.remove(c);
     span.querySelector(":scope > .ts-skip-line")?.remove();
@@ -542,6 +553,20 @@ function paintReveal(idx, verdict, extra = {}) {
     // the "you are here" wash once the paint lands, or it strands on a word
     // that has just been resolved.
     setCurrent(nextExpectedIdx());
+}
+
+/* PROVISIONAL INK (latency, 2026-07-20). The word appears the moment the
+ * decoder hears it — muted, no verdict colour — and firms up when the real
+ * gate delivers a verdict. Visibility is MONOTONE: a provisional word is
+ * never un-shown, it only gains colour, which is the same contract deferred
+ * negative painting already follows. Opacity is set INSTANTLY (no
+ * transition): a registered custom property on a gharib word freezes
+ * transitions, so nothing time-based may touch a word element. */
+function paintPreview(idx) {
+    const r = S && S.ref[idx];
+    if (!r || !r.span) return;
+    if (r.span.classList.contains("ts-r")) return;   // already judged — leave it
+    r.span.classList.add("ts-prov");
 }
 
 function paintInsertion(idx) {
@@ -709,6 +734,8 @@ export function applyEvent(e) {
         for (const [idx, p] of _pendingIns) {
             if (!now.has(`${idx}|${p.heardNorm}`)) { clearTimeout(p.timer); _pendingIns.delete(idx); }
         }
+    } else if (e.type === "preview") {
+        paintPreview(e.idx);
     } else if (e.type === "repetition") {
         flashRepeat(e.idx);
     } else if (e.type === "hesitation" || e.type === "hint_offer") {
