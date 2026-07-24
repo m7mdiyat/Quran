@@ -201,6 +201,173 @@ if (cmd === "transcribe") {
         results.push(row);
     }
     console.log(JSON.stringify({ clip: path.basename(clipPath), frames: T, results }, null, 1));
+} else if (cmd === "gop") {
+    /* GOODNESS OF PRONUNCIATION — the standard mispronunciation-detection
+     * measure, adapted to this CTC model. For each reference word:
+     *
+     *   GOP = [ logP(canonical | frames) − logP(free | frames) ] / nFrames
+     *
+     * The numerator is a CTC forced alignment of the canonical form; the
+     * denominator is the unconstrained per-frame best path. Both run over
+     * the SAME frames, so everything except "how well does the audio support
+     * this exact word" cancels — including the segmentation uncertainty that
+     * made the earlier candidate-vs-candidate scoring unreliable (Δ moved
+     * 7–9 nats on a one-frame shift).
+     *
+     * Word boundaries come from a Viterbi forced alignment of the WHOLE
+     * reference over the whole clip, so no span has to be guessed.
+     *
+     * Two lattices per word:
+     *   letters — the skeleton, with harakat OPTIONAL (a u→u arc for each
+     *             diacritic token). The model omits vowels 38–65% of the
+     *             time; requiring them would punish correct recitation.
+     *   full    — the vocalised form, harakat REQUIRED. The harakat test.
+     */
+    const range = argVal("--range") || "47:1-7";
+    const plantSet = new Set((argVal("--plants") ? JSON.parse(fs.readFileSync(argVal("--plants"), "utf8")) : []).map((p) => p.loc));
+    const ref = buildVocalisedRef(range);
+    const { pcm, sess } = await loadAll(clipPath);
+    const { lp, T, V } = await decodeAll(sess, pcm);
+
+    const HAR_IDS = ["\u064e", "\u0650", "\u064f", "\u0652", "\u0651"].map((h) => TOKID.get(h)).filter((x) => x !== undefined);
+    const strip = (w) => sanitize(w).kept.replace(/[\u064b-\u0670]/g, "");
+
+    /* Position lattice for a whole word sequence, joined by the vocab's
+     * word-initial marker. `optHar` adds zero-advance arcs so a diacritic
+     * the model emits (or omits) costs nothing either way. */
+    function lattice(words, optHar) {
+        const bounds = [];
+        let str = "";
+        for (const w of words) { const st = str.length + 1; str += "\u2581" + w; bounds.push([st, str.length]); }
+        const { arcs, out, inn, N } = buildArcs(str);
+        if (optHar) {
+            for (let u = 0; u <= N; u++) for (const id of HAR_IDS) {
+                const a = { u, v: u, id, k: arcs.length };
+                arcs.push(a); out[u].push(a); inn[u].push(a);
+            }
+        }
+        return { arcs, out, inn, N, bounds };
+    }
+
+    /* Viterbi over the lattice; returns the per-frame (position, score). */
+    function align(L, t0, t1) {
+        const { arcs, out, inn, N } = L;
+        const S = N + 1 + arcs.length;                 // 0..N = blank@pos, then arcs
+        const NEGI = -Infinity;
+        let cur = new Float64Array(S).fill(NEGI);
+        const bp = [];
+        cur[0] = lp[t0 * V + BLANK];
+        for (const a of out[0]) cur[N + 1 + a.k] = lp[t0 * V + a.id];
+        for (let t = t0 + 1; t <= t1; t++) {
+            const nxt = new Float64Array(S).fill(NEGI);
+            const back = new Int32Array(S).fill(-1);
+            const r = t * V;
+            for (let v = 0; v <= N; v++) {
+                let best = cur[v], bi = v;
+                for (const a of inn[v]) { const c = cur[N + 1 + a.k]; if (c > best) { best = c; bi = N + 1 + a.k; } }
+                if (best > NEGI) { nxt[v] = best + lp[r + BLANK]; back[v] = bi; }
+            }
+            for (const a of arcs) {
+                let best = cur[N + 1 + a.k], bi = N + 1 + a.k;
+                if (cur[a.u] > best) { best = cur[a.u]; bi = a.u; }
+                for (const p of inn[a.u]) if (p.id !== a.id) { const c = cur[N + 1 + p.k]; if (c > best) { best = c; bi = N + 1 + p.k; } }
+                if (best > NEGI) { nxt[N + 1 + a.k] = best + lp[r + a.id]; back[N + 1 + a.k] = bi; }
+            }
+            bp.push(back); cur = nxt;
+        }
+        let end = N, bestv = cur[N];
+        for (const a of inn[N]) { const c = cur[N + 1 + a.k]; if (c > bestv) { bestv = c; end = N + 1 + a.k; } }
+        if (!isFinite(bestv)) return null;
+        const path = new Int32Array(t1 - t0 + 1);
+        let st = end;
+        for (let i = bp.length - 1; i >= 0; i--) { path[i + 1] = st; st = bp[i][st]; }
+        path[0] = st;
+        const posOf = (state) => state <= N ? state : arcs[state - N - 1].v;
+        const tokOf = (state) => state <= N ? BLANK : arcs[state - N - 1].id;
+        return { score: bestv, pos: Array.from(path, posOf), tok: Array.from(path, tokOf) };
+    }
+
+    const freeAt = (t) => { let m = -Infinity; const r = t * V; for (let v = 0; v < V; v++) if (lp[r + v] > m) m = lp[r + v]; return m; };
+
+    // 1) align the SKELETON of the whole clip → per-word frame spans
+    const skel = ref.map((r) => strip(r.vocal) || "\u0627");   // never filter: index alignment with `ref` is load-bearing
+    const L = lattice(skel, true);
+    const A = align(L, 0, T - 1);
+    if (!A) { console.error("alignment failed"); process.exit(1); }
+    const spans = L.bounds.map(([cs, ce]) => {
+        let f0 = -1, f1 = -1;
+        for (let i = 0; i < A.pos.length; i++) { const p = A.pos[i]; if (p > cs && p <= ce) { if (f0 < 0) f0 = i; f1 = i; } }
+        return [f0, f1];
+    });
+
+    // 2) per-word GOP, letters-only and letters+harakat
+    const rows = [];
+    for (let i = 0; i < ref.length && i < spans.length; i++) {
+        const [f0, f1] = spans[i];
+        if (f0 < 0 || f1 - f0 < 1) { rows.push({ loc: ref[i].loc, word: ref[i].vocal, skip: "no-span" }); continue; }
+        let free = 0; for (let t = f0; t <= f1; t++) free += freeAt(t);
+        const n = f1 - f0 + 1;
+        /* Word-mean GOP dilutes a single bad letter across the whole word
+         * (one wrong consonant is 1–2 frames out of ~25). The per-frame
+         * MINIMUM and the mean of the worst three frames localise it, which
+         * is why phone-level rather than word-level GOP is the standard. */
+        const one = (w, opt) => {
+            const l = lattice([w], opt);
+            const a = align(l, f0, f1);
+            if (!a) return null;
+            const per = [];
+            for (let t = f0; t <= f1; t++) per.push(lp[t * V + a.tok[t - f0]] - freeAt(t));
+            const srt = [...per].sort((x, y) => x - y);
+            return { mean: (a.score - free) / n, min: srt[0], w3: srt.slice(0, 3).reduce((x, y) => x + y, 0) / Math.min(3, srt.length) };
+        };
+        const L1 = one(strip(ref[i].vocal), true), F1 = one(sanitize(ref[i].vocal).kept, false);
+        /* DISCRIMINATION TEST: can the model tell the true word from a
+         * one-letter variant of it, on audio we KNOW is correct? Scores the
+         * canonical against single-letter substitutions over the SAME frames
+         * and reports the canonical's rank. If the canonical does not win,
+         * the model cannot resolve single letters — independent of any
+         * question about what a given reciter actually said. */
+        if (args.includes("--variants")) {
+            const sk = strip(ref[i].vocal);
+            const CONF = { "ر": "لن", "ل": "رن", "د": "لذ", "ن": "رل", "ه": "كح", "ك": "هق", "ت": "يث", "ي": "تب",
+                           "م": "نب", "ب": "تن", "س": "شص", "ح": "خه", "ع": "غا", "ق": "كف", "ط": "تظ", "ص": "سض" };
+            const vs = [];
+            for (let c = 0; c < sk.length; c++) for (const alt of (CONF[sk[c]] || "")) {
+                const v = sk.slice(0, c) + alt + sk.slice(c + 1);
+                const r = one(v, true);
+                if (r) vs.push(r.w3);
+            }
+            const row = rows;   // appended below
+            var _disc = vs.length ? { nVar: vs.length, best: Math.max(...vs), canon: L1 && L1.w3,
+                                      rank: vs.filter((x) => x > (L1 ? L1.w3 : -Infinity)).length + 1 } : null;
+            /* Same relative test for HARAKAT: change one vowel of the
+             * vocalised form and see whether the audio prefers it. The
+             * word-FINAL vowel is excluded — waqf legitimately changes it. */
+            const voc = sanitize(ref[i].vocal).kept;
+            const HARS = ["\u064e", "\u0650", "\u064f", "\u0652"];
+            const letters = [...voc].map((ch, k) => ({ ch, k })).filter((x) => !/[\u064b-\u0670]/.test(x.ch));
+            const lastLetterAt = letters.length ? letters[letters.length - 1].k : -1;
+            const hv = [];
+            for (let c = 0; c < voc.length; c++) {
+                if (!HARS.includes(voc[c])) continue;
+                if (c > lastLetterAt) continue;                  // final vowel: waqf, never judged
+                for (const alt of HARS) {
+                    if (alt === voc[c]) continue;
+                    const r = one(voc.slice(0, c) + alt + voc.slice(c + 1), false);
+                    if (r) hv.push(r.w3);
+                }
+            }
+            var _hdisc = hv.length ? { nVar: hv.length, best: Math.max(...hv), canon: F1 && F1.w3 } : null;
+        }
+        rows.push({
+            loc: ref[i].loc, word: ref[i].vocal, n,
+            gopL: L1 && L1.mean, gopLmin: L1 && L1.min, gopLw3: L1 && L1.w3,
+            gopF: F1 && F1.mean, gopFmin: F1 && F1.min, gopFw3: F1 && F1.w3,
+            plant: plantSet.has(ref[i].loc),
+            ...(args.includes("--variants") ? { disc: _disc, hdisc: _hdisc } : {}),
+        });
+    }
+    console.log(JSON.stringify({ clip: path.basename(clipPath), frames: T, rows }, null, 0));
 } else if (cmd === "sweep") {
     /* NULL DISTRIBUTION for an acoustic haraka verifier.
      *
@@ -359,22 +526,21 @@ function buildVocalisedRef(range) {
     const m = /^(\d+):(\d+)-(\d+)$/.exec(range);
     if (!m) throw new Error(`bad --range ${range}`);
     const [, sN, aFrom, aTo] = m.map(Number);
-    const q = JSON.parse(fs.readFileSync(path.join(ROOT, "public", "quran.json"), "utf8").replace(/^﻿/, ""));
+    const q = JSON.parse(fs.readFileSync(path.join(ROOT, "public", "quran.json"), "utf8").replace(/^\ufeff/, ""));
     const ds = JSON.parse(fs.readFileSync(path.join(ROOT, "public", "tasmee-words.json"), "utf8"));
     const sur = q.data.surahs.find((x) => x.number === sN);
     const out = [];
     for (let a = aFrom; a <= aTo; a++) {
         const skels = ds.verses[`${sN}:${a}`] || [];
-        const toks = sur.ayahs.find((x) => x.numberInSurah === a).text.replace(/^﻿/, "").split(/\s+/);
-        let si = 0;
-        for (const t of toks) {
-            const n = tasmeeNorm(t);
-            if (!n) continue;                                   // pause marks
-            while (si < skels.length && skels[si] !== n) si++;   // skip basmala etc.
-            if (si >= skels.length) { si = skels.findIndex((s) => s === n); if (si < 0) continue; }
-            out.push({ loc: `${sN}:${a}:${si + 1}`, skel: skels[si], vocal: t });
-            si++;
-        }
+        const toks = sur.ayahs.find((x) => x.numberInSurah === a).text.replace(/^\ufeff/, "")
+            .split(/\s+/).filter((t) => tasmeeNorm(t));
+        /* LCS-align quran.json tokens to the dataset skeletons rather than
+         * scanning forward for the next equal form. The scan mis-consumed
+         * ayah 1 of a surah, where quran.json carries the BASMALA that
+         * tasmee-words.json omits: its اللَّهِ greedily claimed the ayah's
+         * own الله six positions later, shifting every span after it. */
+        const pairs = alignMonotonic(toks.map(tasmeeNorm), skels);
+        for (const [ti, si] of pairs) out.push({ loc: `${sN}:${a}:${si + 1}`, skel: skels[si], vocal: toks[ti] });
     }
     return out;
 }
