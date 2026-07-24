@@ -207,7 +207,7 @@ async function decode(startS, endS) {
 const _prev = new Map(), _rev = new Map();
 const session = createTasmeeSession({
     words: ref,
-    options: TASMEE_LIVE.engine,     // config-of-record (length-tiered θ)
+    options: { ...TASMEE_LIVE.engine, ...(OV.engine || {}) },   // config-of-record (length-tiered θ)
     onEvent: (e) => {
         if (e.type === "preview" && !_prev.has(e.idx)) _prev.set(e.idx, e.t);
         else if (e.type === "reveal" && !_rev.has(e.idx)) _rev.set(e.idx, e.t);
