@@ -28,3 +28,6 @@ public/models/
 # tasmee golden clips are voice recordings — keep out of the PUBLIC repo
 # (project convention: audio masters live in GCS, not git). Truth JSONs stay.
 tests/**/*.wav
+
+# Layer 2 (muaalem) python env — see scripts/tasmee-deep-check.py
+.venv-muaalem/
