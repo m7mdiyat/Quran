@@ -51,6 +51,9 @@ ap.add_argument("--no-letters", action="store_true", help="harakat only (use for
 ap.add_argument("--no-harakat", action="store_true")
 ap.add_argument("--json", help="also write findings here")
 ap.add_argument("--clip", metavar="DIR", help="write a WAV of each flagged word so you can HEAR what the model heard")
+ap.add_argument("--truth", metavar="LIST",
+                help="comma-separated vk:pos you deliberately got wrong, e.g. 47:1:8,47:4:5 — "
+                     "scores catches against extras instead of leaving it to the eye")
 a = ap.parse_args()
 if not a.rng and not a.page:
     sys.exit("give --range 47:1-7 or --page 507")
@@ -266,6 +269,45 @@ else:
             else:
                 print(f"      الحرف  — الصواب {f['expected']}، وسمعتُ {f['heard']}   (ثقة {f['conf']:.0%})")
         print()
+
+if a.truth:
+    """Score against what the reciter MEANT to get wrong.
+
+    Both halves matter and the second matters more: a checker that finds
+    every planted mistake while also flagging correct recitation is not
+    usable on someone's Quran. Extras are therefore reported as a rate over
+    the words that were NOT planted, not as a raw count."""
+    want = [t.strip() for t in a.truth.split(",") if t.strip()]
+    # vk:pos → word ordinal → the phoneme group that covers it
+    w2g = {}
+    for gi, ws in enumerate(G2W):
+        for w in ws:
+            w2g.setdefault(w, gi)
+    planted_groups, rows = set(), []
+    for t in want:
+        try:
+            _s, _a, _p = (int(x) for x in t.split(":"))
+            ordinal = sum(len(DATASET["verses"][f"{_s}:{k}"]) for k in range(a0, _a)) + _p - 1
+        except Exception:
+            rows.append((t, None, "unparseable")); continue
+        gi = w2g.get(ordinal)
+        if gi is None:
+            rows.append((t, None, "outside this range")); continue
+        planted_groups.add(gi)
+        rows.append((t, gi, "CAUGHT" if gi in by_word else "missed"))
+    hits = sum(1 for _, _, r in rows if r == "CAUGHT")
+    extra = [gi for gi in by_word if gi not in planted_groups]
+    clean_n = len(groups) - len(planted_groups)
+    print("  ── scored against what you planted ──")
+    for t, gi, r in rows:
+        mark = "✓" if r == "CAUGHT" else ("·" if r == "missed" else "?")
+        print(f"    {mark} {t:<10} {show(gi) if gi is not None else '':<22} {r}")
+    print(f"\n    caught {hits}/{len(rows)}"
+          f"   ·   extra flags {len(extra)}/{clean_n} unplanted words"
+          f" ({len(extra)/max(clean_n,1)*100:.1f}%)")
+    if extra:
+        print(f"    extras: {', '.join(show(gi) for gi in extra[:8])}")
+    print()
 
 n_har = sum(1 for f in best.values() if f["kind"] == "har")
 n_con = sum(1 for f in best.values() if f["kind"] == "con")
