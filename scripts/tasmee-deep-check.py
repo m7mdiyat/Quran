@@ -50,6 +50,7 @@ ap.add_argument("--conf", type=float, default=0.90, help="confidence bar for a d
 ap.add_argument("--no-letters", action="store_true", help="harakat only (use for whispered recitation)")
 ap.add_argument("--no-harakat", action="store_true")
 ap.add_argument("--json", help="also write findings here")
+ap.add_argument("--clip", metavar="DIR", help="write a WAV of each flagged word so you can HEAR what the model heard")
 a = ap.parse_args()
 if not a.rng and not a.page:
     sys.exit("give --range 47:1-7 or --page 507")
@@ -99,9 +100,12 @@ print(f"\n  {os.path.basename(a.wav)} · {dur:.0f}s · {surah}:{a0}-{a1} · {len
 
 m = Muaalem(device=dev)
 t0 = time.time()
+times = []          # seconds, one per emitted phoneme (approximate — see above)
 if a.chunk <= 0:
     r = m([wave], [nosp], sampling_rate=SR)[0]
     heard, probs = r.phonemes.text, r.phonemes.probs.tolist()
+    n = max(len(heard), 1)
+    times = [k / n * dur for k in range(len(heard))]
 else:
     step = int(SR * a.chunk)
     heard, probs = "", []
@@ -110,6 +114,9 @@ else:
         if len(s2) < SR * 0.4:
             continue
         rr = m([s2], [nosp], sampling_rate=SR)[0]
+        t_ch, d_ch = st / SR, len(s2) / SR
+        n = max(len(rr.phonemes.text), 1)
+        times += [t_ch + k / n * d_ch for k in range(len(rr.phonemes.text))]
         heard += rr.phonemes.text
         probs += rr.phonemes.probs.tolist()
 el = time.time() - t0
@@ -133,6 +140,7 @@ def collapse(seq, tags):
 
 refC, ownerC = collapse(ref, owner)
 hrdC, probC = collapse(list(heard), probs)
+_, timeC = collapse(list(heard), times)
 
 is_har = lambda ch: ch in HARAKAT
 # ONLY REAL ARABIC LETTERS ARE JUDGED AS LETTERS. Quran Phonetic Script also
@@ -181,9 +189,11 @@ for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if conf < a.conf:
             continue                                   # rule 2
         got = max(said, key=lambda x: x[1])[0]
+        span = timeC[j1:j2] or [0.0]
         findings.append({
             "word": ownerC[i], "kind": kind, "conf": round(conf, 3),
             "expected": refC[i], "heard": got,
+            "atS": round(sum(span) / len(span), 2),
         })
 
 # collapse to one line per word per kind (the loudest finding wins)
@@ -262,6 +272,20 @@ n_con = sum(1 for f in best.values() if f["kind"] == "con")
 print(f"  {len(groups)} words checked · {n_har} harakat · {n_con} letters · conf ≥ {a.conf:.0%}")
 print("  (a word edge is never judged — waqf and idgham legitimately change it;")
 print("   madd length is never judged — how long you hold a vowel is your choice)\n")
+
+if a.clip:
+    import soundfile as sf
+    os.makedirs(a.clip, exist_ok=True)
+    PAD = 1.2      # generous: the position is derived, not a real alignment
+    print("  clips (listen and judge for yourself):")
+    for (gi, kind), f in sorted(best.items(), key=lambda kv: kv[1]["atS"]):
+        s0 = max(0, int((f["atS"] - PAD) * SR))
+        s1 = min(len(wave), int((f["atS"] + PAD) * SR))
+        safe = "".join(c for c in show(gi) if c.isalnum() or c in "ـًٌٍَُِّْٰ")[:24] or f"g{gi}"
+        out = os.path.join(a.clip, f"{f['atS']:07.2f}s-{kind}-{safe}.wav")
+        sf.write(out, wave[s0:s1], SR)
+        print(f"    {os.path.basename(out)}   (~{f['atS']:.1f}s ± {PAD}s)")
+    print()
 
 if a.json:
     json.dump({"wav": a.wav, "range": f"{surah}:{a0}-{a1}", "rtf": el / dur,
