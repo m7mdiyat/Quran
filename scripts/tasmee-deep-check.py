@@ -250,6 +250,22 @@ def map_groups_to_words(groups, words):
 
 G2W = map_groups_to_words(groups, uth)
 
+# Ordinal → verse-key:position. كَفَرُوا۟ occurs five times on page 507; a
+# finding that names only the word leaves the reciter unable to tell WHICH
+# one, which makes it unverifiable — and an unverifiable finding is one they
+# have to take on faith.
+_ORD2LOC = {}
+_o = 0
+for _a in range(a0, a1 + 1):
+    for _p in range(1, len(DATASET["verses"][f"{surah}:{_a}"]) + 1):
+        _ORD2LOC[_o] = f"{surah}:{_a}:{_p}"
+        _o += 1
+
+
+def loc_of(gi):
+    ws = G2W[gi] if gi < len(G2W) else []
+    return _ORD2LOC.get(ws[0], "?") if ws else "?"
+
 
 def show(gi):
     ws = G2W[gi] if gi < len(G2W) else []
@@ -260,7 +276,7 @@ if not by_word:
 else:
     print(f"  {len(by_word)} word(s) with a finding:\n")
     for gi in sorted(by_word):
-        print(f"  ● {show(gi)}")
+        print(f"  ● {show(gi)}   [{loc_of(gi)}]")
         for f in sorted(by_word[gi], key=lambda x: -x["conf"]):
             if f["kind"] == "har":
                 exp = HARAKA_NAME.get(f["expected"], f["expected"])
@@ -306,7 +322,7 @@ if a.truth:
           f"   ·   extra flags {len(extra)}/{clean_n} unplanted words"
           f" ({len(extra)/max(clean_n,1)*100:.1f}%)")
     if extra:
-        print(f"    extras: {', '.join(show(gi) for gi in extra[:8])}")
+        print(f"    extras: {', '.join(f'{show(gi)} [{loc_of(gi)}]' for gi in extra[:8])}")
     print()
 
 n_har = sum(1 for f in best.values() if f["kind"] == "har")
@@ -326,7 +342,7 @@ if a.clip:
         safe = "".join(c for c in show(gi) if c.isalnum() or c in "ـًٌٍَُِّْٰ")[:24] or f"g{gi}"
         out = os.path.join(a.clip, f"{f['atS']:07.2f}s-{kind}-{safe}.wav")
         sf.write(out, wave[s0:s1], SR)
-        print(f"    {os.path.basename(out)}   (~{f['atS']:.1f}s ± {PAD}s)")
+        print(f"    {os.path.basename(out)}   [{loc_of(gi)}]  (~{f['atS']:.1f}s ± {PAD}s)")
     print()
 
 if a.json:
