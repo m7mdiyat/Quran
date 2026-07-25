@@ -33,6 +33,7 @@ import { tasmeeNorm } from "./tasmee-norm.js";
 import { checkTashkeel } from "./tasmee-tashkeel.js";
 import { createMic } from "./tasmee-audio.js";
 import { TASMEE_LIVE } from "./tasmee-live-config.js";
+import { cue, haptic, setMicLive, sfxEnabled } from "./tasmee-sfx.js";
 
 let S = null; // active session, or null when the mode is off
 
@@ -111,6 +112,10 @@ export async function enter(pageEl, pageData) {
         onEvent: applyEvent,
     });
     ensureMeter();   // Piece 3: show the idle mic panel ("tap to listen")
+    /* Also warms cuelume's AudioContext, on a user gesture and while the
+     * mic is definitively closed — the one moment WKWebView will build it
+     * without renegotiating a capture session. */
+    cue("enter");
     return true;
 }
 
@@ -217,6 +222,7 @@ export function exit() {
     _repTimers.clear();
     if (!S) return;
     stopMic();                       // release the mic + tear down the meter
+    setMicLive(false);               // mode torn down — cues are free again
     _killWorker();                   // drop the worker so re-entering re-arms on the new page's ref
     flushDeferred(false);            // discard held flag timers — the mode is torn down
     for (const r of S.ref) clearWord(r.span);
@@ -255,6 +261,8 @@ function ensureMeter() {
         '  <div class="ts-heard" dir="rtl" aria-live="polite" title="ما سمعه النموذج (النص الخام قبل المطابقة)"></div>' +
         '  <label class="ts-opt"><input type="checkbox" class="ts-opt-tashkeel">' +
         '    <span>تدقيق الحركات</span></label>' +
+        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-sfx">' +
+        '    <span>أصوات التنبيه</span></label>' +
         "</div>";
     el.querySelector(".ts-mic-btn").addEventListener("click", () => {
         const st = _mic && _mic.getState();
@@ -269,7 +277,15 @@ function ensureMeter() {
     box.checked = tashkeelCheck();
     el.querySelector(".ts-opt").title =
         "يُقارن الحركات التي ينطق بها القارئ بحركات المصحف. يصمت عندما لا يسمعها بوضوح — الصمت ليس تزكية.";
-    box.addEventListener("change", () => tashkeelCheck(box.checked));
+    box.addEventListener("change", () => { tashkeelCheck(box.checked); cue("toggle"); });
+    /* Cue switch. The title states the guarantee rather than a preference:
+     * cues never sound DURING recitation (the open mic would record them),
+     * so what this controls is the transitions around it, plus haptics. */
+    const sbox = el.querySelector(".ts-opt-sfx");
+    sbox.checked = sfxEnabled();
+    sbox.parentElement.title =
+        "نغمات قصيرة عند بدء الاستماع وانتهائه. لا تصدر أثناء التلاوة إطلاقًا حتى لا يلتقطها الميكروفون.";
+    sbox.addEventListener("change", () => { sfxEnabled(sbox.checked); cue("toggle"); });
     document.body.appendChild(el);
     return (_meter = el);
 }
@@ -325,6 +341,7 @@ export async function startMic() {
 
 export function stopMic() {
     if (_mic) { _mic.stop(); _mic = null; }
+    setMicLive(false);          // every path that closes the stream must reopen the interlock
     if (_meter) { _meter.remove(); _meter = null; }
 }
 
@@ -474,9 +491,17 @@ export function _killWorker() { if (_worker) { _worker.terminate(); _worker = nu
 export async function startListening() {
     ensureMeter();
     if (_mic && (_mic.getState() === "listening" || _mic.getState() === "requesting")) return;
+    /* SOUND ORDER IS LOAD-BEARING. The `armed` cue plays HERE — before
+     * capture is requested — for two reasons: with echoCancellation off
+     * a cue during capture would be recorded and decoded as speech, and
+     * cuelume builds its AudioContext on first play, which on WKWebView
+     * must not happen while a capture session is negotiating. After this
+     * line the interlock is closed until the stream is fully released. */
+    cue("armed");
+    setMicLive(true);
     paintMeterState("loading");
     try { await spawnWorker(); }                     // model load + setupLive(S.ref)
-    catch (e) { paintMeterState("error", "model"); return; }
+    catch (e) { setMicLive(false); paintMeterState("error", "model"); return; }
     _chunkCount = 0; _heard = []; _recorded = []; _recording = true;
     const line = _meter && _meter.querySelector(".ts-heard"); if (line) line.textContent = "";
     _mic = createMic({
@@ -499,13 +524,27 @@ export async function startListening() {
 export function stopListening() {
     _recording = false;
     if (_mic) { _mic.stop(); _mic = null; }
+    setMicLive(false);          // stream released — cues may speak again
     if (_worker) _worker.postMessage({ type: "stop" });   // finalize → summary (Piece 5 sheet)
     console.log(`[tasmee] heard ${_heard.length} words · recorded ${(_recorded.reduce((a, c) => a + c.length, 0) / 48000).toFixed(1)}s — __tasmee._downloadRecording() to save the WAV`);
 }
 
 /* Session finalized (the worker's `stopped` arrived): no further
- * amendments can come — paint anything still held. */
-function onSessionStopped() { flushDeferred(true); }
+ * amendments can come — paint anything still held.
+ *
+ * The closing cue is chosen AFTER the flush, because only then is the
+ * verdict set final. `perfect` when nothing was flagged; otherwise the
+ * neutral `stopped`. There is deliberately no failure sound: a reciter
+ * who slipped does not need a buzzer, and the page already says it in
+ * colour. */
+function onSessionStopped() {
+    flushDeferred(true);
+    setMicLive(false);          // idempotent — covers stops we did not initiate
+    const flagged = S && S.ref
+        ? S.ref.some((r) => r.span && (r.span.classList.contains("ts-sub") || r.span.classList.contains("ts-skip")))
+        : false;
+    cue(flagged ? "stopped" : "perfect");
+}
 
 const VERDICT_CLASS = {
     correct: "ts-correct", substituted: "ts-sub", skipped: "ts-skip", hinted: "ts-hint",
@@ -537,6 +576,11 @@ function paintReveal(idx, verdict, extra = {}) {
     for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified"]) span.classList.remove(c);
     span.querySelector(":scope > .ts-skip-line")?.remove();
     span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
+    /* LIVE FEEDBACK, silently. A cue here would be recorded by the open
+     * mic and decoded as a phantom word (echoCancellation is off by
+     * design — see tasmee-sfx.js). A vibration cannot be heard, so the
+     * flag still registers in the body without touching the audio. */
+    if (verdict === "substituted" || verdict === "skipped") haptic("light");
     // M4: a skip is now carried by RED ink alone. The drawn dotted underline
     // is gone — with skip red and substitution orange the two classes are
     // already distinct, and dropping the child SVG removes the only reveal

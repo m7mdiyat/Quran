@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@capacitor/ios": "^8.4.0",
+    "cuelume": "^0.1.2",
     "lottie-web": "^5.13.0"
   }
 }
