@@ -186,7 +186,8 @@ const acChecker = AC_ON ? createAcousticChecker({ vocab: VOCAB, blank: BLANK, op
  * "no change in the numbers" reads identically whether it agreed with the
  * matcher everywhere or never ran at all. asked/opinion/objected + the
  * margin distribution separate those. */
-const acStats = { asked: 0, opinion: 0, objected: 0, margins: [] };
+const acStats = { asked: 0, opinion: 0, objected: 0, mixed: 0, margins: [] };
+let decodePass = 0;
 
 let computeMs = 0, melMs = 0, ortMs = 0; // split = C3 attribution (our DSP vs ORT kernels)
 async function decode(startS, endS) {
@@ -218,7 +219,8 @@ async function decode(startS, endS) {
     if (lpBuf) {
         const T = lp.dims[1], V = lp.dims[2];
         const base = Math.round(startS / FRAME_S);
-        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V));
+        const pass = ++decodePass;   // frames from ONE run share an id — see samePass()
+        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V), pass);
     }
     return GREEDY(lp.data, lp.dims[1], lp.dims[2], startS).words;
 }
@@ -246,7 +248,11 @@ const session = createTasmeeSession({
                     const r = hook(idx, ctx);
                     if (r) {
                         acStats.opinion++;
-                        acStats.margins.push({ idx, loc: `${ref[idx].vk}:${ref[idx].pos}`, form: ref[idx].form, m: +r.margin.toFixed(2), v: r.variant });
+                        acStats.margins.push({
+                            idx, loc: `${ref[idx].vk}:${ref[idx].pos}`, form: ref[idx].form,
+                            m: +r.margin.toFixed(2), v: r.variant,
+                            span: ctx.span && { ...ctx.span },   // --acoustic-ab replays these
+                        });
                         if (r.margin > TH) acStats.objected++;
                     }
                     return r;
@@ -346,6 +352,44 @@ if (AC_ON) {
     if (top.length) console.log(`  strongest: ${top.map((x) => `${x.loc} ${x.form}→${x.v} ${x.m}`).join(" · ")}`);
     if (args.includes("--acoustic-log")) {
         for (const x of acStats.margins) console.error(`[ac] ${x.loc} ${x.form} → ${x.v} margin ${x.m}`);
+    }
+    /* --acoustic-ab: the SAME word, the SAME span logic, scored twice —
+     * once on the ring's frames (what the live channel sees) and once on
+     * frames from a dedicated forward pass over that word's slice. Only
+     * the frame SOURCE differs, so the delta isolates whether a batched
+     * re-decode would recover the discrimination the offline runs showed. */
+    if (args.includes("--acoustic-ab")) {
+        const LEAD = 1.5, TRAIL = 0.4;
+        console.log(`\nA/B (ring frames vs a dedicated pass over [-${LEAD}s, +${TRAIL}s]):`);
+        const rowsOfLp = (lp, T, V) => Array.from({ length: T }, (_, t) => lp.subarray(t * V, t * V + V));
+        let n = 0, better = 0, sum = 0;
+        const out = [];
+        for (const x of acStats.margins) {
+            if (!x.span || x.idx + 1 >= ref.length) continue;
+            const a = Math.max(0, Math.floor((x.span.startS - LEAD) * 16000));
+            const b = Math.min(pcm.length, Math.ceil((x.span.rightEndS + TRAIL) * 16000));
+            if (b - a < 16000 * 0.5) continue;
+            const seg = pcm.subarray(a, b);
+            const { mel, T } = melFrontend(seg);
+            const o = await sess.run({
+                audio_signal: new ort.Tensor("float32", mel, [1, NMEL, T]),
+                length: new ort.Tensor("int64", BigInt64Array.from([BigInt(T)]), [1]),
+            });
+            const lp = o[sess.outputNames[0]];
+            const rws = rowsOfLp(lp.data, lp.dims[1], lp.dims[2]);
+            const forms = [ref[x.idx].form, ref[x.idx + 1].form];
+            const sp = acChecker.alignSequence({ rows: rws, V: lp.dims[2], t0: 0, t1: rws.length - 1, forms });
+            if (!sp || sp[0][0] < 0) continue;
+            const r = acChecker.check({ rows: rws, V: lp.dims[2], f0: sp[0][0], f1: sp[0][1], form: ref[x.idx].form });
+            if (!r) continue;
+            n++; sum += r.margin - x.m;
+            if (r.margin > x.m) better++;
+            out.push({ loc: x.loc, form: ref[x.idx].form, ring: x.m, fresh: +r.margin.toFixed(2), v: r.variant });
+        }
+        out.sort((p, q) => q.fresh - p.fresh);
+        for (const o of out.slice(0, 12)) console.log(`  ${o.loc.padEnd(9)} ${o.form.padEnd(12)} ring ${String(o.ring).padStart(6)}  fresh ${String(o.fresh).padStart(6)}  → ${o.v}`);
+        console.log(`  n=${n} · fresh higher on ${better} · mean Δ ${(sum / Math.max(n, 1)).toFixed(2)}` +
+            ` · fresh max ${Math.max(...out.map((o) => o.fresh)).toFixed(2)} vs ring max ${Math.max(...out.map((o) => o.ring)).toFixed(2)}`);
     }
 }
 

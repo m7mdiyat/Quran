@@ -50,6 +50,11 @@ let lpBuf = null;
  * "no objection", never as "correct"). */
 let acoustic = null;
 
+/* Monotonic decode-pass counter. Frames written by the same run of the
+ * model share an id, which is what lets a cross-frame alignment refuse a
+ * window stitched from several passes. */
+let decodePass = 0;
+
 /* DEV-ONLY capture state (tasmee-lab harness). Non-null ONLY when an init
  * message carries `dev: {...}` — the live UI (tasmee-ui.js) never sends it,
  * so every DEV branch below is inert in the live path. When active, the
@@ -122,7 +127,8 @@ async function decodeSlice(pcm16k, startS = 0) {
         // OVERWRITE (latest wins); set() copies the bytes out of lp.data.
         const T = lp.dims[1], V = lp.dims[2];
         const base = Math.round(startS / FRAME_S);
-        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V));
+        const pass = ++decodePass;   // frames from ONE run share an id — see samePass()
+        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V), pass);
         if (DEV) DEV.windows.push({ startS, n: pcm16k.length, T, base }); // dev capture: decode-window log
     }
     return GREEDY(lp.data, lp.dims[1], lp.dims[2], startS).words;

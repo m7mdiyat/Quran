@@ -426,15 +426,33 @@ export function createAcousticHook({ checker, buffer, vocabSize, refForms, frame
         const at = forms.length;                 // where the target sits in the window
         forms.push(refForms[idx], refForms[idx + 1]);
 
-        const f0 = Math.max(0, fr(firstStart) - padFrames);
+        /* ONE DECODE PASS PER WINDOW, and this is the difference between a
+         * channel that works and one that does not. The ring overwrites
+         * latest-decode-wins, so a window covering several words can be
+         * STITCHED from passes with different anchors — and a Viterbi path
+         * across an inconsistent frame sequence cannot resolve one letter.
+         * MEASURED: identical scoring separates plants from clean words by
+         * 2.90 nats on frames from a single pass and by nothing at all on a
+         * mixed window. So: try the full window, and if it is mixed, retry
+         * with the left context dropped (the target and its successor are
+         * the most recently written and most likely to share a pass). Still
+         * mixed ⇒ abstain, which is always safe. */
+        let f0 = Math.max(0, fr(firstStart) - padFrames);
         const f1 = fr(sp.rightEndS) + padFrames;
+        let atIdx = at, useForms = forms;
+        if (buffer.samePass && !buffer.samePass(f0, f1)) {
+            f0 = Math.max(0, fr(sp.startS) - padFrames);
+            if (!buffer.samePass(f0, f1)) return null;
+            atIdx = 0;
+            useForms = [refForms[idx], refForms[idx + 1]];
+        }
         if (f1 - f0 < 6) return null;
         const rows = buffer.getRange(f0, f1);
         for (const r of rows) if (!r) return null;   // a hole in the ring ⇒ no opinion
 
-        const spans = checker.alignSequence({ rows, V: vocabSize, t0: 0, t1: rows.length - 1, forms });
-        if (!spans || !spans[at] || spans[at][0] < 0) return null;
-        const res = checker.check({ rows, V: vocabSize, f0: spans[at][0], f1: spans[at][1], form: refForms[idx] });
+        const spans = checker.alignSequence({ rows, V: vocabSize, t0: 0, t1: rows.length - 1, forms: useForms });
+        if (!spans || !spans[atIdx] || spans[atIdx][0] < 0) return null;
+        const res = checker.check({ rows, V: vocabSize, f0: spans[atIdx][0], f1: spans[atIdx][1], form: refForms[idx] });
         seen.set(idx, { startS: sp.startS, endS: sp.endS });
         return res;
     };

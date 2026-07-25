@@ -56,55 +56,59 @@ export const TASMEE_LIVE = {
      * so it paints after only earlyDelayS. Skips and insertions always
      * wait capS: skips are precisely the amendable class. */
     flagDefer: { capS: 2.0, earlyDelayS: 0.5, blatantSimMax: 0.5 },
-    /* ACOUSTIC SECOND OPINION (M5, 2026-07-25) — OFF, and the reason is
-     * the useful part. See src/tasmee-acoustic.js for the mechanism.
+    /* ACOUSTIC SECOND OPINION (M5, 2026-07-25) — BUILT, MEASURED, AND OFF.
+     * A negative result, recorded in full so nobody pays for it twice.
+     * Mechanism in src/tasmee-acoustic.js.
      *
-     * THE MECHANISM WORKS. Given frames from ONE self-consistent forward
-     * pass, canonical-vs-near-miss discrimination separates the founder's
-     * planted letter mistakes from correct recitation cleanly:
-     *     frames from a whole-clip pass  plant max  2.90 · clean max  0.00
-     *     frames from a fresh 2s slice   plant max  3.33 · clean max  0.00
-     * On those frames it catches اعمالهم→اعمارهم, which the text matcher
-     * accepts as correct — a real mistake, invisible to string comparison.
+     * THE IDEA. The matcher compares TEXT, and text is where letter-level
+     * mistakes hide: the decoder "corrects" a wrong-but-similar word toward
+     * the plausible before any comparison runs, and the thresholds must stay
+     * lenient enough to survive ASR fuzz (tightening the 4-5 tier to 0.85
+     * costs 5 false flags and takes clip 04 to P 0.75). So: score the audio
+     * against the reference word and against deliberate near-misses of it,
+     * force-aligned over the same frames, and see which the frames prefer.
      *
-     * IT DOES NOT WORK ON THE FRAMES THE LIVE RING HOLDS, and this is not
-     * a threshold that needs tuning. Wired end-to-end and measured on the
-     * real streaming path over 10 clips / ~1000 words: ZERO false
-     * objections (largest margin anywhere −0.10, i.e. the canonical won
-     * outright on every word) and ZERO catches — the same اعمالهم scores
-     * −0.41 there. No threshold separates them; the signal is absent, not
-     * mis-thresholded.
+     * IT DOES NOT SEPARATE MISTAKES FROM CORRECT RECITATION. Measured on the
+     * real streaming path, 10 clips / ~1000 words: zero objections, and the
+     * founder's اعمالهم→اعمارهم plant scores -0.41, BELOW clean words. A
+     * dedicated forward pass per word (the expensive fix) raises the plant to
+     * 0.92 — and raises الحق, a word nobody got wrong, to 1.03. The highest
+     * scorer in the clip is a false positive. No threshold exists.
      *
-     * WHY. The ring keys frames by absolute index with latest-decode-wins,
-     * so a single word's frames are a MOSAIC of several overlapping
-     * decodes, each with its own anchor. A forced alignment over a frame
-     * sequence that is not internally consistent cannot resolve one letter.
-     * Ruled out first, both by measurement: decode WIDTH (window mode's
-     * 15 s windows behave identically) and decode TIMING (a fresh slice
-     * with only +0.4 s of trailing audio scores BEST of all).
+     * CORRECTION, recorded because it nearly shipped: an earlier run of this
+     * showed "plant max 3.33 vs clean max 0.00" and looked decisive. It
+     * sampled 9 clean words. On all 76 the separation is gone. A sample that
+     * small could not have shown what it appeared to show.
      *
-     * THE FIX, MEASURED BUT NOT BUILT: score on a dedicated batched pass —
-     * one decode of a ~3 s slice behind the live frontier, covering ~6
-     * words, scored together. ~+17% compute (vs ~+90% scoring each word
-     * with its own pass, which is why it must be batched). It costs a
-     * product decision, not just code: objections would land ~1–2 s after
-     * the word, so either the green verdict waits (~0.5–1 s later than
-     * today; the provisional ink at 0.3 s is unaffected either way) or a
-     * word turns green then red. That is Mohammed's call.
+     * RULED OUT ALONG THE WAY, each by measurement rather than argument:
+     *   decode WIDTH   — window mode's 15 s windows behave identically
+     *   decode TIMING  — a fresh slice with +0.4 s trailing audio is no better
+     *   frame MOSAIC   — tagging frames by decode pass and refusing mixed
+     *                    windows (samePass, still in the buffer, cheap and
+     *                    correct) changed nothing: the windows were already
+     *                    single-pass
+     * What remains is the model itself: this 115M CTC acoustic model does not
+     * resolve single Arabic letters reliably enough for a per-word verdict.
+     * That is a model problem, not a scheduling or threshold problem, and the
+     * next real move is a better model or a fine-tune — not more of this.
      *
-     * Everything below is the config that measurement settled, kept so the
-     * fix above is a scheduling change and not a re-derivation:
-     *   margin θ=1.0     · the clean distribution's max is −0.10, so θ=1.0
-     *                      carries a full nat of headroom
-     *   backWords 2, padFrames 2, contiguityS 0.4  · the −2/+1 window
-     *   variantSet confusable · the full 28-letter sweep measured 12%
-     *                      false flags at θ=0.5 (vs 1%) for 139 Viterbi
-     *                      passes/word instead of 11 — worse on both axes
-     *   deletions false, skipFinal/skipInitial true · see variantsOf; each
-     *                      of the three fixed a specific measured false
-     *                      positive on correct recitation
-     * enabled:false makes the engine hook simply absent — the pre-M5
-     * pipeline exactly, which is what the 04/05 P/R 1.00 numbers are on. */
+     * WHAT SURVIVES, and is worth keeping. Three false-positive classes were
+     * found on CORRECT recitation, each with a phonological cause rather than
+     * a fudge factor, each pinned by a fixture, and each a live hazard for
+     * ANY future acoustic scorer (see variantsOf):
+     *   word-FINAL letters assimilate into what follows or drop at a waqf —
+     *     golden 04's منهم scored its final م as ن by 2.84 nats
+     *   word-INITIAL letters take the previous word's final consonant by
+     *     idgham — نُزِّلَ scored its initial ن as absent by 1.44
+     *   deletions ask about LENGTH (madd), not identity — أَأُنزِلَ scored
+     *     without one alef by 1.69
+     * Plus the equivalence-class rule: without it a letter sweep "discovers"
+     * that أعمالهم beats اعمالهم and flags every hamza in the Quran.
+     *
+     * enabled:false makes the engine hook simply absent — the pre-M5 pipeline
+     * exactly, which is what the 04/05 P 1.00 / R 1.00 numbers are on. The
+     * values below are what measurement settled; they are kept so re-opening
+     * this is a re-measurement and not a re-derivation. */
     acoustic: {
         enabled: false,
         margin: 1.0,

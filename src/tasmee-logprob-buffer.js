@@ -32,6 +32,16 @@ export function createLogprobBuffer({ vocabSize, frameS = 0.08, windowS = 30 } =
     const V = vocabSize;
     const store = new Float32Array(capacity * V);   // ≈ 375 × 1025 × 4 B ≈ 1.54 MB
     const tag = new Int32Array(capacity).fill(-1);  // absIndex currently held by each slot
+    /* WHICH DECODE WROTE THIS FRAME. The ring overwrites with latest-wins,
+     * so frames covering one stretch of audio can come from DIFFERENT
+     * decode passes — each with its own anchor and its own view of the
+     * context. That is invisible in the frame values but fatal to anything
+     * that force-aligns ACROSS frames: a Viterbi path over an internally
+     * inconsistent frame sequence cannot resolve a single letter (measured
+     * — the acoustic channel's whole-clip separation of 2.90 collapses to
+     * nothing on ring frames). Callers that align across frames must check
+     * samePass() and decline a mixed window rather than score it. */
+    const pass = new Int32Array(capacity).fill(-1);
     let maxIdx = -1;
 
     /* Store/overwrite one frame's logprob row. `row` may be a subarray
@@ -40,14 +50,31 @@ export function createLogprobBuffer({ vocabSize, frameS = 0.08, windowS = 30 } =
      * Returns false (drops) for a frame older than the retained window:
      * its slot may already hold a newer frame that must not be clobbered
      * by stale data. */
-    function set(absIdx, row) {
+    function set(absIdx, row, passId = 0) {
         if (!Number.isInteger(absIdx) || absIdx < 0) return false;
         if (row.length !== V) throw new Error(`logprob row length ${row.length} ≠ vocabSize ${V}`);
         if (maxIdx >= 0 && absIdx <= maxIdx - capacity) return false;
         const slot = absIdx % capacity;
         tag[slot] = absIdx;
+        pass[slot] = passId;
         store.set(row, slot * V);
         if (absIdx > maxIdx) maxIdx = absIdx;
+        return true;
+    }
+
+    /* The decode pass that wrote this frame, or -1 if not retained. */
+    function passOf(absIdx) {
+        if (!Number.isInteger(absIdx) || absIdx < 0) return -1;
+        const slot = absIdx % capacity;
+        return tag[slot] === absIdx ? pass[slot] : -1;
+    }
+
+    /* True when every frame in [f0,f1] came from ONE decode — the
+     * precondition for force-aligning across them. */
+    function samePass(f0, f1) {
+        const p0 = passOf(f0);
+        if (p0 < 0) return false;
+        for (let i = f0 + 1; i <= f1; i++) if (passOf(i) !== p0) return false;
         return true;
     }
 
@@ -72,6 +99,7 @@ export function createLogprobBuffer({ vocabSize, frameS = 0.08, windowS = 30 } =
 
     function reset() {
         tag.fill(-1);
+        pass.fill(-1);
         maxIdx = -1;
     }
 
@@ -88,7 +116,7 @@ export function createLogprobBuffer({ vocabSize, frameS = 0.08, windowS = 30 } =
         };
     }
 
-    return { set, get, getRange, reset, stats, capacity, vocabSize: V, frameS };
+    return { set, get, getRange, passOf, samePass, reset, stats, capacity, vocabSize: V, frameS };
 }
 
 /* ============================================================
@@ -106,12 +134,14 @@ export function createUnboundedLogprobSink({ vocabSize, frameS = 0.08 } = {}) {
     }
     const V = vocabSize;
     const map = new Map();          // absIdx → Float32Array(V) (owned copies)
+    const passMap = new Map();      // absIdx → decode pass that wrote it (see the ring)
     let maxIdx = -1, setCalls = 0;
 
-    function set(absIdx, row) {
+    function set(absIdx, row, passId = 0) {
         if (!Number.isInteger(absIdx) || absIdx < 0) return false;
         if (row.length !== V) throw new Error(`logprob row length ${row.length} ≠ vocabSize ${V}`);
         setCalls++;
+        passMap.set(absIdx, passId);
         let dst = map.get(absIdx);
         if (!dst) { dst = new Float32Array(V); map.set(absIdx, dst); }
         dst.set(row);               // overwrite in place — latest decode wins
@@ -130,7 +160,14 @@ export function createUnboundedLogprobSink({ vocabSize, frameS = 0.08 } = {}) {
         return rows;
     }
 
-    function reset() { map.clear(); maxIdx = -1; setCalls = 0; }
+    function reset() { map.clear(); passMap.clear(); maxIdx = -1; setCalls = 0; }
+    const passOf = (absIdx) => (passMap.has(absIdx) ? passMap.get(absIdx) : -1);
+    function samePass(f0, f1) {
+        const p0 = passOf(f0);
+        if (p0 < 0) return false;
+        for (let i = f0 + 1; i <= f1; i++) if (passOf(i) !== p0) return false;
+        return true;
+    }
 
     function stats() {
         let minIdx = Infinity;
@@ -152,5 +189,5 @@ export function createUnboundedLogprobSink({ vocabSize, frameS = 0.08 } = {}) {
         return { indices, data, V, setCalls };
     }
 
-    return { set, get, getRange, reset, stats, exportFrames, vocabSize: V, frameS };
+    return { set, get, getRange, passOf, samePass, reset, stats, exportFrames, vocabSize: V, frameS };
 }
