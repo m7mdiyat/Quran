@@ -56,4 +56,61 @@ export const TASMEE_LIVE = {
      * so it paints after only earlyDelayS. Skips and insertions always
      * wait capS: skips are precisely the amendable class. */
     flagDefer: { capS: 2.0, earlyDelayS: 0.5, blatantSimMax: 0.5 },
+    /* ACOUSTIC SECOND OPINION (M5, 2026-07-25) — OFF, and the reason is
+     * the useful part. See src/tasmee-acoustic.js for the mechanism.
+     *
+     * THE MECHANISM WORKS. Given frames from ONE self-consistent forward
+     * pass, canonical-vs-near-miss discrimination separates the founder's
+     * planted letter mistakes from correct recitation cleanly:
+     *     frames from a whole-clip pass  plant max  2.90 · clean max  0.00
+     *     frames from a fresh 2s slice   plant max  3.33 · clean max  0.00
+     * On those frames it catches اعمالهم→اعمارهم, which the text matcher
+     * accepts as correct — a real mistake, invisible to string comparison.
+     *
+     * IT DOES NOT WORK ON THE FRAMES THE LIVE RING HOLDS, and this is not
+     * a threshold that needs tuning. Wired end-to-end and measured on the
+     * real streaming path over 10 clips / ~1000 words: ZERO false
+     * objections (largest margin anywhere −0.10, i.e. the canonical won
+     * outright on every word) and ZERO catches — the same اعمالهم scores
+     * −0.41 there. No threshold separates them; the signal is absent, not
+     * mis-thresholded.
+     *
+     * WHY. The ring keys frames by absolute index with latest-decode-wins,
+     * so a single word's frames are a MOSAIC of several overlapping
+     * decodes, each with its own anchor. A forced alignment over a frame
+     * sequence that is not internally consistent cannot resolve one letter.
+     * Ruled out first, both by measurement: decode WIDTH (window mode's
+     * 15 s windows behave identically) and decode TIMING (a fresh slice
+     * with only +0.4 s of trailing audio scores BEST of all).
+     *
+     * THE FIX, MEASURED BUT NOT BUILT: score on a dedicated batched pass —
+     * one decode of a ~3 s slice behind the live frontier, covering ~6
+     * words, scored together. ~+17% compute (vs ~+90% scoring each word
+     * with its own pass, which is why it must be batched). It costs a
+     * product decision, not just code: objections would land ~1–2 s after
+     * the word, so either the green verdict waits (~0.5–1 s later than
+     * today; the provisional ink at 0.3 s is unaffected either way) or a
+     * word turns green then red. That is Mohammed's call.
+     *
+     * Everything below is the config that measurement settled, kept so the
+     * fix above is a scheduling change and not a re-derivation:
+     *   margin θ=1.0     · the clean distribution's max is −0.10, so θ=1.0
+     *                      carries a full nat of headroom
+     *   backWords 2, padFrames 2, contiguityS 0.4  · the −2/+1 window
+     *   variantSet confusable · the full 28-letter sweep measured 12%
+     *                      false flags at θ=0.5 (vs 1%) for 139 Viterbi
+     *                      passes/word instead of 11 — worse on both axes
+     *   deletions false, skipFinal/skipInitial true · see variantsOf; each
+     *                      of the three fixed a specific measured false
+     *                      positive on correct recitation
+     * enabled:false makes the engine hook simply absent — the pre-M5
+     * pipeline exactly, which is what the 04/05 P/R 1.00 numbers are on. */
+    acoustic: {
+        enabled: false,
+        margin: 1.0,
+        backWords: 2,
+        padFrames: 2,
+        contiguityS: 0.4,
+        checker: { variantSet: "confusable", deletions: false, skipFinal: true, skipInitial: true },
+    },
 };

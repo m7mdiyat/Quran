@@ -118,7 +118,7 @@ export function createStreamController({
      * Trailing-only keeps الله/إله-class distinctions intact. */
     const dupForm = (t) => mode === "incremental" ? norm(t).replace(/(.)\1+$/u, "$1") : norm(t);
 
-    function commitWord(w, atS, latAnchorS = null) {
+    function commitWord(w, atS, latAnchorS = null, rightEndS = null) {
         const last = committed[committed.length - 1];
         const dupWin = mode === "incremental" ? incDupWinS
             : (w.startS - lastJumpS < 1.2) ? 0.45 : frameS;
@@ -126,7 +126,20 @@ export function createStreamController({
         committed.push({ ...w, extEndS: latAnchorS ?? w.endS, commitAtS: atS });
         latencies.push(atS - (latAnchorS ?? w.endS));
         const evBefore = session.getEvents().filter((e) => e.type === "reveal").length;
-        session.feedToken(w.text, Math.round(w.endS * 1000));
+        /* Third arg is ADDITIVE and ignored by the matcher: it carries the
+         * word's audio span so a caller holding the frames (the worker's
+         * logprob ring) can offer an acoustic second opinion at reveal
+         * time. Nothing in the commit gate reads it.
+         *
+         * `rightEndS` is the SETTLED SUCCESSOR's end. It matters more than
+         * it looks: a forced alignment whose last word is the target has
+         * nothing to pin the target's right boundary against, and the
+         * resulting span is soft enough to wreck the comparison (measured:
+         * clean-word margin p99 3.40 without right context, 0.34 with).
+         * The commit gate ALREADY waits for that successor — the tail guard
+         * requires it — so this costs no latency, it just stops throwing
+         * away corroboration the pipeline had already paid for. */
+        session.feedToken(w.text, Math.round(w.endS * 1000), { startS: w.startS, endS: w.endS, rightEndS });
         if (firstCommitAtS === null &&
             session.getEvents().filter((e) => e.type === "reveal").length > evBefore) firstCommitAtS = atS;
         committedEndS = Math.max(committedEndS, w.endS); // settled end — never the extension
@@ -483,7 +496,11 @@ export function createStreamController({
                 }
             }
             for (let i = 0; i < commitN; i++) {
-                commitWord(pending[i], chunkEnd, Math.max(pending[i].endS, prevPending[i]?.endS ?? 0));
+                // pending[i+1] is the next word in this same decode (for the
+                // last committed word that is the tail guard's `succ`) — its
+                // end is the right anchor the acoustic check needs.
+                const right = pending[i + 1] ? pending[i + 1].endS : null;
+                commitWord(pending[i], chunkEnd, Math.max(pending[i].endS, prevPending[i]?.endS ?? 0), right);
             }
             /* PROVISIONAL INK (latency): hand the still-uncommitted words to
              * the engine's PURE preview so the UI can show them now. Nothing

@@ -589,7 +589,13 @@ const _isPainted = (idx, neg) => {
 function deferNegative(idx, verdict, extra) {
     const prev = _pendingNeg.get(idx);
     if (prev) clearTimeout(prev.timer);
-    const blatant = verdict === "substituted" && typeof extra.sim === "number" && extra.sim <= _defer.blatantSimMax;
+    /* The cap exists to wait for an AMENDMENT that might cancel the flag.
+     * An acoustically-flagged word is frozen against amendment by design
+     * (the shadow re-verdict replays text, and text is the evidence that
+     * missed the mistake) — so there is nothing to wait for, and holding it
+     * the full 2 s would just make a settled verdict feel slow. */
+    const blatant = verdict === "substituted" &&
+        (extra.acoustic != null || (typeof extra.sim === "number" && extra.sim <= _defer.blatantSimMax));
     const delayMs = (blatant ? _defer.earlyDelayS : _defer.capS) * 1000;
     const timer = setTimeout(() => { _pendingNeg.delete(idx); paintReveal(idx, verdict, extra); }, delayMs);
     _pendingNeg.set(idx, { verdict, extra, timer });

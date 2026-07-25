@@ -23,6 +23,8 @@ import { tasmeeNorm } from "../src/tasmee-norm.js";
 import { createTasmeeSession } from "../src/tasmee-engine.js";
 import { readWavMono, resampleTo16k, melFrontend, makeGreedyDecoder, NMEL, buildVad } from "../src/tasmee-pipeline.js";
 import { createStreamController } from "../src/tasmee-stream.js";
+import { createLogprobBuffer } from "../src/tasmee-logprob-buffer.js";
+import { createAcousticChecker, createAcousticHook } from "../src/tasmee-acoustic.js";
 import { TASMEE_LIVE } from "../src/tasmee-live-config.js";
 import { buildBenchBlock, buildEnvLines } from "../src/tasmee-report.js";
 import os from "node:os";
@@ -173,6 +175,19 @@ try {
     RAW_INPUT = true;
 } catch { RAW_INPUT = false; }
 
+/* ACOUSTIC SECOND OPINION (M5) — off with --no-acoustic (the pre-M5
+ * baseline for A/B), and θ overridable via TASMEE_OVERRIDE.acousticMargin
+ * for the margin sweep. Same modules, same config, same ring as the
+ * worker: see src/tasmee-acoustic.js. */
+const AC_ON = TASMEE_LIVE.acoustic.enabled && !args.includes("--no-acoustic");
+const lpBuf = AC_ON ? createLogprobBuffer({ vocabSize: VOCAB.length }) : null;
+const acChecker = AC_ON ? createAcousticChecker({ vocab: VOCAB, blank: BLANK, options: TASMEE_LIVE.acoustic.checker }) : null;
+/* Telemetry — a channel whose firing rate is invisible cannot be trusted:
+ * "no change in the numbers" reads identically whether it agreed with the
+ * matcher everywhere or never ran at all. asked/opinion/objected + the
+ * margin distribution separate those. */
+const acStats = { asked: 0, opinion: 0, objected: 0, margins: [] };
+
 let computeMs = 0, melMs = 0, ortMs = 0; // split = C3 attribution (our DSP vs ORT kernels)
 async function decode(startS, endS) {
     const a = pcm.subarray(Math.floor(startS * 16000), Math.floor(endS * 16000));
@@ -196,6 +211,15 @@ async function decode(startS, endS) {
     ortMs += performance.now() - tMel;
     computeMs += performance.now() - t0;
     const lp = out[sess.outputNames[0]];
+    /* Per-frame retention, keyed by ABSOLUTE frame — byte-identical to the
+     * worker's side buffer (same ring, same overwrite-latest-wins), so the
+     * acoustic second opinion the bench grades is the one the device runs.
+     * Costs nothing when the channel is off. */
+    if (lpBuf) {
+        const T = lp.dims[1], V = lp.dims[2];
+        const base = Math.round(startS / FRAME_S);
+        for (let t = 0; t < T; t++) lpBuf.set(base + t, lp.data.subarray(t * V, t * V + V));
+    }
     return GREEDY(lp.data, lp.dims[1], lp.dims[2], startS).words;
 }
 
@@ -207,7 +231,30 @@ async function decode(startS, endS) {
 const _prev = new Map(), _rev = new Map();
 const session = createTasmeeSession({
     words: ref,
-    options: { ...TASMEE_LIVE.engine, ...(OV.engine || {}) },   // config-of-record (length-tiered θ)
+    options: {
+        ...TASMEE_LIVE.engine, ...(OV.engine || {}),   // config-of-record (length-tiered θ)
+        ...(AC_ON ? {
+            acousticCheck: (() => {
+                const hook = createAcousticHook({
+                    checker: acChecker, buffer: lpBuf, vocabSize: VOCAB.length,
+                    refForms: ref.map((r) => r.form), frameS: FRAME_S,
+                    config: TASMEE_LIVE.acoustic,
+                });
+                const TH = OV.acousticMargin ?? TASMEE_LIVE.acoustic.margin;
+                return (idx, ctx) => {
+                    acStats.asked++;
+                    const r = hook(idx, ctx);
+                    if (r) {
+                        acStats.opinion++;
+                        acStats.margins.push({ idx, loc: `${ref[idx].vk}:${ref[idx].pos}`, form: ref[idx].form, m: +r.margin.toFixed(2), v: r.variant });
+                        if (r.margin > TH) acStats.objected++;
+                    }
+                    return r;
+                };
+            })(),
+            acousticMargin: OV.acousticMargin ?? TASMEE_LIVE.acoustic.margin,
+        } : {}),
+    },
     onEvent: (e) => {
         if (e.type === "preview" && !_prev.has(e.idx)) _prev.set(e.idx, e.t);
         else if (e.type === "reveal" && !_rev.has(e.idx)) _rev.set(e.idx, e.t);
@@ -287,6 +334,20 @@ const block = buildBenchBlock({
     }),
 });
 console.log(block.text);
+
+if (AC_ON) {
+    const ms = acStats.margins.map((x) => x.m).sort((a, b) => a - b);
+    const q = (f) => (ms.length ? ms[Math.floor(f * (ms.length - 1))].toFixed(2) : "—");
+    console.log(`\nacoustic: asked ${acStats.asked} · had an opinion ${acStats.opinion}` +
+        ` (abstained ${acStats.asked - acStats.opinion}) · objected ${acStats.objected}` +
+        `  [θ=${OV.acousticMargin ?? TASMEE_LIVE.acoustic.margin}, ${TASMEE_LIVE.acoustic.checker.variantSet}]`);
+    console.log(`  margins: median ${q(0.5)} · p90 ${q(0.9)} · p99 ${q(0.99)} · max ${q(1)}`);
+    const top = [...acStats.margins].sort((a, b) => b.m - a.m).slice(0, 6);
+    if (top.length) console.log(`  strongest: ${top.map((x) => `${x.loc} ${x.form}→${x.v} ${x.m}`).join(" · ")}`);
+    if (args.includes("--acoustic-log")) {
+        for (const x of acStats.margins) console.error(`[ac] ${x.loc} ${x.form} → ${x.v} margin ${x.m}`);
+    }
+}
 
 /* ---------- truth scoring (bench-only) ---------- */
 if (truth) {

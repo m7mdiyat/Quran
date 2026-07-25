@@ -151,6 +151,35 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * dynamics, a different risk surface with no measured benefit.
          * null ⇒ flat thMatch (the pre-M2 behaviour every fixture pins). */
         thTiers: null,
+        /* ACOUSTIC SECOND OPINION (M5, 2026-07-25) — injected, optional.
+         *
+         * The matcher compares TEXT, and text is where two things leak: the
+         * decoder "corrects" a wrong-but-similar word toward the plausible
+         * before the comparison ever runs, and the thresholds must stay
+         * lenient enough to survive ASR fuzz (tightening the 4–5 tier to
+         * 0.85 costs 5 false flags and takes clip 04 to P 0.75 — measured,
+         * rejected). Neither is fixable inside a string comparison.
+         *
+         * So a caller that HAS the frames may inject a second opinion that
+         * reads the audio instead: acousticCheck(idx, {form, heard, tMs}) →
+         * {margin, variant} | null, where margin > 0 means the frames
+         * support a near-miss of the reference word better than the
+         * reference word itself. Called ONLY on the "accepted as expected"
+         * path, and only BEFORE the reveal is emitted, so the UI paints one
+         * verdict once — never green-then-red.
+         *
+         * CONTRACT, and it is the whole safety argument:
+         *   - null/undefined ⇒ NO OBJECTION. Every abstention (no frames,
+         *     span too short, word too long, holes in the ring) must reach
+         *     this as null, never as a low score. Silence is not evidence.
+         *   - the hook may not mutate anything; it is asked, not obeyed.
+         *   - an objection can only ever move correct → substituted. It can
+         *     never rescue a word the matcher already flagged: the matcher
+         *     heard a different word and that evidence stands.
+         * Absent ⇒ the engine behaves EXACTLY as it did before this existed,
+         * which is what every pre-M5 fixture pins. */
+        acousticCheck: null,
+        acousticMargin: 1.0,      // θ — see tasmee-acoustic.js for the sweep
         ...options,
     };
 
@@ -176,6 +205,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
 
     let p = 0;               // next expected word index
     let curRaw = "";         // current token's pre-normalisation text (M3)
+    let curSpan = null;      // current token's audio span {startS,endS} (M5)
     const previewed = new Set();   // indices already announced as provisional
     let done = false;
     const events = [];
@@ -217,6 +247,21 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
 
     function reveal(idx, verdict, extra, tMs) {
         const w = ref[idx];
+        /* ACOUSTIC SECOND OPINION — asked only where the matcher ACCEPTED a
+         * token as the expected word (`sim` is set on exactly those paths;
+         * the muqatta'at letter-name reveal carries none and is skipped, as
+         * it must be — its "word" is a spelling-out, not a pronunciation).
+         * The hook may object; it may not rescue. Any throw is swallowed:
+         * a second opinion that fails is an abstention, never a verdict. */
+        if (verdict === "correct" && opt.acousticCheck && extra && extra.sim != null) {
+            let obj = null;
+            try { obj = opt.acousticCheck(idx, { form: w.form, heard: extra.heard, tMs, span: curSpan }); } catch { obj = null; }
+            if (obj && typeof obj.margin === "number" && obj.margin > opt.acousticMargin) {
+                verdict = "substituted";
+                extra = { ...extra, acoustic: +obj.margin.toFixed(3), acousticVariant: obj.variant || null };
+                w.acoustic = +obj.margin.toFixed(3);   // freezes this word against text-only re-verdicts
+            }
+        }
         w.verdict = verdict;
         /* M3: carry the token's ORIGINAL, still-diacritised text alongside the
          * normalised `heard`, so the harakat check has something to read (the
@@ -726,9 +771,16 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             return out;
         },
 
-        feedToken(rawToken, tMs = 0) {
+        /* `meta` (optional, additive): the decoded word's audio span,
+         * {startS,endS}. The matcher itself has no use for it — but the
+         * acoustic second opinion needs to know WHICH FRAMES this token
+         * came from, and the caller that owns the frames is the only one
+         * who knows. Carried the same way curRaw is (M3): set on entry,
+         * read during reveal, never persisted past the token. */
+        feedToken(rawToken, tMs = 0, meta = null) {
             if (done) return;
             curRaw = String(rawToken || "");
+            curSpan = meta && typeof meta.startS === "number" ? meta : null;
             const t = tasmeeNorm(rawToken);
             if (!t) return;
             lastActivityTs = tMs;
@@ -873,9 +925,16 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * it only scores whatever the model re-decoded, exactly as it
          * scores first decodes. */
         reverdict(tokens) {
+            /* The shadow replays TEXT ONLY — its feedToken calls carry no
+             * audio span, so the acoustic channel could never have an
+             * opinion here. Strip the hook rather than let it be asked and
+             * abstain thousands of times: a channel that is asked without
+             * evidence and answers "nothing" is indistinguishable, in any
+             * telemetry, from one that is broken. */
+            const { acousticCheck: _drop, ...shadowOptions } = options;
             const shadow = createTasmeeSession({
                 words: ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
-                basmala, options,
+                basmala, options: shadowOptions,
             });
             let last = 0;
             /* UNVERIFIED ATTRIBUTION (M1b). A token the controller marked
@@ -949,6 +1008,15 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 if (sh.unverifiedIdx && sh.unverifiedIdx.has(i) &&
                     (nv === "skipped" || nv === "substituted")) nv = "unverified";
                 if (cur === "hinted") continue;
+                /* A word the ACOUSTIC channel flagged is frozen for the same
+                 * reason a hinted one is: the shadow cannot know what the
+                 * live pass knew. It replays text, and text is exactly the
+                 * evidence that missed this mistake in the first place — so
+                 * its "correct" here is not a correction, it is the same
+                 * blind spot voting a second time. Without this freeze the
+                 * amendment channel silently erased every objection the
+                 * channel made (measured: 1 objection raised, 0 surviving). */
+                if (ref[i].acoustic != null) continue;
                 if (!nv) { if (cur) unsupported++; continue; }
                 if (nv === cur) continue;
                 if (nv === "unverified" && cur === "correct") continue;   // never downgrade a correct word

@@ -24,6 +24,7 @@ import { readWavMono, resampleTo16k, makeStreamResampler16k, melFrontend, makeGr
 import { createStreamController } from "./tasmee-stream.js";
 import { tasmeeNorm } from "./tasmee-norm.js";
 import { createLogprobBuffer, createUnboundedLogprobSink } from "./tasmee-logprob-buffer.js";
+import { createAcousticChecker, createAcousticHook } from "./tasmee-acoustic.js";
 import { TASMEE_LIVE } from "./tasmee-live-config.js";
 
 /* ADAPTIVE threads — never hardcode single-threaded. In the app the FlyingFox
@@ -41,6 +42,13 @@ let sess = null, VOCAB = null, BLANK = 0, GREEDY = null, RAW_INPUT = false;
  * during a live session — the warmup decode and the sessionless
  * decode/decodeWav dev paths skip it. Nothing reads it yet. */
 let lpBuf = null;
+
+/* ACOUSTIC SECOND OPINION (M5) — the consumer the logprob buffer was
+ * built for. Vocab-derived, so it is created once at model load and
+ * reused across sessions; null until then, and null disables the
+ * channel entirely (the engine's hook contract treats absence as
+ * "no objection", never as "correct"). */
+let acoustic = null;
 
 /* DEV-ONLY capture state (tasmee-lab harness). Non-null ONLY when an init
  * message carries `dev: {...}` — the live UI (tasmee-ui.js) never sends it,
@@ -74,6 +82,9 @@ async function loadModel(modelUrl, vocabUrl) {
     for (const [id, tok] of Object.entries(vocabJson)) VOCAB[Number(id)] = tok;
     BLANK = VOCAB.indexOf("<blank>") >= 0 ? VOCAB.indexOf("<blank>") : VOCAB.length - 1;
     GREEDY = makeGreedyDecoder(VOCAB, BLANK);
+    acoustic = TASMEE_LIVE.acoustic.enabled
+        ? createAcousticChecker({ vocab: VOCAB, blank: BLANK, options: TASMEE_LIVE.acoustic.checker })
+        : null;
     sess = await ort.InferenceSession.create(new Uint8Array(modelBuf), { executionProviders: ["wasm"] });
     // Probe: does audio_signal want raw waveform [1,N] or mel [1,80,T]?
     RAW_INPUT = false;
@@ -149,7 +160,20 @@ function setupLive(ref) {
     liveSession = createTasmeeSession({
         words: ref.map((r) => ({ vk: r.vk, pos: r.pos, form: r.form })),
         onEvent: (ev) => self.postMessage({ type: "event", event: ev }),
-        options: TASMEE_LIVE.engine,     // config-of-record (length-tiered θ)
+        options: {
+            ...TASMEE_LIVE.engine,       // config-of-record (length-tiered θ)
+            /* ACOUSTIC SECOND OPINION — the hook is built over the SAME
+             * logprob ring the decode path just filled, and is the shared
+             * implementation the offline bench also grades. */
+            ...(acoustic ? {
+                acousticCheck: createAcousticHook({
+                    checker: acoustic, buffer: lpBuf, vocabSize: VOCAB.length,
+                    refForms: ref.map((r) => r.form), frameS: FRAME_S,
+                    config: TASMEE_LIVE.acoustic,
+                }),
+                acousticMargin: TASMEE_LIVE.acoustic.margin,
+            } : {}),
+        },
     });
     // RAW ASR TRANSCRIPT — capture every token the model commits BEFORE the engine
     // matches it against the reference, so "what the model actually heard" is
