@@ -24,6 +24,13 @@ export const TASMEE_LIVE = {
         mode: "incremental",
         incContextS: 1.5,
         incEdgeGuardS: 0.2,
+        /* RUNAWAY GUARD (2026-07-26): hard ceiling on [anchorS, chunkEnd].
+         * The anchor hysteresis pins relative to the FRONTIER, so a stalled
+         * frontier leaves the window unbounded — measured growing to 18.4 s
+         * on an 83 s session, ~6x the decode cost of a normal window, which
+         * on wasm is far past real time and is what made live reveal go
+         * sluggish partway through. Normal operation peaks at 7–8 s. */
+        incMaxWindowS: 10,
         /* AMENDMENT CHANNEL (2026-07-16): stability = sightings required
          * before a re-reading amends a committed word (same bar as the
          * commit gate's two-sighting contract); minOverlapFrac = time-

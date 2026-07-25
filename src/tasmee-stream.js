@@ -74,6 +74,11 @@ export function createStreamController({
     incEdgeGuardS = 0.2,
     incDupWinS = 0.45,
     incMaxContextS = 4,
+    /* Hard ceiling on the incremental decode window — the runaway guard.
+     * See the re-pin site for the measurement; 10 s sits well above the
+     * ~7–8 s peak of normal operation, so it fires only when the frontier
+     * has genuinely stalled. */
+    incMaxWindowS = 10,
     /* AMENDMENT CHANNEL (2026-07-16, from the live-vs-frozen diagnosis):
      * while decode windows still cover a committed word's span, later
      * STABLE re-readings may amend its heard-text (the correct fuller
@@ -413,6 +418,32 @@ export function createStreamController({
                     // fused/split readings until a junk split agrees twice).
                     const snap = findSilenceBefore(Math.max(0, frontierS - incContextS), Math.max(0, frontierS - incMaxContextS));
                     anchorS = snap ?? Math.max(0, Math.floor((frontierS - incContextS) / chunkS) * chunkS);
+                }
+                /* HARD WINDOW CEILING (2026-07-26). The hysteresis above pins
+                 * the anchor relative to the FRONTIER, so when the frontier
+                 * stalls — a word that keeps re-decoding and never commits —
+                 * it cannot bound the window at all: chunkEnd keeps advancing
+                 * and [anchorS, chunkEnd] grows without limit. The windowS cap
+                 * lives in the else-branch and does NOT apply here.
+                 *
+                 * MEASURED on Mohammed's own 83 s recitation of page 507:
+                 * the window sat at 6 s through t=70 s, then 11 s at t=77 s
+                 * and 17.9 s at t=84 s — still climbing. An 18 s window costs
+                 * ~6x a 3 s one, and on the ship path (wasm, RTF ~1 at a
+                 * normal window) that is far past real time, so the pipeline
+                 * falls behind and never recovers. That is exactly the
+                 * "it started following me slowly partway through" report.
+                 *
+                 * This is a SAFETY VALVE, not a policy change: it pins
+                 * relative to chunkEnd (the only reference that still moves
+                 * when the frontier is stuck), only ever moves the anchor
+                 * FORWARD, and prefers a silence boundary exactly as every
+                 * other re-pin does. In normal operation the window peaks
+                 * around 7–8 s, so at the shipped ceiling it never fires. */
+                if (chunkEnd - anchorS > incMaxWindowS) {
+                    const lo = Math.max(0, chunkEnd - incMaxWindowS);
+                    const snap = findSilenceBefore(Math.max(0, chunkEnd - incContextS), lo);
+                    anchorS = Math.max(anchorS, snap ?? Math.floor(lo / chunkS) * chunkS);
                 }
                 // no jump bookkeeping: lastJumpS stays -Infinity; the wide
                 // dup window applies permanently via incDupWinS instead.

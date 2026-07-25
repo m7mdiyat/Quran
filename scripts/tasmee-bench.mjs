@@ -189,6 +189,7 @@ const acChecker = AC_ON ? createAcousticChecker({ vocab: VOCAB, blank: BLANK, op
 const acStats = { asked: 0, opinion: 0, objected: 0, mixed: 0, margins: [] };
 let decodePass = 0;
 
+const winTrace = [];
 let computeMs = 0, melMs = 0, ortMs = 0; // split = C3 attribution (our DSP vs ORT kernels)
 async function decode(startS, endS) {
     const a = pcm.subarray(Math.floor(startS * 16000), Math.floor(endS * 16000));
@@ -275,9 +276,21 @@ const ctl = createStreamController({
     // AMENDMENT CHANNEL (2026-07-16): ships ON (config-of-record);
     // --no-amend gives the pre-amendment baseline for A/B.
     amend: args.includes("--no-amend") ? null : TASMEE_LIVE.controller.amend,
-    debug: args.includes("--debug")
-        ? (chunkEnd, commitN, pending) => console.error(`[${chunkEnd.toFixed(1)}s] commit ${commitN} | pending: ` +
-            pending.map((w) => `${w.text}(${w.startS.toFixed(1)}-${w.endS.toFixed(1)})`).join(" "))
+    debug: (args.includes("--debug") || args.includes("--profile-window"))
+        ? (chunkEnd, commitN, pending, anchorS) => {
+            if (args.includes("--profile-window")) {
+                /* THE DECODE WINDOW IS THE COST. In incremental mode the
+                 * windowS cap sits in the else-branch and does not apply, so
+                 * the window is [anchorS, chunkEnd] and is bounded only by the
+                 * anchor re-pinning — which needs the FRONTIER to advance. If
+                 * the frontier stalls, this grows every step and every decode
+                 * gets slower: the "it went sluggish partway through" class. */
+                winTrace.push({ t: +chunkEnd.toFixed(2), win: +(chunkEnd - (anchorS || 0)).toFixed(2), pend: pending.length });
+                return;
+            }
+            console.error(`[${chunkEnd.toFixed(1)}s] commit ${commitN} | pending: ` +
+                pending.map((w) => `${w.text}(${w.startS.toFixed(1)}-${w.endS.toFixed(1)})`).join(" "));
+        }
         : null,
 });
 /* Ruling #3 — live-feed accounting: chunk i is only AVAILABLE at
@@ -339,6 +352,16 @@ const block = buildBenchBlock({
             : `window (windowS=${WINDOW_S} contextS=${CONTEXT_S} chunkS=${CHUNK_S} holdbackS=${HOLDBACK_S})`,
     }),
 });
+if (args.includes("--profile-window") && winTrace.length) {
+    const mx = winTrace.reduce((a, b) => (b.win > a.win ? b : a));
+    console.log("\ndecode-window profile (incremental has NO windowS cap — see tasmee-stream.js):");
+    const step = Math.max(1, Math.floor(winTrace.length / 12));
+    for (let i = 0; i < winTrace.length; i += step) {
+        const w = winTrace[i];
+        console.log(`  t=${String(w.t).padStart(6)}s   window ${String(w.win).padStart(6)}s   pending ${w.pend}`);
+    }
+    console.log(`  MAX window ${mx.win}s at t=${mx.t}s   (a 15s window is ~5x the cost of a 3s one)`);
+}
 console.log(block.text);
 
 if (AC_ON) {
