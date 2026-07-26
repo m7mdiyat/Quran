@@ -31,3 +31,4 @@ tests/**/*.wav
 
 # Layer 2 (muaalem) python env — see scripts/tasmee-deep-check.py
 .venv-muaalem/
+public/models/muaalem/muaalem-int8.onnx
