@@ -20,7 +20,7 @@
 
 import * as ort from "onnxruntime-web/wasm";   // WASM-only build (no WebGPU/JSEP): plain ort-wasm-simd-threaded.*
 import { createTasmeeSession } from "./tasmee-engine.js";
-import { readWavMono, resampleTo16k, makeStreamResampler16k, melFrontend, makeGreedyDecoder, NMEL, FRAME_S, buildVad } from "./tasmee-pipeline.js";
+import { readWavMono, resampleTo16k, makeStreamResampler16k, melFrontend, makeGreedyDecoder, createMelCache, NMEL, FRAME_S, HOP, buildVad } from "./tasmee-pipeline.js";
 import { createStreamController } from "./tasmee-stream.js";
 import { tasmeeNorm } from "./tasmee-norm.js";
 import { createLogprobBuffer, createUnboundedLogprobSink } from "./tasmee-logprob-buffer.js";
@@ -42,6 +42,10 @@ let sess = null, VOCAB = null, BLANK = 0, GREEDY = null, RAW_INPUT = false;
  * during a live session — the warmup decode and the sessionless
  * decode/decodeWav dev paths skip it. Nothing reads it yet. */
 let lpBuf = null;
+
+/* Mel columns already computed this session. Live only — the sessionless
+ * decode/decodeWav dev paths pass no cache and are unaffected. */
+let melCache = null;
 
 /* ACOUSTIC SECOND OPINION (M5) — the consumer the logprob buffer was
  * built for. Vocab-derived, so it is created once at model load and
@@ -113,7 +117,11 @@ async function decodeSlice(pcm16k, startS = 0) {
             length: new ort.Tensor("int64", BigInt64Array.from([BigInt(pcm16k.length)]), [1]),
         };
     } else {
-        const { mel, T } = melFrontend(pcm16k);
+        /* Reuse mel columns across the sliding window — 20% of compute,
+         * measured, and byte-identical (tests/tasmee/melcache.test.mjs). The
+         * slice start is on the chunk grid, so absolute frame indices line up
+         * between calls. */
+        const { mel, T } = melFrontend(pcm16k, melCache, Math.round((startS * 16000) / HOP));
         feeds = {
             audio_signal: new ort.Tensor("float32", mel, [1, NMEL, T]),
             length: new ort.Tensor("int64", BigInt64Array.from([BigInt(T)]), [1]),
@@ -140,6 +148,10 @@ async function decodeSlice(pcm16k, startS = 0) {
  * for applyEvent() → DOM reveals. Engine + controller are co-located because
  * the controller reads session.getEvents() synchronously. */
 const STEP_S = TASMEE_LIVE.stepS, TAIL_PAD_S = TASMEE_LIVE.tailPadS, SR = TASMEE_LIVE.sr;   // values unchanged — see tasmee-live-config.js
+/* How far behind real time we tolerate before skipping ahead. Two steps:
+ * one step of lag is normal jitter, sustained lag is the compounding
+ * failure this guards against. */
+const CATCHUP_LAG_S = TASMEE_LIVE.catchUpLagS;
 let resampler = null, pcm = new Float32Array(1 << 18), pcmLen = 0;
 let liveSession = null, liveCtl = null, liveVad = null, nextStepS = 0, finishing = false, stepping = false;
 
@@ -159,6 +171,7 @@ async function liveDecode(startS, endS) {
 function setupLive(ref) {
     resampler = makeStreamResampler16k(48000);
     pcmLen = 0; nextStepS = STEP_S; finishing = false; stepping = false;
+    melCache = createMelCache();
     lpBuf = DEV
         ? (DEV.sink = createUnboundedLogprobSink({ vocabSize: VOCAB.length }))  // dev capture: whole-clip sink
         : createLogprobBuffer({ vocabSize: VOCAB.length });     // session start → fresh retention buffer
@@ -202,15 +215,46 @@ function setupLive(ref) {
 
 /* Serialized stepper: rebuild the VAD on the audio so far, then run the
  * controller for every 0.3 s boundary now covered by committed audio. */
+/* CATCH-UP (2026-07-26). The loop used to advance one step at a time no
+ * matter how far behind it had fallen. In the browser that is fatal: the
+ * ship path runs onnxruntime-web, MEASURED at RTF 1.23 single-threaded
+ * (0.19 native) — above real time, so every step lost a little more ground
+ * and the deficit compounded. On a 20 s clip the bench ends 6.1 s behind,
+ * and it never recovers.
+ *
+ * Worse than the delay is WHAT it was doing with that time: decoding audio
+ * from six seconds ago while the reciter had moved on. That is exactly the
+ * "it only works if I read very slowly, and only partially" report —
+ * reading slowly is the one thing that brings the effective rate under 1.0.
+ *
+ * So when we are more than a step behind, jump to the newest boundary
+ * instead of grinding through the backlog. Skipping intermediate decodes
+ * costs SIGHTINGS, not words: the commit gate needs a word seen in two
+ * CONSECUTIVE decodes, and two consecutive post-jump steps still provide
+ * that. Being current with fewer sightings beats being correct about what
+ * happened six seconds ago. */
+let lagSkips = 0;
 async function pump() {
     if (stepping) return;
     stepping = true;
     try {
         while (nextStepS <= pcmLen / SR) {
+            const avail = pcmLen / SR;
+            if (avail - nextStepS > CATCHUP_LAG_S) {
+                const jumped = Math.floor(avail / STEP_S) * STEP_S;
+                if (jumped > nextStepS) {
+                    lagSkips += Math.round((jumped - nextStepS) / STEP_S);
+                    nextStepS = jumped;
+                }
+            }
             liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: TASMEE_LIVE.vadPolicy });
             await liveCtl.step(nextStepS);
             nextStepS += STEP_S;
         }
+        /* Decoding never goes backwards, so columns well behind the current
+         * step will never be asked for again. Without this the cache grows for
+         * the whole session — ~50 KB per second of audio. */
+        if (melCache) melCache.prune(Math.round(((nextStepS - 30) * 16000) / HOP));
     } finally { stepping = false; }
 }
 
@@ -236,7 +280,7 @@ async function finishLive() {
     liveCtl.flush(endS);
     const summary = liveSession.stop(Math.round(endS * 1000));
     const { committed } = liveCtl.results();
-    resampler = null; liveCtl = null; liveSession = null;
+    resampler = null; liveCtl = null; liveSession = null; melCache = null;
     if (lpBuf) {
         if (DEV) DEV.pcmDone = pcm.slice(0, pcmLen);  // dev capture: keep sink + final PCM for devExport
         else lpBuf.reset();                           // session stop → release retention buffer
@@ -273,7 +317,7 @@ self.onmessage = async (e) => {
             pump();                                       // fire-and-forget; self-serializes
         } else if (m.type === "stop") {
             const r = await finishLive();
-            self.postMessage({ type: "stopped", summary: r && r.summary, committed: r && r.committed ? r.committed.length : 0 });
+            self.postMessage({ type: "stopped", summary: r && r.summary, committed: r && r.committed ? r.committed.length : 0, lagSkips });
         } else if (m.type === "streamWav") {
             // TEST: feed a golden WAV through the LIVE path (raw 48 k in blocks) →
             // events + committed set, to diff the streaming wire vs the bench.

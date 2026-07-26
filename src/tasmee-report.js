@@ -80,7 +80,7 @@ export function buildBenchBlock({
     L.push(`  final-word check    ${finalRevealed ? "PASS" : "FAIL"} (${lastWord.vk}:${lastWord.pos} ${finalRevealed ? `revealed as ${lastWord.verdict}` : "NOT revealed"})`);
     L.push(`  spurious repetitions ${summary.counts.repetitions} on this clip${truthLoaded ? " (compare vs planted repeats in truth)" : " — none planted (report-only)"}`);
     if (feed) {
-        L.push(`  live-feed backlog   max ${feed.maxBacklogS.toFixed(1)}s · end ${feed.endBacklogS.toFixed(1)}s (feed=${feed.mode}${feed.mode === "fast" ? ", virtual clock" : ""})`);
+        L.push(`  live-feed backlog   max ${feed.maxBacklogS.toFixed(1)}s · end ${feed.endBacklogS.toFixed(1)}s (feed=${feed.mode}${feed.mode === "fast" ? ", virtual clock" : ""})` + (feed.lagSkips ? ` · caught up ${feed.lagSkips}x` : ""));
     }
     for (const h of session.getEvents().filter((e) => e.type === "hesitation")) {
         const before = committed.filter((w) => w.endS * 1000 <= h.t).pop();

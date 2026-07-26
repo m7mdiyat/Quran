@@ -181,7 +181,37 @@ const HANN = (() => { // periodic hann(400), centered in the 512 frame
     return w;
 })();
 
-export function melFrontend(pcmSlice) {
+/* MEL FRAME CACHE (2026-07-26). The incremental controller re-decodes a
+ * sliding 3–8 s window every 0.3 s, so each second of audio has its mel
+ * recomputed 10–25 times — 20% of total compute, measured, spent producing
+ * numbers we already had. On the ship path (onnxruntime-web, RTF 0.9–1.2)
+ * that 20% is the difference between keeping up and not.
+ *
+ * A frame is reusable only if it cannot see a slice boundary:
+ *   · the FFT window [t*HOP, t*HOP+NFFT) must lie inside the real samples,
+ *     clear of the NFFT/2 reflect padding at each end
+ *   · it must not include padded[PADH], the one sample whose preemphasis
+ *     differs (pre[0] has no predecessor)
+ * which gives t ≥ 2 and t*HOP + NFFT ≤ PADH + n. Frames outside that band
+ * are always recomputed.
+ *
+ * Slice starts are quantised to the chunk grid (0.3 s = 4800 samples = 30
+ * hops exactly), so absolute frame indices line up across calls. Byte
+ * equality against the uncached path is asserted in the fixtures — a cache
+ * that returns ALMOST the same numbers would change decodes silently. */
+export function createMelCache() {
+    const cols = new Map();          // absolute frame index → Float32Array(NMEL)
+    return {
+        get: (i) => cols.get(i),
+        set: (i, v) => cols.set(i, v),
+        /* Drop everything before `i` — the controller never decodes backwards,
+         * so older columns are dead weight for the rest of the session. */
+        prune(i) { for (const k of cols.keys()) if (k < i) cols.delete(k); },
+        get size() { return cols.size; },
+    };
+}
+
+export function melFrontend(pcmSlice, cache = null, baseFrame = 0) {
     const n = pcmSlice.length;
     const pre = new Float32Array(n);
     pre[0] = pcmSlice[0];
@@ -198,17 +228,32 @@ export function melFrontend(pcmSlice) {
     const mel = new Float32Array(NMEL * T);
     const re = new Float32Array(NFFT), im = new Float32Array(NFFT);
     const power = new Float32Array(nBins);
+    // frames that cannot see a slice edge (see createMelCache)
+    const safeLo = 2, safeHi = Math.floor((n - PADH) / HOP);
     for (let t = 0; t < T; t++) {
         const base = t * HOP;
+        const reusable = cache && t >= safeLo && t <= safeHi;
+        if (reusable) {
+            const hit = cache.get(baseFrame + t);
+            // NB: the buffer is CHANNEL-major (mel[m*T + t]), so a column is
+            // strided, not contiguous — a flat set() here would be silently
+            // wrong in a way no shape check would catch.
+            if (hit) { for (let m = 0; m < NMEL; m++) mel[m * T + t] = hit[m]; continue; }
+        }
         for (let i = 0; i < NFFT; i++) { re[i] = (padded[base + i] || 0) * HANN[i]; im[i] = 0; }
         fftRadix2(re, im);
         for (let k = 0; k < nBins; k++) power[k] = re[k] * re[k] + im[k] * im[k];
+        let col = null;
+        if (reusable) col = new Float32Array(NMEL);
         for (let m = 0; m < NMEL; m++) {
             let acc = 0;
             const row = m * nBins;
             for (let k = 0; k < nBins; k++) acc += MEL_FILTERS[row + k] * power[k];
-            mel[m * T + t] = Math.log(acc + Math.pow(2, -24));
+            const v = Math.log(acc + Math.pow(2, -24));
+            mel[m * T + t] = v;
+            if (col) col[m] = v;
         }
+        if (col) cache.set(baseFrame + t, col);
     }
     for (let m = 0; m < NMEL; m++) { // per-feature normalization
         let mean = 0;

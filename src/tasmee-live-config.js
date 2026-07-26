@@ -14,6 +14,11 @@ export const TASMEE_LIVE = {
     sr: 16000,          // engine-side PCM rate (post-resample)
     stepS: 0.3,         // live step cadence (worker STEP_S)
     tailPadS: 1.2,      // end-of-session silence pad (worker TAIL_PAD_S, #6 flush)
+    /* Lag we tolerate before the pump skips ahead instead of grinding through
+     * stale audio. See the catch-up note in tasmee-worker.js — the ship path
+     * is onnxruntime-web at RTF 1.23 single-threaded, so falling behind is
+     * the normal case, not an edge case. */
+    catchUpLagS: 0.6,
     vadPolicy: "v2",    // adopted for the incremental stack (2026-07-11 ruling)
     controller: {       // createStreamController options — config-of-record
         chunkS: 0.3,

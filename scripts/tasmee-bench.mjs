@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { tasmeeNorm } from "../src/tasmee-norm.js";
 import { createTasmeeSession } from "../src/tasmee-engine.js";
-import { readWavMono, resampleTo16k, melFrontend, makeGreedyDecoder, NMEL, buildVad } from "../src/tasmee-pipeline.js";
+import { readWavMono, resampleTo16k, melFrontend, makeGreedyDecoder, createMelCache, NMEL, HOP, buildVad } from "../src/tasmee-pipeline.js";
 import { createStreamController } from "../src/tasmee-stream.js";
 import { createLogprobBuffer } from "../src/tasmee-logprob-buffer.js";
 import { createAcousticChecker, createAcousticHook } from "../src/tasmee-acoustic.js";
@@ -190,6 +190,7 @@ const acStats = { asked: 0, opinion: 0, objected: 0, mixed: 0, margins: [] };
 let decodePass = 0;
 
 const winTrace = [];
+const melCache = createMelCache();   // same reuse the worker does — grade the shipped path
 let computeMs = 0, melMs = 0, ortMs = 0; // split = C3 attribution (our DSP vs ORT kernels)
 async function decode(startS, endS) {
     const a = pcm.subarray(Math.floor(startS * 16000), Math.floor(endS * 16000));
@@ -201,7 +202,7 @@ async function decode(startS, endS) {
             length: new ort.Tensor("int64", BigInt64Array.from([BigInt(a.length)]), [1]),
         };
     } else {
-        const { mel, T } = melFrontend(a);
+        const { mel, T } = melFrontend(a, melCache, Math.round((startS * 16000) / HOP));
         feeds = {
             audio_signal: new ort.Tensor("float32", mel, [1, NMEL, T]),
             length: new ort.Tensor("int64", BigInt64Array.from([BigInt(T)]), [1]),
@@ -304,7 +305,19 @@ const FEED = (argVal("--feed") === "realtime" || args.includes("--feed=realtime"
 const loopEndS = durS + TAIL_PAD_S;
 let procFreeS = 0, maxBacklogS = 0, endBacklogS = 0;
 const wall0 = performance.now();
+let lagSkips = 0;
 for (let endS = CHUNK_S; endS < loopEndS + CHUNK_S; endS += CHUNK_S) {
+    /* CATCH-UP — mirrors src/tasmee-worker.js pump(). When the processor has
+     * fallen more than catchUpLagS behind the audio it is fed, the worker
+     * jumps to the newest boundary rather than grinding through the backlog,
+     * because being current with fewer sightings beats being correct about
+     * what happened six seconds ago. The bench must model it or it grades a
+     * pipeline the device does not run — and with native ORT it never fires,
+     * so the accuracy numbers are untouched; only --ort=web reaches it. */
+    if (procFreeS - endS > (TASMEE_LIVE.catchUpLagS ?? 0.6)) {
+        const jumped = Math.floor(procFreeS / CHUNK_S) * CHUNK_S;
+        if (jumped > endS) { lagSkips += Math.round((jumped - endS) / CHUNK_S); endS = jumped; }
+    }
     const chunkEnd = Math.min(endS, loopEndS);
     if (FEED === "realtime") {
         const targetMs = chunkEnd * 1000 - (performance.now() - wall0);
@@ -335,7 +348,7 @@ const block = buildBenchBlock({
     inputMode: RAW_INPUT ? "raw-waveform" : "mel (ours)",
     rate, durS, onsetS, ref, committed, latencies, firstCommitAtS, computeMs,
     session, summary, norm: tasmeeNorm, truthLoaded: !!truth,
-    feed: { mode: FEED, maxBacklogS, endBacklogS },
+    feed: { mode: FEED, maxBacklogS, endBacklogS, lagSkips },
     computeSplit: { melMs, ortMs },
     envLines: buildEnvLines({
         backend: ORT_ENV_BACKEND,
