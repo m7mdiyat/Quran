@@ -5462,3 +5462,8 @@ body.dark .ts-pill--on .ts-pill-state { color: #4fe0a8; }
     color: var(--ts-unattempted);
     text-shadow: none;
 }
+
+/* Live health — silent while the pipeline keeps up, a quiet number when it
+   does not. Hover for RTF / threads / cross-origin isolation. */
+.ts-pill-health { font-size: 11px; color: var(--ts-deep-mut, #8a8474); white-space: nowrap; }
+.ts-pill-health--bad { color: #d97a1a; font-weight: 600; }

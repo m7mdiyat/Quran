@@ -367,6 +367,14 @@ const block = buildBenchBlock({
 });
 if (args.includes("--profile-window") && winTrace.length) {
     const mx = winTrace.reduce((a, b) => (b.win > a.win ? b : a));
+    const ws = winTrace.map((w) => w.win).sort((a, b) => a - b);
+    const avg = ws.reduce((a, b) => a + b, 0) / ws.length;
+    const q = (f) => ws[Math.floor(f * (ws.length - 1))];
+    console.log(`\n  WINDOW SIZE — this is what every step costs:`);
+    console.log(`    mean ${avg.toFixed(2)}s · p50 ${q(0.5).toFixed(2)}s · p90 ${q(0.9).toFixed(2)}s · max ${mx.win}s`);
+    console.log(`    decodes per second of audio: ${(avg / CHUNK_S).toFixed(1)}x  (each second re-run that many times)`);
+    const pend = winTrace.map((w) => w.pend);
+    console.log(`    pending words per step: mean ${(pend.reduce((a,b)=>a+b,0)/pend.length).toFixed(1)}`);
     console.log("\ndecode-window profile (incremental has NO windowS cap — see tasmee-stream.js):");
     const step = Math.max(1, Math.floor(winTrace.length / 12));
     for (let i = 0; i < winTrace.length; i += step) {

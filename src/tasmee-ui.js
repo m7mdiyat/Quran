@@ -437,6 +437,7 @@ export function spawnWorker(ref) {
     // Persistent router: the worker's engine posts events → applyEvent → DOM.
     _worker.addEventListener("message", (e) => {
         const m = e.data || {};
+        if (m.type === "health") { paintHealth(m); return; }
         if (m.type === "event" && m.event) applyEvent(m.event);
         else if (m.type === "transcript") onHeard(m.token, m.tMs);      // raw ASR word
         else if (m.type === "decoded") window.__tasmeeLastDecode = m;
@@ -759,6 +760,27 @@ function curBox(span) {
     return b;
 }
 let _curIdx = -1;
+/* LIVE HEALTH on the pill. The pipeline re-decodes a ~4.8 s window every
+ * 0.3 s — each second of audio passes through the model ~16 times — so
+ * whether it keeps up depends on the device. When it cannot, words arrive
+ * late and it reads as "sluggish"; showing the lag turns that into a
+ * number we can act on instead of a feeling. Silent while healthy. */
+let _healthEl = null;
+function paintHealth(h) {
+    if (!_meter) return;
+    if (!_healthEl) {
+        _healthEl = document.createElement("span");
+        _healthEl.className = "ts-pill-health";
+        _meter.insertBefore(_healthEl, _meter.querySelector(".ts-pill-gear"));
+    }
+    const behind = h.lagS > 0.7;
+    _healthEl.textContent = behind ? `متأخر ${h.lagS.toFixed(1)}ث` : "";
+    _healthEl.classList.toggle("ts-pill-health--bad", behind);
+    _healthEl.title = `RTF ${h.rtf} · ${h.threads} thread(s) · isolated ${h.isolated} · caught up ${h.skips}x`;
+    if (!window.__tasmeeHealth) window.__tasmeeHealth = {};
+    Object.assign(window.__tasmeeHealth, h);
+}
+
 function setCurrent(idx) {
     if (!S || idx === _curIdx) return;
     const prev = S.ref[_curIdx];

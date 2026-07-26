@@ -233,7 +233,7 @@ function setupLive(ref) {
  * CONSECUTIVE decodes, and two consecutive post-jump steps still provide
  * that. Being current with fewer sightings beats being correct about what
  * happened six seconds ago. */
-let lagSkips = 0;
+let lagSkips = 0, stepsDone = 0, computeMs = 0, lastReport = 0;
 async function pump() {
     if (stepping) return;
     stepping = true;
@@ -248,8 +248,26 @@ async function pump() {
                 }
             }
             liveVad = buildVad(pcm.subarray(0, pcmLen), { policy: TASMEE_LIVE.vadPolicy });
+            const t0 = performance.now();
             await liveCtl.step(nextStepS);
+            computeMs += performance.now() - t0;
+            stepsDone++;
             nextStepS += STEP_S;
+            /* LIVE HEALTH, once a second. "It feels sluggish" is not a number
+             * anyone can fix; lag and RTF are. Posted from inside the pump so
+             * it reflects the pipeline actually running, not a bench. */
+            const audioS = pcmLen / SR;
+            if (audioS - lastReport >= 1) {
+                lastReport = audioS;
+                self.postMessage({
+                    type: "health",
+                    lagS: +Math.max(0, audioS - nextStepS).toFixed(2),
+                    rtf: +(computeMs / 1000 / Math.max(audioS, 0.001)).toFixed(2),
+                    threads: ort.env.wasm.numThreads,
+                    isolated: !!self.crossOriginIsolated,
+                    skips: lagSkips,
+                });
+            }
         }
         /* Decoding never goes backwards, so columns well behind the current
          * step will never be asked for again. Without this the cache grows for
