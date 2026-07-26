@@ -116,6 +116,24 @@ export const TASMEE_LIVE = {
      * exactly, which is what the 04/05 P 1.00 / R 1.00 numbers are on. The
      * values below are what measurement settled; they are kept so re-opening
      * this is a re-measurement and not a re-derivation. */
+    /* LAYER 2 (التدقيق العميق) — OFF. Built, measured, and shelved for a
+     * reason that is not accuracy: it works (10/13 of the founder's planted
+     * mistakes vs 3/13 for the live matcher, 0 false flags on 111 words of
+     * his clean recitation) but it is a 605M-parameter model, and checking
+     * one page costs ~11 model runs. Mohammed's MacBook ran hot and the
+     * feature was, in his words, not productive — a slow button that
+     * reports a count is not a teacher. Correct call.
+     *
+     * Nothing here is deleted. The rules, the phoneme reference, the JS
+     * frontend, the marks/card/playback UI and the measurement harness are
+     * all model-agnostic: they consume findings, not muaalem. If a small
+     * streaming model is ever trained (the only route to live harakat —
+     * MEASURED: the free live check catches 0/5 planted harakat, because
+     * the small model writes the reference haraka regardless of what was
+     * said), flip this back on and point the worker at it.
+     *
+     * Turning this on WITHOUT a lighter model brings the heat back. */
+    deep: { enabled: false, modelMB: 570 },
     acoustic: {
         enabled: false,
         margin: 1.0,

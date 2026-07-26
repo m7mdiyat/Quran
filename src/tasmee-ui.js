@@ -548,6 +548,9 @@ export function stopListening() {
  * ============================================================ */
 let _deep = null, _deepP = null;
 function loadDeep() {
+    // Gate BEFORE the dynamic import: off means the chunk is never fetched,
+    // the worker never spawns, and the 570 MB model is never touched.
+    if (!TASMEE_LIVE.deep || !TASMEE_LIVE.deep.enabled) return Promise.resolve(null);
     if (_deep) return Promise.resolve(_deep);
     if (!_deepP) {
         _deepP = import("./tasmee-deep-ui.js")
