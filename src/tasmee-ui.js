@@ -117,6 +117,12 @@ export async function enter(pageEl, pageData) {
      * mic is definitively closed — the one moment WKWebView will build it
      * without renegotiating a capture session. */
     cue("enter");
+    /* Layer 2's row appears NOW, disabled, saying what it needs. Mounting it
+     * only after a session meant there was no sign the feature existed until
+     * the reciter had already finished — they had to discover it by accident.
+     * The import is still lazy; only ~7 KB of UI arrives here, and the 570 MB
+     * model is untouched until the button is actually pressed. */
+    mountDeep().then((m) => m && m.setAvailable(false));
     return true;
 }
 

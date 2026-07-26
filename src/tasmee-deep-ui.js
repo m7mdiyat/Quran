@@ -101,7 +101,9 @@ export function setAvailable(on, seconds) {
     if (!_mounted) return;
     _mounted.btn.disabled = !on;
     _mounted.row.classList.toggle("ts-deep--ready", !!on);
-    if (on && seconds) _mounted.note.textContent = t(`${Math.round(seconds)} ثانية جاهزة للتدقيق`);
+    _mounted.note.textContent = on
+        ? t(`${Math.round(seconds || 0)} ثانية جاهزة للتدقيق · اضغط للتدقيق`)
+        : t("سجّل تلاوتك ثم أوقفها، ليصبح التدقيق العميق متاحًا");
 }
 
 function setProgress(pct, label) {
