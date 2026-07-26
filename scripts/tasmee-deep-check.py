@@ -36,10 +36,34 @@ import argparse, difflib, json, os, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HARAKAT = set("َُِ")
 MADD = set("اۥۦى")
+# Acoustically plausible consonant confusions — the same map Layer 1 uses.
+# A claimed substitution outside this set is treated as alignment drift.
+CONFUSABLE = {
+    "ر": "لن", "ل": "رنم", "د": "لذتط", "ن": "رلم", "ه": "كحء",
+    "ك": "هقغ", "ت": "يثدط", "ي": "تبن", "م": "نبو", "ب": "تنم",
+    "س": "شصز", "ح": "خهع", "ع": "غاح", "ق": "كفخ", "ط": "تظد",
+    "ص": "سضظ", "ث": "تسذ", "ذ": "زظثد", "ز": "سذص", "ظ": "ذضط",
+    "ض": "دظص", "خ": "غحق", "غ": "خعق", "ف": "ثق", "ج": "شيز",
+    "ش": "سج", "و": "مب", "ا": "ءه",
+}
 HARAKA_NAME = {"َ": "فتحة", "ِ": "كسرة", "ُ": "ضمة"}
 # The 28 letters plus the hamza seats. Deliberately excludes every QPS
 # tajweed symbol — see is_con below.
 ARABIC_LETTERS = set("ابتثجحخدذرزسشصضطظعغفقكلمنهوي") | set("ءأإآؤئة")
+# SEAT EQUIVALENCE, carried over from Layer 1. The matcher there folds
+# hamza seats, ta-marbuta and alef-maqsura together because Quran ASR and
+# the mushaf's own spellings disagree on exactly those. Layer 2 was judging
+# them as distinct letters, which is how a clean recitation of
+# ٱلسَّمَـٰوَٰتِ came back as "expected ا, heard ء" — two spellings of one
+# sound reported to the reciter as a mistake. The bare ء belongs in the alef
+# class for the same reason: Layer 1 DROPS lone hamza outright, so a
+# hamza/alef difference is already invisible to the matcher, and Layer 2
+# reporting it would contradict the surface the reciter actually sees.
+SEAT = {}
+for _cls in ("اأإآٱء", "وؤ", "يئى", "ه\u0629"):
+    for _c in _cls:
+        SEAT[_c] = _cls[0]
+fold = lambda ch: SEAT.get(ch, ch)
 
 ap = argparse.ArgumentParser(description="Layer 2 deep check over one recording")
 ap.add_argument("wav")
@@ -94,6 +118,82 @@ sp = quran_phonetizer(seg.uthmani, moshaf, remove_spaces=False)
 nosp = quran_phonetizer(seg.uthmani, moshaf, remove_spaces=True)
 groups = sp.phonemes.split(" ")
 uth = seg.uthmani.split()
+
+# The group→word alignment and its derived tables are needed by the
+# FINDINGS loop (word-seam guard), not just by the report, so they are
+# built here — right after the reference — rather than further down.
+
+def map_groups_to_words(groups, words):
+    wp = []
+    for w in words:
+        try:
+            wp.append(str(quran_phonetizer(w, moshaf, remove_spaces=True).phonemes))
+        except Exception:
+            wp.append("")
+    owners, wi = [], 0
+    for g in groups:
+        if wi >= len(wp):
+            owners.append([])
+            continue
+        take, acc = [wi], wp[wi]
+        best = difflib.SequenceMatcher(None, acc, g).ratio()
+        k = wi + 1
+        while k < len(wp):
+            cand = acc + wp[k]
+            r = difflib.SequenceMatcher(None, cand, g).ratio()
+            if r <= best + 1e-9:
+                break
+            best, acc = r, cand
+            take.append(k)
+            k += 1
+        owners.append(take)
+        wi = take[-1] + 1
+    return owners
+
+
+G2W = map_groups_to_words(groups, uth)
+
+# Ordinal → verse-key:position. كَفَرُوا۟ occurs five times on page 507; a
+# finding that names only the word leaves the reciter unable to tell WHICH
+# one, which makes it unverifiable — and an unverifiable finding is one they
+# have to take on faith.
+_ORD2LOC = {}
+_o = 0
+for _a in range(a0, a1 + 1):
+    for _p in range(1, len(DATASET["verses"][f"{surah}:{_a}"]) + 1):
+        _ORD2LOC[_o] = f"{surah}:{_a}:{_p}"
+        _o += 1
+
+
+def loc_of(gi):
+    ws = G2W[gi] if gi < len(G2W) else []
+    return _ORD2LOC.get(ws[0], "?") if ws else "?"
+
+# TAJWEED BOUNDARIES INSIDE A MERGED GROUP. The phonetizer merges words
+# across idgham/ikhfa — بَل لَّمَّا and لَشَىْءٌۭ يُرَادُ each become ONE
+# group — which turns a word boundary into an interior position and
+# silently disables the word-edge exclusion at exactly the place it exists
+# to protect. Mohammed spotted this from the output: the ي of يُرَادُ was
+# reported as ن, and it IS nasal there — tanwin + ya is idgham with
+# ghunna, so the model heard correctly and the checker called it a
+# mistake. Positions within `mergeGuard` of an internal word seam are not
+# judged, on either side.
+MERGE_GUARD = 2
+_seam = set()
+for _gi, _ws in enumerate(G2W):
+    if len(_ws) < 2:
+        continue
+    _pos = 0
+    for _w in _ws[:-1]:
+        try:
+            _pos += len(str(quran_phonetizer(uth[_w], moshaf, remove_spaces=True).phonemes))
+        except Exception:
+            _pos = None
+            break
+        _seam.add((_gi, _pos))
+    del _pos
+
+
 
 SR = 16000
 wave, _ = load(a.wav, sr=SR, mono=True)
@@ -182,13 +282,25 @@ for tag, i1, i2, j1, j2 in sm.get_opcodes():
             continue                                   # rule 3: word-final
         if kind == "con" and i == e[0]:
             continue                                   # rule 3: word-initial
+        # rule 3 extended: a seam the phonetizer merged is still a word edge
+        _gstart = next((k for k in range(i, -1, -1) if ownerC[k] != ownerC[i]), -1) + 1
+        _off = i - _gstart
+        if any(abs(_off - sp) <= MERGE_GUARD for (g, sp) in _seam if g == ownerC[i]):
+            continue
         test = is_har if kind == "har" else is_con
         said = [(ch, p) for ch, p in zip(hrdC[j1:j2], probC[j1:j2]) if test(ch)]
         if not said:
             continue                                   # rule 1: abstain
-        if any(ch == refC[i] for ch, _ in said):
-            continue
+        if any(fold(ch) == fold(refC[i]) for ch, _ in said):
+            continue                                   # seat-equivalent ⇒ same letter
         conf = max(p for _, p in said)
+        got_ = max(said, key=lambda x: x[1])[0]
+        # ACOUSTICALLY IMPLAUSIBLE SUBSTITUTIONS ARE ALIGNMENT FAILURES, NOT
+        # MISTAKES. No reciter turns ذ into ل and no acoustic model confuses
+        # them; when the diff claims that, it has drifted and is blaming the
+        # wrong position. Reporting it spends the reciter's trust on noise.
+        if kind == "con" and fold(got_) not in CONFUSABLE.get(fold(refC[i]), ""):
+            continue
         if conf < a.conf:
             continue                                   # rule 2
         got = max(said, key=lambda x: x[1])[0]
@@ -220,53 +332,6 @@ for (w, kind), f in best.items():
 # finding, so the mapping is built by walking both sequences: phonetize each
 # word once, then let each group consume words while doing so still improves
 # its similarity to that group.
-def map_groups_to_words(groups, words):
-    wp = []
-    for w in words:
-        try:
-            wp.append(str(quran_phonetizer(w, moshaf, remove_spaces=True).phonemes))
-        except Exception:
-            wp.append("")
-    owners, wi = [], 0
-    for g in groups:
-        if wi >= len(wp):
-            owners.append([])
-            continue
-        take, acc = [wi], wp[wi]
-        best = difflib.SequenceMatcher(None, acc, g).ratio()
-        k = wi + 1
-        while k < len(wp):
-            cand = acc + wp[k]
-            r = difflib.SequenceMatcher(None, cand, g).ratio()
-            if r <= best + 1e-9:
-                break
-            best, acc = r, cand
-            take.append(k)
-            k += 1
-        owners.append(take)
-        wi = take[-1] + 1
-    return owners
-
-
-G2W = map_groups_to_words(groups, uth)
-
-# Ordinal → verse-key:position. كَفَرُوا۟ occurs five times on page 507; a
-# finding that names only the word leaves the reciter unable to tell WHICH
-# one, which makes it unverifiable — and an unverifiable finding is one they
-# have to take on faith.
-_ORD2LOC = {}
-_o = 0
-for _a in range(a0, a1 + 1):
-    for _p in range(1, len(DATASET["verses"][f"{surah}:{_a}"]) + 1):
-        _ORD2LOC[_o] = f"{surah}:{_a}:{_p}"
-        _o += 1
-
-
-def loc_of(gi):
-    ws = G2W[gi] if gi < len(G2W) else []
-    return _ORD2LOC.get(ws[0], "?") if ws else "?"
-
-
 def show(gi):
     ws = G2W[gi] if gi < len(G2W) else []
     return " ".join(uth[w] for w in ws) if ws else f"[group {gi}]"
