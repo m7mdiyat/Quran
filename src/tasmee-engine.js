@@ -237,6 +237,17 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
      * the same corroboration bar omissions have. */
     let stall = 0;
     let prevTok = null;
+    /* HAS THE RECITER ENGAGED WITH THE REFERENCE AT ALL YET? Until they
+     * have, words passed over were never ATTEMPTED, so they are not
+     * omissions — someone testing themselves on the middle of a surah has
+     * not made a mistake by not reciting the start of the page.
+     *
+     * "Engaged" is deliberately wider than "revealed": partially reciting a
+     * muqatta'at opening and abandoning it (الف، لام… then jumping to the
+     * next ayah) IS an attempt at that word, and its fixture pins it as a
+     * genuine skip. Anything the reciter aimed at the pointer counts, even
+     * when it never produced a verdict. See skipVerdict(). */
+    let engaged = false;
     let stuckOfferedAt = -1;  // pointer index a stuck-hint was last offered at
 
     /* ---------- emit / reveal ---------- */
@@ -244,6 +255,41 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     const emit = (e) => { events.push(e); if (onEvent) onEvent(e); };
 
     const lastOfAyah = (idx) => idx + 1 >= ref.length || ref[idx + 1].vk !== ref[idx].vk;
+
+    /* An omission is skipping something INSIDE a run you are doing. Before
+     * the first reveal there is no run yet, so a passed-over word is
+     * "unattempted" — shown, never tested, and never counted as a mistake. */
+    const skipVerdict = () => (engaged ? "skipped" : "unattempted");
+
+    /* AN INSERTION BEFORE THE RECITER HAS ENGAGED IS NOT AN EXTRA WORD.
+     * Someone starting in the middle of a page produces several tokens that
+     * match nothing near the pointer before the resync scan finds where they
+     * actually are — those tokens ARE their recitation, mis-filed. Reporting
+     * them as extra words turns "I want to test these three ayat" into a
+     * screen of mistakes, which is exactly what this whole rule exists to
+     * prevent. So they are held: dropped if a resync then explains them,
+     * flushed as real insertions at stop() if nothing ever does (a reciter
+     * reading a different page entirely still gets told). */
+    let preStart = [];
+    /* Counts every UNPLACEABLE token, held or emitted. The stall counter that
+     * arms the resync scan used to be derived from insertions.length — so
+     * holding the opening tokens silently disarmed resync and the reciter's
+     * position was never found at all. Stall must count attempts, not
+     * emissions. */
+    let unplaceable = 0;
+    function addInsertion(idx, heard, tMs) {
+        unplaceable++;
+        if (!engaged) { preStart.push({ idx, heard, tMs }); return; }
+        insertions.push({ idx, heard });
+        emit({ type: "insertion", t: tMs, idx, heard });
+    }
+    function flushPreStart() {
+        for (const x of preStart) {
+            insertions.push({ idx: x.idx, heard: x.heard });
+            emit({ type: "insertion", t: x.tMs, idx: x.idx, heard: x.heard });
+        }
+        preStart = [];
+    }
 
     function reveal(idx, verdict, extra, tMs) {
         const w = ref[idx];
@@ -272,6 +318,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * check at all, so it is simply omitted and the check abstains. */
         const ex = { ...extra };
         if (ex.heard != null && curRaw && tasmeeNorm(curRaw) === ex.heard) ex.heardRaw = curRaw;
+        if (verdict !== "unattempted") engaged = true;
         emit({ type: "reveal", t: tMs, idx, vk: w.vk, pos: w.pos, verdict, ...ex });
         if (lastOfAyah(idx)) emit({ type: "ayah_completed", t: tMs, vk: w.vk });
         lastActivityTs = tMs;
@@ -359,7 +406,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
     }
 
     function resolveAmbAsOmission(tMs) {
-        for (let i = p; i < amb.aheadStart; i++) reveal(i, "skipped", {}, tMs);
+        for (let i = p; i < amb.aheadStart; i++) reveal(i, skipVerdict(), {}, tMs);
         let idx = amb.aheadStart;
         for (const b of amb.buffer) reveal(idx++, "correct", { heard: b.tok }, tMs);
         amb = null;
@@ -393,8 +440,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
          * flag normally. */
         if (p === 0 && t.length <= 1) return;
         if (p >= ref.length) {
-            insertions.push({ idx: p, heard: t });
-            emit({ type: "insertion", t: tMs, idx: p, heard: t });
+            addInsertion(p, t, tMs);
             return;
         }
         const s1 = simAt(t, p);
@@ -404,8 +450,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             if (ahead) { pendingOmit = { token: t, idx: ahead.idx }; return; }
         }
         if (s1 >= opt.thSub) { reveal(p, "substituted", { heard: t, sim: s1 }, tMs); advanceTo(p + 1, tMs); return; }
-        insertions.push({ idx: p, heard: t });
-        emit({ type: "insertion", t: tMs, idx: p, heard: t });
+        addInsertion(p, t, tMs);
     }
 
     /* ---------- the classifier ---------- */
@@ -415,6 +460,9 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         if (muqSeq) {
             const want = muqSeq.names[muqSeq.at];
             if (wordSim(t, want) >= opt.thMatch || t === want) {
+                // a letter name landed on the pointer's word: attempted, even
+                // if the sequence is later abandoned
+                engaged = true;
                 muqSeq.at++;
                 if (muqSeq.at === muqSeq.names.length) {
                     const idx = p;
@@ -477,7 +525,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             if (simAt(t, cand.idx + 1) >= opt.thMatch ||
                 (cand.token === ref[cand.idx].form && cand.idx + 1 < ref.length && truncPrefix(t, ref[cand.idx + 1].form))) {
                 pendingOmit = null;
-                for (let i = p; i < cand.idx; i++) reveal(i, "skipped", {}, tMs);
+                for (let i = p; i < cand.idx; i++) reveal(i, skipVerdict(), {}, tMs);
                 reveal(cand.idx, "correct", { heard: cand.token }, tMs);
                 advanceTo(cand.idx + 1, tMs);
                 classify(t, tMs); // lands on rule 1 at the new pointer
@@ -718,8 +766,10 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             if ((sPrev >= opt.thMatch && sCur >= opt.thMatch &&
                 (prevTok === ref[q - 1].form || t === ref[q].form)) || truncPair) {
                 emit({ type: "resync", t: tMs, from: p, to: q - 1 });
+                // the held tokens were this recitation all along
+                if (!engaged) preStart = [];
                 shadow = null; amb = null; pendingOmit = null; pendingSplit = null; pendingSub = null; muqSeq = null;
-                for (let i = p; i < q - 1; i++) reveal(i, "skipped", {}, tMs);
+                for (let i = p; i < q - 1; i++) reveal(i, skipVerdict(), {}, tMs);
                 reveal(q - 1, "correct", { heard: prevTok }, tMs);
                 reveal(q, "correct", { heard: t }, tMs);
                 stall = 0;
@@ -786,13 +836,13 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
             lastActivityTs = tMs;
             if (stall >= opt.stallCap && tryResync(t, tMs)) { prevTok = t; return; }
             const pBefore = p;
-            const insBefore = insertions.length;
+            const insBefore = unplaceable;
             classify(t, tMs);
             if (p > pBefore || done) {
                 stall = 0;
                 stuckOfferedAt = -1;   // progress clears the stuck-offer latch
             } else {
-                stall += insertions.length - insBefore; // deferral flushes count too
+                stall += unplaceable - insBefore;       // held tokens count too
                 // Auto-offer #2 (repeated failed attempts at the same pointer =
                 // genuinely stuck): a CLOSE wrong word is a substitution that
                 // advances the pointer, so p only stays frozen on far-off /
@@ -851,6 +901,9 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         /* End of session: deferred interpretations resolve to their
          * safe readings (never invent a mistake from silence). */
         stop(tMs = 0) {
+            /* Nothing ever explained the held opening tokens — the reciter was
+             * reading something else. Report them rather than swallow them. */
+            if (!engaged) flushPreStart();
             if (pendingSplit) flushPendingSplit(tMs);
             if (pendingOmit) flushPendingOmit(tMs);
             if (pendingSub) {
@@ -867,7 +920,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
         },
 
         summary() {
-            const counts = { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0, insertions: 0, repetitions: 0, hesitations: 0 };
+            const counts = { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0, unattempted: 0, insertions: 0, repetitions: 0, hesitations: 0 };
             const perAyah = {};
             /* Word verdicts count by FINAL state per word (a Map replayed
              * from the event stream): an amendment moving a verdict — or an
@@ -887,8 +940,8 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                 }
             }
             for (const { verdict, vk } of byIdx.values()) {
-                counts[["correct", "substituted", "skipped", "unverified"].includes(verdict) ? verdict : "hinted"]++;
-                const a = (perAyah[vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0 });
+                counts[["correct", "substituted", "skipped", "unverified", "unattempted"].includes(verdict) ? verdict : "hinted"]++;
+                const a = (perAyah[vk] ||= { correct: 0, substituted: 0, skipped: 0, hinted: 0, unverified: 0, unattempted: 0 });
                 a[verdict]++;
             }
             // `unverified` is deliberately OUTSIDE attempted/accuracy: it is an
@@ -1007,7 +1060,7 @@ export function createTasmeeSession({ words, basmala = false, onEvent = null, op
                  * and it never manufactures a positive one either. */
                 if (sh.unverifiedIdx && sh.unverifiedIdx.has(i) &&
                     (nv === "skipped" || nv === "substituted")) nv = "unverified";
-                if (cur === "hinted") continue;
+                if (cur === "hinted" || cur === "unattempted") continue;
                 /* A word the ACOUSTIC channel flagged is frozen for the same
                  * reason a hinted one is: the shadow cannot know what the
                  * live pass knew. It replays text, and text is exactly the

@@ -207,7 +207,7 @@ function addSkipLine(span) {
     span.appendChild(svg);
 }
 
-const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-tash-bad", "ts-tash-ok", "ts-cur", "ts-rep", "ts-prov", "ts-ins", "ts-offer"];
+const ALL_CLASSES = ["ts-r", "ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-unattempted", "ts-tash-bad", "ts-tash-ok", "ts-cur", "ts-rep", "ts-prov", "ts-ins", "ts-offer"];
 
 /* Strip every reveal artifact from a word: verdict classes AND the
  * insertion dot child. The dot is a real element (not a ::after) so
@@ -633,6 +633,9 @@ const VERDICT_CLASS = {
     correct: "ts-correct", substituted: "ts-sub", skipped: "ts-skip", hinted: "ts-hint",
     // M1b: the model could not settle this span — say so, never imply a verdict
     unverified: "ts-unverified",
+    /* Never tested — the reciter started further down the page. Shown so the
+     * page reads continuously, but visibly NOT a verdict. */
+    unattempted: "ts-unattempted",
 };
 
 /* ---------- deferred negative-verdict painting (amendment channel,
@@ -656,7 +659,7 @@ function paintReveal(idx, verdict, extra = {}) {
     const span = r.span, cloud = cloudOf(span);   // a cloud here ⇒ word was offered
     span.classList.remove("ts-offer", "ts-prov");
     // amendment repaint: drop a previous verdict class first
-    for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified"]) span.classList.remove(c);
+    for (const c of ["ts-correct", "ts-sub", "ts-skip", "ts-hint", "ts-unverified", "ts-unattempted"]) span.classList.remove(c);
     span.querySelector(":scope > .ts-skip-line")?.remove();
     span.classList.add("ts-r", VERDICT_CLASS[verdict] || "ts-correct");
     /* LIVE FEEDBACK, silently. A cue here would be recorded by the open

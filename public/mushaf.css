@@ -4780,6 +4780,9 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
        do not resolve, ink faint enough to recede behind revealed text */
     --ts-veil-blur: 0.17em;
     --ts-veil-ink: rgba(60, 52, 38, 0.42);
+    /* NEVER TESTED — the reciter began further down the page. Not a verdict:
+       the page reads continuously without claiming these were recited. */
+    --ts-unattempted: rgba(60, 52, 38, 0.34);
     --ts-unverified: #7a8794;              /* muted slate — "couldn't verify".
                                               Deliberately NOT in the mistake
                                               palette and NOT normal ink: the
@@ -4789,6 +4792,7 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
 }
 body.dark .mushaf-page--tasmee {
     --ts-veil-ink: rgba(232, 226, 212, 0.34);
+    --ts-unattempted: rgba(232, 226, 212, 0.30);
     --ts-unverified: #93a1b0;
     --ts-tash-bad: #c98bdd;
     --ts-err: #ff8a8a;
@@ -4841,25 +4845,8 @@ body.dark .mushaf-page--tasmee {
    text-shadow off + selection disabled so no side-channel paints or
    leaks the glyph (A2). */
 .mushaf-page--tasmee .mushaf-word:not(.mushaf-end):not(.ts-r) {
-    /* VEILED, NOT INVISIBLE (Mohammed's idea, 2026-07-26). A blank page is
-       disorienting and gives the reciter nothing to aim at; fully readable
-       text lets them read instead of recall. A soft blur sits between: the
-       WORD SHAPE and LENGTH come through as a hint, the letters do not.
-       Three states now read as a progression — veiled → grey (heard, not yet
-       judged) → coloured (judged).
-
-       BLURRED WITH text-shadow, NOT filter: blur(). `filter` promotes the
-       word to its own compositing layer, and WebKit clips a filtered layer
-       to its BORDER BOX — which is exactly what ate the word-final ـن bowl
-       tail and forced the overhang reserve hack a few rules above. A
-       transparent glyph plus a spread shadow paints the same soft silhouette
-       with no layer and no clipping.
-
-       No transition on the way in or out: time-based CSS on a tasmee word
-       freezes mid-way against gharib's @property transitions (see the reveal
-       note above), so the veil lifts INSTANTLY on reveal. */
     color: transparent;
-    text-shadow: 0 0 var(--ts-veil-blur) var(--ts-veil-ink);
+    text-shadow: none;
     -webkit-user-select: none;
     user-select: none;
 }
@@ -4870,10 +4857,23 @@ body.dark .mushaf-page--tasmee {
    distinct. transition:none — a word element must never carry time-based
    CSS (the gharib registered-property freeze); the firm-up on reveal is an
    instant class swap, which reads as the word settling rather than a flash. */
-/* The word you are ON is veiled a touch more clearly than the rest — it is
-   the target, and a hint that lands on the wrong word is not a hint. */
+/* THE VEIL — on the CURRENT word ONLY (Mohammed, 2026-07-26).
+   Every other word on the page stays fully invisible; veiling the whole
+   page would let the reciter read ahead instead of recall, which is the
+   opposite of a memorisation test. The word under the caret is different:
+   it is the one being recalled RIGHT NOW, so a soft silhouette of its
+   shape and length is a nudge, not an answer.
+
+   Blurred with TEXT-SHADOW, not filter: blur(). `filter` promotes the word
+   to its own compositing layer and WebKit clips a filtered layer to its
+   BORDER BOX — exactly what ate the word-final ـن bowl tail and forced the
+   overhang reserve a few rules above. A transparent glyph plus a spread
+   shadow paints the same silhouette with no layer and no clipping.
+
+   No transition: time-based CSS on a tasmee word freezes mid-way against
+   gharib's @property transitions, so the veil lifts instantly on reveal. */
 .mushaf-page--tasmee .mushaf-word.ts-cur:not(.mushaf-end):not(.ts-r) {
-    text-shadow: 0 0 calc(var(--ts-veil-blur) * 0.8) var(--ts-veil-ink);
+    text-shadow: 0 0 var(--ts-veil-blur) var(--ts-veil-ink);
 }
 
 .mushaf-page--tasmee .mushaf-word.ts-prov:not(.mushaf-end):not(.ts-r) {
@@ -5450,4 +5450,15 @@ body.dark .ts-pill--on .ts-pill-state { color: #4fe0a8; }
 @media (prefers-reduced-motion: reduce) {
     .ts-pill, .ts-pill-dot, .ts-pill-fill, .ts-pill-gear { transition: none; }
     .ts-pill--on .ts-pill-dot { animation: none; }
+}
+
+
+/* Words the reciter never reached — they started further down the page.
+ * Shown in muted ink so the passage reads continuously, deliberately with
+ * NO verdict colour and NO mistake marking: choosing to test yourself on
+ * the middle of a surah is not an omission. Quiet enough to recede behind
+ * everything that WAS recited. */
+.mushaf-page--tasmee .mushaf-word.ts-unattempted:not(.mushaf-end) {
+    color: var(--ts-unattempted);
+    text-shadow: none;
 }

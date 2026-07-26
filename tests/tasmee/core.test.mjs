@@ -257,3 +257,42 @@ test("stop(): unresolved deferrals settle safely (no invented skips)", () => {
     assert.equal(sum.counts.insertions, 1);
     assert.equal(sum.completed, false);
 });
+
+/* STARTING MID-PAGE IS NOT A MISTAKE (2026-07-26).
+ *
+ * Someone testing themselves on the middle of a surah has not omitted the
+ * beginning — they chose not to recite it. The engine used to mark every
+ * word before the first match as `skipped`, which turned "I want to test
+ * these three ayat" into a page of red. An omission is skipping something
+ * INSIDE a run you are doing; before the first engagement there is no run.
+ */
+test("starting mid-page marks the earlier words unattempted, not skipped", () => {
+    const ref = refFor("38:1-8");
+    const s = session(ref);
+    // begin at the fifth ayah, as if testing only that passage
+    const start = ref.findIndex((r) => r.vk === "38:5");
+    feed(s, tokensOf(refFor("38:5-6")));
+    const v = verdicts(s);
+    const before = ref.slice(0, start).filter((r) => v[`${r.vk}:${r.pos}`]);
+    assert.ok(before.length > 0, "the earlier words should be resolved, not left blank");
+    for (const r of before) {
+        assert.equal(v[`${r.vk}:${r.pos}`], "unattempted",
+            `${r.vk}:${r.pos} was marked ${v[`${r.vk}:${r.pos}`]} — starting further down a page is a choice, not an omission`);
+    }
+    assert.equal(s.summary().counts.skipped, 0, "nothing before the start may count as skipped");
+    assert.equal(mistakes(s), 0, "a mid-page start must produce no mistakes at all");
+});
+
+test("a real omission AFTER starting is still a skip", () => {
+    /* The rule must not become "nothing is ever a skip". Once the reciter
+     * has engaged, jumping over a word is an omission again. */
+    const ref = refFor("38:1-4");
+    const s = session(ref);
+    const toks = tokensOf(ref);
+    feed(s, [toks[0], toks[1], ...toks.slice(4)]);   // 2 words, then jump
+    const v = verdicts(s);
+    assert.ok(Object.values(v).includes("skipped"),
+        "an omission mid-run must still be reported as a skip");
+    assert.equal(s.summary().counts.unattempted, 0,
+        "nothing is unattempted once the reciter has started");
+});
