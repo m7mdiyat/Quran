@@ -176,6 +176,12 @@ async function runWindows(pcm) {
     const nWin = Math.max(1, Math.ceil(pcm.length / step));
     let text = "";
     const probs = [];
+    /* WHEN each phoneme happened, so a finding can be played back. The model
+     * returns no frame times, so position is the phoneme's rank within its own
+     * window. With 8 s windows that lands within about a second — enough to
+     * listen to, not enough to trust as a boundary, which is why the card
+     * plays a padded span rather than an exact cut. */
+    const times = [];
     for (let w = 0, i = 0; i < pcm.length; i += step, w++) {
         const seg = pcm.subarray(i, Math.min(i + step, pcm.length));
         if (seg.length < SR * 0.4) continue;                 // too short to say anything
@@ -186,11 +192,13 @@ async function runWindows(pcm) {
         });
         const lg = out[session.outputNames[phonemeIdx]];
         const r = decodeWindow(lg.data, lg.dims[1], lg.dims[2]);
+        const t0w = i / SR, dW = seg.length / SR, n = Math.max(1, r.text.length);
+        for (let k = 0; k < r.text.length; k++) times.push(t0w + (k / n) * dW);
         text += r.text;
         probs.push(...r.probs);
         progress("checking", Math.round(((w + 1) / nWin) * 100), `${w + 1} / ${nWin}`);
     }
-    return { text, probs };
+    return { text, probs, times };
 }
 
 /* Reference for a verse range, assembled from the shipped file. Groups and
@@ -229,9 +237,22 @@ self.onmessage = async (e) => {
             const t0 = performance.now();
             const heard = await runWindows(m.pcm);
             const findings = judge(ref, heard, m.options || {});
+            /* Attach an approximate audio position. judge() deliberately knows
+             * nothing about time — it is a pure decision over sequences — so the
+             * mapping is done here, from the phoneme index it reports. */
+            for (const f of findings) {
+                if (typeof f.heardIndex === "number" && heard.times[f.heardIndex] != null) {
+                    f.atS = +heard.times[f.heardIndex].toFixed(2);
+                }
+            }
             post({
                 type: "findings",
-                findings: findings.map((f) => ({ ...f, loc: ref.locs[f.group] || null })),
+                findings: findings.map((f) => {
+                    const l = ref.locs[f.group];
+                    // inside a merged group the finding belongs to the
+                    // wordOffset-th word, not the group's first
+                    return { ...f, loc: l ? { ...l, pos: l.pos + (f.wordOffset || 0) } : null };
+                }),
                 stats: {
                     words: ref.wordsPerGroup.reduce((a, b) => a + b, 0),
                     groups: ref.groups.length,

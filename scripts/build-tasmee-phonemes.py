@@ -112,6 +112,13 @@ def main():
                 if consumed != len(words):
                     mismatched.append((vk, consumed, len(words)))
                 row = {"p": " ".join(groups), "w": counts}
+                # The app marks words by their PAGE position, which counts
+                # IMLAEY words plus sajda markers. Uthmani joins the vocative
+                # (يَـٰمُوسَىٰ) and omits the sajda glyph, so for ~20 ayat the two
+                # numberings disagree and a finding would land on the wrong
+                # word. Same abstain rule: mark it, do not guess.
+                if sum(counts) != len(VERSES[vk]):
+                    row["x"] = 1
                 if consumed != len(words):
                     # MARK, DO NOT GUESS. The greedy walk did not account for every
                     # word here, so group→word attribution is unreliable in this

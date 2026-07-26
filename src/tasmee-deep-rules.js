@@ -218,7 +218,7 @@ export function judge(ref, heard, options = {}) {
 
             const test = kind === "har" ? isHaraka : isLetter;
             const said = [];
-            for (let j = j1; j < j2; j++) if (test(hrdC[j])) said.push([hrdC[j], probC[j] ?? 0]);
+            for (let j = j1; j < j2; j++) if (test(hrdC[j])) said.push([hrdC[j], probC[j] ?? 0, j]);
             if (!said.length) continue;                            // rule 1: model emitted nothing
             if (said.some(([ch]) => fold(ch) === fold(refC[i]))) continue;   // rule 5
 
@@ -237,6 +237,7 @@ export function judge(ref, heard, options = {}) {
             found.push({
                 group: ownerC[i], wordOffset, kind,
                 expected: refC[i], heard: best[0], conf: +best[1].toFixed(3),
+                heardIndex: best[2],          // for the caller to attach a time
             });
         }
     }

@@ -5185,3 +5185,154 @@ body.dark .ts-mic--error .ts-mic-state { color: #ff8a8a; }
     .ts-mic--on .ts-mic-btn { animation: none; }
     .ts-mic-fill, .ts-mic-peak { transition: none; }
 }
+
+/* ============================================================
+ * التدقيق العميق — Layer 2's surface.
+ *
+ * THE TWO LAYERS NEVER SHARE A PIXEL. Layer 1 owns the word's INK
+ * COLOUR (right word / wrong word / skipped); this owns a MARK BENEATH
+ * it. A word can be green and still be marked — right word, wrong
+ * haraka — which is the distinction a teacher makes and the reason both
+ * layers exist. Marks are underlines, never fills, so they cannot be
+ * confused with a verdict.
+ *
+ * Colour follows meaning already established in this file: violet is
+ * "the letters were right, the haraka was not" (--ts-tash-bad, already
+ * used by the M3 tashkeel check), so the harakat channel reuses it
+ * rather than inventing a second violet. Letters get their own teal.
+ * ============================================================ */
+:root {
+    --ts-deep-har: var(--ts-tash-bad);      /* violet — a haraka differed */
+    --ts-deep-con: #0f7d84;                 /* teal — a letter differed */
+    --ts-deep-ink: #2f2a1f;
+    --ts-deep-mut: #8a8474;
+    --ts-deep-sheet: rgba(255, 253, 248, 0.97);
+    --ts-deep-line: rgba(0, 0, 0, 0.08);
+}
+body.dark {
+    --ts-deep-con: #46c9d0;
+    --ts-deep-ink: #ece6d8;
+    --ts-deep-mut: #9a9484;
+    --ts-deep-sheet: rgba(28, 27, 24, 0.97);
+    --ts-deep-line: rgba(255, 255, 255, 0.10);
+}
+
+/* The mark. A dotted underline offset below the glyph — QCF4 words are a
+ * single glyph run, so there is no per-letter box to draw under; the word
+ * carries the mark and the card names the letter. */
+.mushaf-page--tasmee .mushaf-word.ts-deep-har:not(.mushaf-end),
+.mushaf-page--tasmee .mushaf-word.ts-deep-con:not(.mushaf-end) {
+    text-decoration: underline dotted;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.22em;
+    text-decoration-skip-ink: none;
+    cursor: pointer;
+}
+.mushaf-page--tasmee .mushaf-word.ts-deep-har:not(.mushaf-end) { text-decoration-color: var(--ts-deep-har); }
+.mushaf-page--tasmee .mushaf-word.ts-deep-con:not(.mushaf-end) { text-decoration-color: var(--ts-deep-con); }
+
+/* ---- the panel row ---- */
+.ts-deep { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.ts-deep-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    align-self: flex-start;
+    padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--ts-deep-line);
+    background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(246,243,236,0.9));
+    color: var(--ts-deep-ink); font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: transform 320ms ease, box-shadow 320ms ease, opacity 320ms ease;
+}
+body.dark .ts-deep-btn { background: linear-gradient(180deg, rgba(58,56,50,0.9), rgba(44,42,38,0.9)); }
+.ts-deep-btn:disabled { opacity: 0.42; cursor: default; }
+.ts-deep--ready .ts-deep-btn:not(:disabled) { box-shadow: 0 2px 10px rgba(15,125,132,0.18); }
+.ts-deep-btn:not(:disabled):active { transform: scale(0.97); }
+
+.ts-deep-bar {
+    height: 3px; border-radius: 999px; overflow: hidden;
+    background: var(--ts-deep-line);
+}
+.ts-deep-bar > i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--ts-deep-con), var(--ts-deep-har));
+    transition: width 420ms ease;
+}
+.ts-deep-note { font-size: 12px; color: var(--ts-deep-mut); line-height: 1.55; }
+.ts-deep--clean .ts-deep-note { color: #0a7d5a; }
+body.dark .ts-deep--clean .ts-deep-note { color: #4fe0a8; }
+
+/* ---- the one-time download sheet ---- */
+.ts-deep-sheet {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.34);
+    opacity: 0; transition: opacity 380ms ease;
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+.ts-deep-sheet--in { opacity: 1; }
+.ts-deep-card {
+    width: min(92vw, 380px);
+    background: var(--ts-deep-sheet); color: var(--ts-deep-ink);
+    border-radius: 20px; padding: 22px 20px 16px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+    transform: translateY(10px) scale(0.985);
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+}
+.ts-deep-sheet--in .ts-deep-card { transform: none; }
+.ts-deep-card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
+.ts-deep-card p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.7; color: var(--ts-deep-mut); }
+.ts-deep-warn { color: var(--ts-deep-ink) !important; font-weight: 600; }
+.ts-deep-acts { display: flex; gap: 8px; margin-top: 14px; }
+.ts-deep-acts button {
+    flex: 1; padding: 11px 12px; border-radius: 13px; font: inherit;
+    font-size: 13.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--ts-deep-line);
+    transition: transform 260ms ease;
+}
+.ts-deep-acts button:active { transform: scale(0.98); }
+.ts-deep-no { background: transparent; color: var(--ts-deep-mut); }
+.ts-deep-yes { background: var(--ts-deep-con); border-color: transparent; color: #fff; }
+
+/* ---- the finding card ----
+ * Root-hosted and positioned from the target's LIVE rect: a
+ * position:fixed child anchors to the SCROLLED DOCUMENT in WKWebView and
+ * would land in the wrong place once the page has moved. */
+.ts-deep-pop {
+    position: fixed; z-index: 10000;
+    min-width: 132px; padding: 11px 14px 9px;
+    border-radius: 15px;
+    background: var(--ts-deep-sheet); color: var(--ts-deep-ink);
+    border: 1px solid var(--ts-deep-line);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.20);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    text-align: center; pointer-events: auto;
+    opacity: 0; transform: translateY(5px) scale(0.97);
+    transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ts-deep-pop--in { opacity: 1; transform: none; }
+.ts-deep-pop-kind { font-size: 11px; letter-spacing: 0.02em; color: var(--ts-deep-mut); margin-bottom: 5px; }
+.ts-deep-pop-row {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-family: "MeQuran", "Amiri", serif; font-size: 27px; line-height: 1.25;
+}
+.ts-deep-ok { color: #0a7d5a; }
+.ts-deep-bad { color: var(--ts-deep-har); }
+.ts-deep-arrow { font-size: 14px; color: var(--ts-deep-mut); font-family: inherit; }
+.ts-deep-pop-foot { margin-top: 5px; font-size: 10.5px; color: var(--ts-deep-mut); }
+
+@media (prefers-reduced-motion: reduce) {
+    .ts-deep-btn, .ts-deep-bar > i, .ts-deep-sheet, .ts-deep-card, .ts-deep-pop,
+    .ts-deep-acts button { transition: none; }
+}
+
+/* "hear yourself" — the reciter's own audio at the flagged moment */
+.ts-deep-play {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 9px; padding: 6px 11px; border-radius: 999px;
+    border: 1px solid var(--ts-deep-line); background: transparent;
+    color: var(--ts-deep-mut); font: inherit; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; transition: color 260ms ease, border-color 260ms ease;
+}
+.ts-deep-play:active { transform: scale(0.97); }
+.ts-deep-play--on { color: var(--ts-deep-con); border-color: currentColor; }
+@media (prefers-reduced-motion: reduce) { .ts-deep-play { transition: none; } }

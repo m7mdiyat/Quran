@@ -34,6 +34,7 @@ import { checkTashkeel } from "./tasmee-tashkeel.js";
 import { createMic } from "./tasmee-audio.js";
 import { TASMEE_LIVE } from "./tasmee-live-config.js";
 import { cue, haptic, setMicLive, sfxEnabled } from "./tasmee-sfx.js";
+import { resampleTo16k } from "./tasmee-pipeline.js";
 
 let S = null; // active session, or null when the mode is off
 
@@ -223,6 +224,7 @@ export function exit() {
     if (!S) return;
     stopMic();                       // release the mic + tear down the meter
     setMicLive(false);               // mode torn down — cues are free again
+    if (_deep) { try { _deep.dispose(); } catch { } }
     _killWorker();                   // drop the worker so re-entering re-arms on the new page's ref
     flushDeferred(false);            // discard held flag timers — the mode is torn down
     for (const r of S.ref) clearWord(r.span);
@@ -503,6 +505,7 @@ export async function startListening() {
     try { await spawnWorker(); }                     // model load + setupLive(S.ref)
     catch (e) { setMicLive(false); paintMeterState("error", "model"); return; }
     _chunkCount = 0; _heard = []; _recorded = []; _recording = true;
+    if (_deep) { _deep.clearMarks(); _deep.setAvailable(false); }
     const line = _meter && _meter.querySelector(".ts-heard"); if (line) line.textContent = "";
     _mic = createMic({
         onState: paintMeterState,
@@ -529,6 +532,59 @@ export function stopListening() {
     console.log(`[tasmee] heard ${_heard.length} words · recorded ${(_recorded.reduce((a, c) => a + c.length, 0) / 48000).toFixed(1)}s — __tasmee._downloadRecording() to save the WAV`);
 }
 
+/* ============================================================
+ * LAYER 2 (التدقيق العميق) — lazily loaded, never on the critical path.
+ *
+ * Dynamic-imported so the website bundle does not carry a 570 MB
+ * feature's UI unless a reciter opens it, and so a failure to load it
+ * cannot affect Layer 1 at all: tasmee must keep working exactly as
+ * before if this never arrives.
+ * ============================================================ */
+let _deep = null, _deepP = null;
+function loadDeep() {
+    if (_deep) return Promise.resolve(_deep);
+    if (!_deepP) {
+        _deepP = import("./tasmee-deep-ui.js")
+            .then((m) => (_deep = m))
+            .catch((e) => { console.warn("[tasmee] deep check unavailable", e); _deepP = null; return null; });
+    }
+    return _deepP;
+}
+
+/* The recorded audio at the model's rate. Kept as a function rather than
+ * state so nothing holds a second copy of a 90 s recording alive. */
+function recordedPcm16k() {
+    const total = _recorded.reduce((a, c) => a + c.length, 0);
+    if (!total) return null;
+    const all = new Float32Array(total);
+    let o = 0;
+    for (const c of _recorded) { all.set(c, o); o += c.length; }
+    return resampleTo16k(all, 48000);
+}
+
+/* The verse range this page covers, for the phoneme reference. */
+function pageRange() {
+    if (!S || !S.ref.length) return null;
+    const nums = S.ref.map((r) => r.vk.split(":").map(Number));
+    const surah = nums[0][0];
+    const same = nums.filter((n) => n[0] === surah).map((n) => n[1]);
+    return { surah, from: Math.min(...same), to: Math.max(...same) };
+}
+
+const spanAt = (vk, pos) => {
+    const r = S && S.ref.find((x) => x.vk === vk && x.pos === pos);
+    return (r && r.span) || null;
+};
+
+async function mountDeep() {
+    const m = await loadDeep();
+    if (!m || !_meter) return null;
+    const body = _meter.querySelector(".ts-mic-body");
+    if (!body) return null;
+    m.mount(body, { getPcm16k: recordedPcm16k, getRange: pageRange, spanAt });
+    return m;
+}
+
 /* Session finalized (the worker's `stopped` arrived): no further
  * amendments can come — paint anything still held.
  *
@@ -544,6 +600,10 @@ function onSessionStopped() {
         ? S.ref.some((r) => r.span && (r.span.classList.contains("ts-sub") || r.span.classList.contains("ts-skip")))
         : false;
     cue(flagged ? "stopped" : "perfect");
+    /* Layer 2 becomes available only now — offering a deep check before
+     * there is any audio is a dead end the reciter has to discover. */
+    const secs = _recorded.reduce((a, c) => a + c.length, 0) / 48000;
+    if (secs >= 2) mountDeep().then((m) => m && m.setAvailable(true, secs));
 }
 
 const VERDICT_CLASS = {
@@ -850,7 +910,11 @@ export function hint(idx) {
  * reveals the next expected word. Returns true when it consumed the tap, so
  * the audio toggle / ayah menu never fires underneath. */
 export function handleTap(target) {
-    if (!S || !target || !S.pageEl.contains(target)) return false;
+    if (!S || !target) return false;
+    // a tap on a Layer 2 mark opens its card and goes no further; the
+    // hint path below must not also fire for the same tap
+    if (_deep && _deep.handleTap(target)) return true;
+    if (!S.pageEl.contains(target)) return false;
     const offeredIdx = S.ref.findIndex((r) => r.span &&
         !r.span.classList.contains("ts-r") && r.span.querySelector(":scope > .ts-cloud"));
     hint(offeredIdx >= 0 ? offeredIdx : undefined);
