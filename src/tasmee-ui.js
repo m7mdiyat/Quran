@@ -253,47 +253,63 @@ const MIC_ICON =
     '<path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>' +
     '<path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>';
 
-/* Build the meter panel once, appended to <body> so it floats over the mushaf.
- * Structure: mic toggle button · level track (with a fill + a peak tick) ·
- * a state line. All visual state rides on classes / the --lvl custom prop. */
+/* THE STATUS PILL — what replaced the panel.
+ *
+ * The old panel carried a mic button, a level meter, a state line, the raw
+ * transcript and two checkboxes, floating permanently over the mushaf.
+ * Mohammed's note was simply "without the big element here, make sure it's
+ * clean", and he is right: entering the mode already means "I want to
+ * recite", so a second button to press was a step that existed only because
+ * the panel needed something to hold.
+ *
+ * Now: the TOOLBAR mic starts listening immediately, and all that remains on
+ * screen is a small pill showing state and level. It appears while listening
+ * and leaves when idle, so the page is the mushaf and nothing else.
+ *
+ * The two settings did not vanish — they moved onto the pill's own tap,
+ * which is where someone looks when they want to change how listening
+ * behaves, rather than occupying the page permanently. */
 function ensureMeter() {
     if (_meter) return _meter;
     const el = document.createElement("div");
-    el.className = "ts-mic";
+    el.className = "ts-pill";
     el.setAttribute("dir", "rtl");
     el.innerHTML =
-        '<button type="button" class="ts-mic-btn" aria-label="الميكروفون">' + MIC_ICON + "</button>" +
-        '<div class="ts-mic-body">' +
-        '  <div class="ts-mic-track"><i class="ts-mic-fill"></i><i class="ts-mic-peak"></i></div>' +
-        '  <div class="ts-mic-state">اضغط للاستماع</div>' +
-        '  <div class="ts-heard" dir="rtl" aria-live="polite" title="ما سمعه النموذج (النص الخام قبل المطابقة)"></div>' +
-        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-tashkeel">' +
-        '    <span>تدقيق الحركات</span></label>' +
-        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-sfx">' +
-        '    <span>أصوات التنبيه</span></label>' +
+        '<i class="ts-pill-dot" aria-hidden="true"></i>' +
+        '<span class="ts-pill-state">اضغط للاستماع</span>' +
+        '<i class="ts-pill-track" aria-hidden="true"><i class="ts-pill-fill"></i></i>' +
+        '<button type="button" class="ts-pill-gear" aria-label="إعدادات التسميع">' +
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">' +
+        '<circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>' +
+        '<div class="ts-pill-menu" hidden>' +
+        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-tashkeel"><span>تدقيق الحركات</span></label>' +
+        '  <label class="ts-opt"><input type="checkbox" class="ts-opt-sfx"><span>أصوات التنبيه</span></label>' +
         "</div>";
-    el.querySelector(".ts-mic-btn").addEventListener("click", () => {
-        const st = _mic && _mic.getState();
-        if (st === "listening" || st === "requesting") stopListening();
-        else startListening();
+
+    const menu = el.querySelector(".ts-pill-menu");
+    el.querySelector(".ts-pill-gear").addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+        cue("toggle");
     });
     /* M3 harakat check — a REAL control, not a console incantation. Off by
-     * default and persisted; the label says what it does and the title says
-     * what it deliberately does NOT do, because a checker that stays silent
-     * half the time must not be mistaken for one that verified everything. */
+     * default and persisted; the title says what it deliberately does NOT do,
+     * because a checker that stays silent half the time must not be mistaken
+     * for one that verified everything. */
     const box = el.querySelector(".ts-opt-tashkeel");
     box.checked = tashkeelCheck();
-    el.querySelector(".ts-opt").title =
+    box.parentElement.title =
         "يُقارن الحركات التي ينطق بها القارئ بحركات المصحف. يصمت عندما لا يسمعها بوضوح — الصمت ليس تزكية.";
     box.addEventListener("change", () => { tashkeelCheck(box.checked); cue("toggle"); });
-    /* Cue switch. The title states the guarantee rather than a preference:
-     * cues never sound DURING recitation (the open mic would record them),
-     * so what this controls is the transitions around it, plus haptics. */
+    /* Cue switch. The title states the GUARANTEE rather than a preference:
+     * cues never sound during recitation, because the open mic would record
+     * them and the model would decode them as words. */
     const sbox = el.querySelector(".ts-opt-sfx");
     sbox.checked = sfxEnabled();
     sbox.parentElement.title =
         "نغمات قصيرة عند بدء الاستماع وانتهائه. لا تصدر أثناء التلاوة إطلاقًا حتى لا يلتقطها الميكروفون.";
     sbox.addEventListener("change", () => { sfxEnabled(sbox.checked); cue("toggle"); });
+
     document.body.appendChild(el);
     return (_meter = el);
 }
@@ -313,16 +329,16 @@ const MIC_ERROR_TEXT = {
 
 function paintMeterState(state, detail) {
     if (!_meter) return;
-    _meter.classList.toggle("ts-mic--on", state === "listening");
-    _meter.classList.toggle("ts-mic--busy", state === "requesting" || state === "loading");
-    _meter.classList.toggle("ts-mic--error", state === "error");
-    const line = _meter.querySelector(".ts-mic-state");
+    _meter.classList.toggle("ts-pill--on", state === "listening");
+    _meter.classList.toggle("ts-pill--busy", state === "requesting" || state === "loading");
+    _meter.classList.toggle("ts-pill--error", state === "error");
+    const line = _meter.querySelector(".ts-pill-state");
     if (state === "error") line.textContent = MIC_ERROR_TEXT[detail] || MIC_STATE_TEXT.error;
     else line.textContent = MIC_STATE_TEXT[state] || "";
     if (state !== "listening") {           // reset the bar when not live
         _meter.style.setProperty("--lvl", "0");
         _meter.style.setProperty("--peak", "0");
-        _meter.classList.remove("ts-mic--voice");
+        _meter.classList.remove("ts-pill--voice");
     }
 }
 
@@ -339,8 +355,7 @@ export async function startMic() {
         onLevel: ({ level, peak, vad }) => {
             if (!_meter) return;
             _meter.style.setProperty("--lvl", meterScale(level).toFixed(3));
-            _meter.style.setProperty("--peak", meterScale(peak).toFixed(3));
-            _meter.classList.toggle("ts-mic--voice", !!vad);
+            _meter.classList.toggle("ts-pill--voice", !!vad);
         },
         onChunk: () => { _chunkCount++; },     // Piece 4: forward pcm to the worker here
     });
@@ -380,7 +395,7 @@ let _heard = [], _recorded = [], _recording = false;
 function onHeard(token, tMs) {
     _heard.push({ token, tMs });
     if (typeof console !== "undefined") console.log(`%c[tasmee ASR] ${token}`, "color:#2bb58a", `@${(tMs / 1000).toFixed(1)}s`);
-    const line = _meter && _meter.querySelector(".ts-heard");
+    const line = null;   // the raw transcript no longer has a home on screen
     if (line) {
         line.textContent = _heard.slice(-14).map((h) => h.token).join(" ");
         line.scrollLeft = 0;
@@ -512,14 +527,13 @@ export async function startListening() {
     catch (e) { setMicLive(false); paintMeterState("error", "model"); return; }
     _chunkCount = 0; _heard = []; _recorded = []; _recording = true;
     if (_deep) { _deep.clearMarks(); _deep.setAvailable(false); }
-    const line = _meter && _meter.querySelector(".ts-heard"); if (line) line.textContent = "";
+    
     _mic = createMic({
         onState: paintMeterState,
         onLevel: ({ level, peak, vad }) => {
             if (!_meter) return;
             _meter.style.setProperty("--lvl", meterScale(level).toFixed(3));
-            _meter.style.setProperty("--peak", meterScale(peak).toFixed(3));
-            _meter.classList.toggle("ts-mic--voice", !!vad);
+            _meter.classList.toggle("ts-pill--voice", !!vad);
         },
         onChunk: (pcm48k) => {
             _chunkCount++;
@@ -588,7 +602,7 @@ const spanAt = (vk, pos) => {
 async function mountDeep() {
     const m = await loadDeep();
     if (!m || !_meter) return null;
-    const body = _meter.querySelector(".ts-mic-body");
+    const body = _meter.querySelector(".ts-pill-menu");
     if (!body) return null;
     m.mount(body, { getPcm16k: recordedPcm16k, getRange: pageRange, spanAt });
     return m;

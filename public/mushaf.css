@@ -4776,6 +4776,10 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
                                               the vowel was not. Deliberately
                                               outside the mistake palette: a
                                               harakat slip is its own class. */
+    /* the veil over words not yet reached — blur wide enough that letters
+       do not resolve, ink faint enough to recede behind revealed text */
+    --ts-veil-blur: 0.17em;
+    --ts-veil-ink: rgba(60, 52, 38, 0.42);
     --ts-unverified: #7a8794;              /* muted slate — "couldn't verify".
                                               Deliberately NOT in the mistake
                                               palette and NOT normal ink: the
@@ -4784,6 +4788,7 @@ body.dark .mushaf-root--fullscreen .mushaf-toolbar > #mushafNotesLamp {
                                               than asserting either way. */
 }
 body.dark .mushaf-page--tasmee {
+    --ts-veil-ink: rgba(232, 226, 212, 0.34);
     --ts-unverified: #93a1b0;
     --ts-tash-bad: #c98bdd;
     --ts-err: #ff8a8a;
@@ -4836,8 +4841,25 @@ body.dark .mushaf-page--tasmee {
    text-shadow off + selection disabled so no side-channel paints or
    leaks the glyph (A2). */
 .mushaf-page--tasmee .mushaf-word:not(.mushaf-end):not(.ts-r) {
+    /* VEILED, NOT INVISIBLE (Mohammed's idea, 2026-07-26). A blank page is
+       disorienting and gives the reciter nothing to aim at; fully readable
+       text lets them read instead of recall. A soft blur sits between: the
+       WORD SHAPE and LENGTH come through as a hint, the letters do not.
+       Three states now read as a progression — veiled → grey (heard, not yet
+       judged) → coloured (judged).
+
+       BLURRED WITH text-shadow, NOT filter: blur(). `filter` promotes the
+       word to its own compositing layer, and WebKit clips a filtered layer
+       to its BORDER BOX — which is exactly what ate the word-final ـن bowl
+       tail and forced the overhang reserve hack a few rules above. A
+       transparent glyph plus a spread shadow paints the same soft silhouette
+       with no layer and no clipping.
+
+       No transition on the way in or out: time-based CSS on a tasmee word
+       freezes mid-way against gharib's @property transitions (see the reveal
+       note above), so the veil lifts INSTANTLY on reveal. */
     color: transparent;
-    text-shadow: none;
+    text-shadow: 0 0 var(--ts-veil-blur) var(--ts-veil-ink);
     -webkit-user-select: none;
     user-select: none;
 }
@@ -4848,10 +4870,16 @@ body.dark .mushaf-page--tasmee {
    distinct. transition:none — a word element must never carry time-based
    CSS (the gharib registered-property freeze); the firm-up on reveal is an
    instant class swap, which reads as the word settling rather than a flash. */
+/* The word you are ON is veiled a touch more clearly than the rest — it is
+   the target, and a hint that lands on the wrong word is not a hint. */
+.mushaf-page--tasmee .mushaf-word.ts-cur:not(.mushaf-end):not(.ts-r) {
+    text-shadow: 0 0 calc(var(--ts-veil-blur) * 0.8) var(--ts-veil-ink);
+}
+
 .mushaf-page--tasmee .mushaf-word.ts-prov:not(.mushaf-end):not(.ts-r) {
     color: inherit;
     opacity: 0.5;
-    text-shadow: none;
+    text-shadow: none;      /* heard ⇒ the veil lifts, sharp but still muted */
     transition: none;
 }
 
@@ -5336,3 +5364,90 @@ body.dark .ts-deep--clean .ts-deep-note { color: #4fe0a8; }
 .ts-deep-play:active { transform: scale(0.97); }
 .ts-deep-play--on { color: var(--ts-deep-con); border-color: currentColor; }
 @media (prefers-reduced-motion: reduce) { .ts-deep-play { transition: none; } }
+
+
+/* ============================================================
+ * THE STATUS PILL — what replaced the floating mic panel.
+ *
+ * The panel held a mic button, a level meter, a state line, the raw
+ * transcript and two checkboxes, permanently over the mushaf. Entering
+ * tasmee already means "I want to recite", so the button existed only
+ * because the panel needed something to hold. The toolbar mic now starts
+ * listening directly and this is all that remains: state, a level line,
+ * and the two settings behind a dot menu. It shows while listening and
+ * leaves when idle — the page is the mushaf and nothing else.
+ * ============================================================ */
+.ts-pill {
+    position: fixed; z-index: 60;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 12px 7px 10px; border-radius: 999px;
+    background: var(--ts-deep-sheet, rgba(255,253,248,0.94));
+    border: 1px solid var(--ts-deep-line, rgba(0,0,0,0.08));
+    box-shadow: 0 6px 22px rgba(0,0,0,0.16);
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-size: 12.5px; color: var(--ts-deep-mut, #8a8474);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    max-width: min(88vw, 420px);
+    opacity: 0; transform: translateX(-50%) translateY(6px);
+    transition: opacity 380ms ease, transform 380ms cubic-bezier(0.22,1,0.36,1);
+}
+body.tasmee-on .ts-pill { opacity: 1; transform: translateX(-50%); }
+
+/* A single dot carries the state: grey idle, amber preparing, green live,
+   red failed. It breathes only while listening — calm, ~2x a library
+   default, per the app's standing animation rule. */
+.ts-pill-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #b9b2a2; flex: none;
+    transition: background 420ms ease;
+}
+.ts-pill--busy .ts-pill-dot { background: #d97a1a; }
+.ts-pill--error .ts-pill-dot { background: #c0392b; }
+.ts-pill--on .ts-pill-dot { background: #0a7d5a; animation: ts-pill-breathe 2.6s ease-in-out infinite; }
+@keyframes ts-pill-breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.42; } }
+
+.ts-pill-state { white-space: nowrap; }
+.ts-pill--on .ts-pill-state { color: #0a7d5a; }
+body.dark .ts-pill--on .ts-pill-state { color: #4fe0a8; }
+.ts-pill--error .ts-pill-state { color: #c0392b; }
+
+/* The level: a thin line that fills, visible only while listening — a
+   meter you have to read is a meter in the way. */
+.ts-pill-track {
+    display: none; width: 54px; height: 3px; border-radius: 999px; flex: none;
+    background: var(--ts-deep-line, rgba(0,0,0,0.10)); overflow: hidden;
+}
+.ts-pill--on .ts-pill-track { display: block; }
+.ts-pill-fill {
+    display: block; height: 100%; width: calc(var(--lvl, 0) * 100%);
+    background: #0a7d5a; border-radius: 999px;
+    transition: width 90ms linear;
+}
+.ts-pill--voice .ts-pill-fill { background: #12a06f; }
+
+.ts-pill-gear {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; flex: none;
+    border: none; background: transparent; color: inherit;
+    border-radius: 50%; cursor: pointer; opacity: 0.55;
+    transition: opacity 260ms ease;
+}
+.ts-pill-gear:hover, .ts-pill-gear:active { opacity: 1; }
+
+.ts-pill-menu {
+    position: absolute; bottom: calc(100% + 8px); right: 0;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 11px 13px; border-radius: 14px;
+    background: var(--ts-deep-sheet, rgba(255,253,248,0.97));
+    border: 1px solid var(--ts-deep-line, rgba(0,0,0,0.08));
+    box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+    white-space: nowrap;
+}
+.ts-pill-menu[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ts-pill, .ts-pill-dot, .ts-pill-fill, .ts-pill-gear { transition: none; }
+    .ts-pill--on .ts-pill-dot { animation: none; }
+}

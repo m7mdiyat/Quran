@@ -377,7 +377,15 @@ export function initMushaf(deps) {
                     window.__tasmee = m;
                     _tasmeeMod = m;   // mushaf's live handle for tap/menu routing
                     if (m.isActive()) m.exit();
-                    else await m.enter(ACTIVE_PAGE_EL, CURRENT_PAGE_DATA);
+                    else {
+                        /* ONE TAP. Entering tasmee already means "I want to
+                         * recite"; making the reciter find a second button
+                         * inside a floating panel was a step that existed only
+                         * because the panel needed something to hold. Enter and
+                         * start listening together. */
+                        await m.enter(ACTIVE_PAGE_EL, CURRENT_PAGE_DATA);
+                        if (m.isActive() && m.startListening) m.startListening();
+                    }
                     const on = m.isActive();
                     tsBtn.setAttribute("data-on", on ? "true" : "false");
                     tsBtn.setAttribute("aria-label", on ? "إنهاء وضع التسميع" : "وضع التسميع");
