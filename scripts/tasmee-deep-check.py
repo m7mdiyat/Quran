@@ -74,6 +74,9 @@ ap.add_argument("--conf", type=float, default=0.90, help="confidence bar for a d
 ap.add_argument("--no-letters", action="store_true", help="harakat only (use for whispered recitation)")
 ap.add_argument("--no-harakat", action="store_true")
 ap.add_argument("--json", help="also write findings here")
+ap.add_argument("--dump-fixture", metavar="FILE",
+                help="write the exact inputs AND findings, so the JS port can be held to this "
+                     "output rather than to a description of it")
 ap.add_argument("--clip", metavar="DIR", help="write a WAV of each flagged word so you can HEAR what the model heard")
 ap.add_argument("--truth", metavar="LIST",
                 help="comma-separated vk:pos you deliberately got wrong, e.g. 47:1:8,47:4:5 — "
@@ -113,11 +116,30 @@ else:
 nwords = sum(len(DATASET["verses"][f"{surah}:{k}"]) for k in range(a0, a1 + 1))
 moshaf = MoshafAttributes(rewaya="hafs", madd_mottasel_len=4, madd_monfasel_len=4,
                           madd_mottasel_waqf=4, madd_aared_len=4)
+# USE THE SHIPPED REFERENCE, not a live phonetization of the whole range.
+# They are NOT the same: phonetizing a multi-ayah span continuously applies
+# tajweed ACROSS ayah boundaries (وَشِقَاقٍ + كَمْ merges with ikhfa, and the
+# ayah-final vowel survives), while phonetizing per ayah treats each end as a
+# WAQF (final vowel dropped, madd 'aarid lengthened). Both are legitimate —
+# it depends whether the reciter stops at each ayah — but the app can only
+# ship one, and the checker must be validated on whatever the app ships.
+# Per-ayah is the right default: stopping at ayah ends is normal practice,
+# and it keeps groups aligned to ayat so word attribution cannot drift
+# across a boundary.
+PH = json.load(open(f"{ROOT}/public/tasmee-phonemes.json"))["verses"]
+groups, wpg = [], []
+for _a in range(a0, a1 + 1):
+    _row = PH.get(f"{surah}:{_a}")
+    if not _row:
+        sys.exit(f"no phoneme reference for {surah}:{_a} — rebuild with scripts/build-tasmee-phonemes.py")
+    _g = _row["p"].split(" ")
+    groups += _g
+    wpg += _row["w"]
 seg = Aya(surah, a0).get_by_imlaey_words(0, nwords)
-sp = quran_phonetizer(seg.uthmani, moshaf, remove_spaces=False)
-nosp = quran_phonetizer(seg.uthmani, moshaf, remove_spaces=True)
-groups = sp.phonemes.split(" ")
-uth = seg.uthmani.split()
+nosp = quran_phonetizer(seg.uthmani, moshaf, remove_spaces=True)   # model input only
+uth = []
+for _a in range(a0, a1 + 1):
+    uth += Aya(surah, _a).get().uthmani.split()
 
 # The group→word alignment and its derived tables are needed by the
 # FINDINGS loop (word-seam guard), not just by the report, so they are
@@ -151,7 +173,13 @@ def map_groups_to_words(groups, words):
     return owners
 
 
-G2W = map_groups_to_words(groups, uth)
+# The group→word mapping ships WITH the reference (it cannot be recovered
+# from the phonemes alone), so it is read rather than recomputed — one
+# source of truth, and no chance of the app and the CLI disagreeing.
+G2W, _wi = [], 0
+for _n in wpg:
+    G2W.append(list(range(_wi, _wi + _n)))
+    _wi += _n
 
 # Ordinal → verse-key:position. كَفَرُوا۟ occurs five times on page 507; a
 # finding that names only the word leaves the reciter unable to tell WHICH
@@ -395,6 +423,25 @@ n_con = sum(1 for f in best.values() if f["kind"] == "con")
 print(f"  {len(groups)} words checked · {n_har} harakat · {n_con} letters · conf ≥ {a.conf:.0%}")
 print("  (a word edge is never judged — waqf and idgham legitimately change it;")
 print("   madd length is never judged — how long you hold a vowel is your choice)\n")
+
+if a.dump_fixture:
+    """Parity fixture. The JS rules must reproduce THIS, not an English
+    summary of it — every guard here was settled by measurement, and a port
+    that merely sounds equivalent will differ on exactly the cases that
+    mattered enough to add a guard for."""
+    json.dump({
+        "range": f"{surah}:{a0}-{a1}",
+        "groups": groups,
+        "wordsPerGroup": [len(G2W[i]) if i < len(G2W) else 1 for i in range(len(groups))],
+        "heardText": heard,
+        "probs": [round(float(x), 6) for x in probs],
+        "conf": a.conf,
+        "findings": sorted(
+            [{"group": f["word"], "kind": f["kind"], "expected": f["expected"],
+              "heard": f["heard"], "conf": f["conf"]} for f in best.values()],
+            key=lambda r: (r["group"], r["kind"])),
+    }, open(a.dump_fixture, "w"), ensure_ascii=False)
+    print(f"  wrote fixture {a.dump_fixture} ({len(best)} findings)\n")
 
 if a.clip:
     import soundfile as sf
