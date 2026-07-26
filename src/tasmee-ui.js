@@ -682,7 +682,7 @@ function paintReveal(idx, verdict, extra = {}) {
     // have been sitting on this word while it was still unpainted. Re-derive
     // the "you are here" wash once the paint lands, or it strands on a word
     // that has just been resolved.
-    setCurrent(nextExpectedIdx());
+    setCurrent(caretIdx());
 }
 
 /* PROVISIONAL INK (latency, 2026-07-20). The word appears the moment the
@@ -697,6 +697,10 @@ function paintPreview(idx) {
     if (!r || !r.span) return;
     if (r.span.classList.contains("ts-r")) return;   // already judged — leave it
     r.span.classList.add("ts-prov");
+    /* Provisional ink IS the fresh signal (~0.32 s vs ~1.1 s for a verdict),
+     * so the caret and its veil move here rather than waiting for the gate.
+     * Without this the hint always trailed the reciter by about a word. */
+    setCurrent(caretIdx());
 }
 
 function paintInsertion(idx) {
@@ -883,6 +887,31 @@ export function applyEvent(e) {
     // that can move it. Cheap and idempotent — setCurrent() no-ops when the
     // index has not changed, so this never repaints on unrelated events.
     setCurrent(nextExpectedIdx());
+}
+
+/* WHERE THE RECITER ACTUALLY IS — the caret, and therefore the veil.
+ *
+ * This deliberately differs from nextExpectedIdx(): it also steps over
+ * words that are merely PREVIEWED. A previewed word has been HEARD (the
+ * decoder put provisional ink on it), it just has no verdict yet.
+ *
+ * That distinction is the whole bug. The caret used to follow REVEALS,
+ * which land at p50 ~1.1 s, while provisional ink lands at ~0.32 s. So
+ * during continuous recitation the reciter was always about a second
+ * ahead of the caret and the veiled word was one they had already said —
+ * the hint arrived too late to be a hint. It only became visible on
+ * stopping, when the caret finally caught up. Following the heard
+ * frontier puts it ~3x closer to where they actually are.
+ *
+ * Hints keep using nextExpectedIdx(): asking for help on a word whose
+ * verdict is still in flight should point at the word, not past it. */
+function caretIdx() {
+    if (!S) return -1;
+    for (let i = 0; i < S.ref.length; i++) {
+        const s = S.ref[i].span;
+        if (s && !s.classList.contains("ts-r") && !s.classList.contains("ts-prov")) return i;
+    }
+    return -1;
 }
 
 /* Index of the next word still hidden (the current expected position in

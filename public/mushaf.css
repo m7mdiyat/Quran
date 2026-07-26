@@ -4872,7 +4872,7 @@ body.dark .mushaf-page--tasmee {
 
    No transition: time-based CSS on a tasmee word freezes mid-way against
    gharib's @property transitions, so the veil lifts instantly on reveal. */
-.mushaf-page--tasmee .mushaf-word.ts-cur:not(.mushaf-end):not(.ts-r) {
+.mushaf-page--tasmee .mushaf-word.ts-cur:not(.mushaf-end):not(.ts-r):not(.ts-prov) {
     text-shadow: 0 0 var(--ts-veil-blur) var(--ts-veil-ink);
 }
 
