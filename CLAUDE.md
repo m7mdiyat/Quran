@@ -22,7 +22,45 @@ gcloud run deploy tafsir-api-sqlite --source m7mdiyat-backend/ --region me-centr
 curl -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
 ```
 
-**Deploy gotcha — `MANIFEST_UNKNOWN: Failed to fetch "3.12.x"`:** Cloud Run persists `--set-build-env-vars` flags as a `run.googleapis.com/build-environment-variables` annotation on the service, and every later `--source` deploy reuses them. A prior deploy pinned `GOOGLE_RUNTIME_VERSION=3.12.7`; when Google rotated that patch out of the buildpack registry, every subsequent build failed even though `runtime.txt` said `python-3.12`. Fix: add `--clear-build-env-vars` to the next deploy (one-time). `runtime.txt` (`python-3.12`, minor-only) is the source of truth — do NOT re-pin an exact patch. Diagnose with: `gcloud run services describe tafsir-api-sqlite --region me-central1 --format="value(metadata.annotations['run.googleapis.com/build-environment-variables'])"`.
+**Deploy gotcha — the Python runtime, CORRECTED 2026-08-02 by measurement.**
+
+Cloud Run persists `--set-build-env-vars` as a
+`run.googleapis.com/build-environment-variables` annotation on the service, and
+every later `--source` deploy reuses them. A prior deploy pinned
+`GOOGLE_RUNTIME_VERSION=3.12.7`; when Google rotated that patch out of the
+buildpack registry, every subsequent build failed with `MANIFEST_UNKNOWN:
+Failed to fetch "3.12.7"`. That part of the note was right.
+
+**What was wrong: this note used to say `runtime.txt` (`python-3.12`) is the
+source of truth and must not be re-pinned. It is not read at all.** Measured on
+a real deploy after `--clear-build-env-vars`, with `runtime.txt` present and
+containing `python-3.12`, the build logged:
+
+    Step #1 - "build": Python version not specified, using the latest available
+                       Python runtime for the stack "ubuntu2404"
+    Step #1 - "build": Installing Python v3.14.6.
+
+So clearing the pin does not fall back to `runtime.txt` — it silently takes the
+LATEST interpreter. Following the old advice moves this service from Python 3.12
+to 3.14 without saying so.
+
+**And 3.12 can no longer be obtained.** Pinning `GOOGLE_RUNTIME_VERSION=3.12`
+fails with the registry contents printed in full:
+
+    failed to resolve version matching: 3.12 against
+    [3.14.6 … 3.14.0  3.13.14 … 3.13.0]
+
+Only 3.13.x and 3.14.x exist. The service currently RUNS 3.12 because its live
+revision was built when 3.12 was still published; that image is immutable and
+keeps working, but it cannot be reproduced.
+
+**So, until the interpreter question is settled:** pin explicitly and
+deliberately — `--set-build-env-vars GOOGLE_RUNTIME_VERSION=3.13` is the closest
+available to what production runs — and treat any redeploy as an interpreter
+upgrade that needs testing. See BLOCKERS B54 in `m7mdiyat-native`.
+
+Diagnose the persisted pin with:
+`gcloud run services describe tafsir-api-sqlite --region me-central1 --format="value(metadata.annotations['run.googleapis.com/build-environment-variables'])"`.
 
 ## Architecture
 
