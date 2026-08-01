@@ -238,7 +238,11 @@ def expand_ar_terms_local(user_text: str, base_terms: list, max_terms: int = 14)
 
 def arabic_keywords(text: str, limit: int = 10):
     t = normalize_arabic(text)
-    print("DEBUG_AR_NORM =", t)
+    # NEVER log `t`. This function is called with the USER'S QUESTION
+    # (build_evidence_pack, below), and normalisation does not remove meaning —
+    # it strips diacritics and folds letter forms. On Cloud Run every print
+    # persists to Cloud Logging.
+    print("DEBUG_AR_NORM_CHARS =", len(t))
     
     out = []
     seen = set()
@@ -251,7 +255,7 @@ def arabic_keywords(text: str, limit: int = 10):
         if len(out) >= limit:
             break
             
-    print("DEBUG_AR_KWS_OUT =", out)
+    print("DEBUG_AR_KWS_COUNT =", len(out))
     return out
 
 def english_keywords(text: str, limit: int = 10):
@@ -784,7 +788,12 @@ def initialize_data():
         GLOBAL_DATA["books_files"] = []
 
     GLOBAL_DATA["loaded"] = True
-    print(f"✅ Loaded Quran={len(q_index)} | TafsirFlat={len(tafsir_flat)} | Hadith={len(hadith)} | BooksChunks={len(GLOBAL_DATA['books_chunks'])}")
+    # Patch 0004, drive-by fix, found by running the loader offline: the OOM
+    # change removed the local `tafsir_flat` but left this print reading it, so
+    # initialize_data has been ENDING IN A NameError on every cold start —
+    # after loaded=True, so the site works, but anything that would ever be
+    # added below this line would silently never run.
+    print(f"✅ Loaded Quran={len(q_index)} | TafsirFlat={len(GLOBAL_DATA['tafsir_flat'])} | Hadith={len(hadith)} | BooksChunks={len(GLOBAL_DATA['books_chunks'])}")
 
 # ---------------------------------------------------------
 # AYAH REFS
@@ -1068,6 +1077,120 @@ def search_tafsir(kws_ar: list, phrase_ar: str, limit: int):
     scored.sort(key=lambda x: x[0], reverse=True)
     return [it for _, it in scored[:limit]]
 
+# ---------------------------------------------------------
+# Per-book tafsir retrieval  (ADDED — patch 0004)
+# ---------------------------------------------------------
+# search_tafsir scores every passage GLOBALLY and takes the top K. Tabari and
+# Qurtubi are by far the longest books, so they dominate keyword hits, and all
+# K evidence slots can land in one or two books — the opposite of "look at
+# each tafsir and what it says." For the app's scope the top passages are
+# taken from EACH book independently, then merged ROUND-ROBIN (every book's
+# best first, then every book's second), so any downstream [:N] slice drops
+# every book's second passage before it drops any book's first. Nothing calls
+# this outside scope_of(plan) == "quran_tafsir", so the website's behaviour is
+# byte-identical.
+TAFSIR_PER_BOOK_K = int(os.environ.get("TAFSIR_PER_BOOK_K", "2"))
+# The prompt budget for the app's scope, to carry 7 books × 2 passages plus
+# the Quran candidates. Website requests keep MAX_EVIDENCE_BLOCKS (10).
+MAX_EVIDENCE_BLOCKS_APP = int(os.environ.get("MAX_EVIDENCE_BLOCKS_APP", "16"))
+# Snippets must be long enough to be QUOTABLE (the verbatim-quote contract
+# below); 2400 doubles the website's 1200. Cost is reported in the patch notes.
+MAX_EVIDENCE_CHARS_PER_BLOCK_APP = int(os.environ.get("MAX_EVIDENCE_CHARS_PER_BLOCK_APP", "2400"))
+
+
+# The seven books, as they are keyed in tafsir.db's `source` column — the
+# same keys the /tafsir endpoint queries and the app requests.
+TAFSIR_DB_KEYS = ("baghawi", "ibn_ashur", "ibn_kathir", "muyassar", "qurtubi", "saadi", "tabari")
+
+
+def _ensure_tafsir_norm(conn):
+    """One-time, per instance: a normalized-text column on the /tmp copy of
+    tafsir.db, so retrieval can SCORE without holding 43k passages in RAM.
+
+    This is the load-bearing half of the patch: the OOM fix that moved tafsir
+    display to SQLite also emptied GLOBAL_DATA["tafsir_flat"], and nothing
+    refills it — so search_tafsir has been scoring an EMPTY list and no ask
+    answer has carried tafsir evidence since. Normalizing into the local DB
+    costs one pass at first use (43k rows), disk not RAM, and never touches
+    the bucket copy."""
+    cur = conn.cursor()
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(tafsir)").fetchall()]
+    if "norm" in cols:
+        return
+    print("🧮 building tafsir.norm (one-time, local copy)...")
+    t0 = time.time()
+    cur.execute("ALTER TABLE tafsir ADD COLUMN norm TEXT")
+    rows = cur.execute("SELECT rowid, text FROM tafsir").fetchall()
+    for rid, txt in rows:
+        cur.execute("UPDATE tafsir SET norm=? WHERE rowid=?", (normalize_arabic(txt or ""), rid))
+    conn.commit()
+    print(f"✅ tafsir.norm built for {len(rows)} rows in {int((time.time()-t0)*1000)}ms")
+
+
+def search_tafsir_per_book(kws_ar: list, phrase_ar: str, per_book: int):
+    """Top passages from EACH of the seven books, merged round-robin.
+
+    Scoring matches search_tafsir's exactly — hits × 140 plus a 200 phrase
+    bonus, TAFSIR_MIN_HITS_AR to qualify — expressed in SQL over the local
+    normalized column instead of the (empty) in-memory index."""
+    kws = [k for k in (kws_ar or []) if k][:10]
+    if not kws:
+        return []
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return []
+        _ensure_tafsir_norm(conn)
+    except Exception as e:
+        print("⚠️ per-book tafsir unavailable:", e)
+        return []
+
+    hits_sql = " + ".join(["(norm LIKE ?)"] * len(kws))
+    score_sql = " + ".join(["(norm LIKE ?)*140"] * len(kws))
+    params_hits = [f"%{k}%" for k in kws]
+    params_score = list(params_hits)
+    if phrase_ar:
+        score_sql += " + (norm LIKE ?)*200"
+        params_score.append(f"%{phrase_ar}%")
+
+    cur = conn.cursor()
+    by_book = {}
+    for book in TAFSIR_DB_KEYS:
+        try:
+            rows = cur.execute(
+                f"SELECT surah, ayah, text, sc FROM ("
+                f"  SELECT surah, ayah, text, ({hits_sql}) AS h, ({score_sql}) AS sc"
+                f"  FROM tafsir WHERE source = ?"
+                f") WHERE h >= ? ORDER BY sc DESC, surah, ayah LIMIT ?",
+                (*params_hits, *params_score, book, TAFSIR_MIN_HITS_AR, per_book),
+            ).fetchall()
+        except Exception as e:
+            print(f"⚠️ per-book query failed for {book}:", e)
+            continue
+        items = []
+        for su, ay, txt, sc in rows:
+            items.append({
+                "source": book,
+                "surah": int(su),
+                "ayah": int(ay),
+                "text": txt or "",
+                "sc": int(sc),
+                "source_id": f"TAFSIR:{book}:{su}:{ay}",
+                "loc": f"{su}:{ay}",
+                "label": f"Tafsir {book} ({su}:{ay})",
+            })
+        if items:
+            by_book[book] = items
+
+    out = []
+    for rank in range(per_book):
+        for book in TAFSIR_DB_KEYS:
+            lst = by_book.get(book) or []
+            if rank < len(lst):
+                out.append(lst[rank])
+    return out
+
+
 def search_hadith(kws_ar: list, kws_en: list, limit: int):
     hadith = GLOBAL_DATA["hadith"]
     cand = set()
@@ -1225,6 +1348,29 @@ User question:
 # ---------------------------------------------------------
 # RETRIEVAL PIPELINE (multi-source, strict, fast)
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# Retrieval scope  (ADDED — PLAN.md §7.1)
+# ---------------------------------------------------------
+# The native app's "Search or Ask" asks the model about the Quran and the seven
+# tafsirs ONLY. Hadith was already gated behind plan["include_hadith"]; the
+# books blocks were unconditional.
+#
+# `scope` defaults to "all", and every existing caller omits it, so the live
+# website's request shapes produce byte-identical behaviour. Nothing else in
+# this file reads `scope`.
+def scope_of(plan: dict) -> str:
+    s = str((plan or {}).get("scope") or "all").strip().lower()
+    return s if s in ("all", "quran_tafsir") else "all"
+
+
+def scope_allows_hadith(plan: dict) -> bool:
+    return scope_of(plan) == "all" and bool((plan or {}).get("include_hadith", False))
+
+
+def scope_allows_books(plan: dict) -> bool:
+    return scope_of(plan) == "all"
+
+
 def build_evidence_pack(user_input: str, plan: dict):
     user_input = str(user_input).strip()
     refs, ranges = parse_ayah_refs(user_input)
@@ -1273,10 +1419,16 @@ def build_evidence_pack(user_input: str, plan: dict):
                 "source_id": f"QURAN:{s}:{a}", "loc": f"{s}:{a}", "label": f"Quran {s}:{a}"
             })
 
-    # 3) Tafsir
-    for it in search_tafsir(kws_ar, phrase_ar, limit=TAFSIR_TOP_K):
+    # 3) Tafsir — per-book for the app's scope (patch 0004), global otherwise.
+    _tafsir_hits = (
+        search_tafsir_per_book(kws_ar, phrase_ar, per_book=TAFSIR_PER_BOOK_K)
+        if scope_of(plan) == "quran_tafsir"
+        else search_tafsir(kws_ar, phrase_ar, limit=TAFSIR_TOP_K)
+    )
+    for it in _tafsir_hits:
         hits = count_hits(it.get("tokens_ar", []), kws_ar)
-        sc = hits * 140 + (200 if phrase_ar and phrase_ar in it.get("norm","") else 0)
+        sc = it.get("sc") if it.get("sc") is not None else (
+            hits * 140 + (200 if phrase_ar and phrase_ar in it.get("norm","") else 0))
         evidence["tafsir_passages"].append({
             "source": it["source"], "surah": it["surah"], "ayah": it["ayah"],
             "text": it["text"], "score": sc,
@@ -1284,7 +1436,7 @@ def build_evidence_pack(user_input: str, plan: dict):
         })
 
     # 4) Hadith (only if enabled)
-    if plan.get("include_hadith", False):
+    if scope_allows_hadith(plan):
         for h in search_hadith(kws_ar, kws_en, limit=HADITH_TOP_K):
             hits_ar = count_hits(h.get("tokens_ar", []), kws_ar) if kws_ar else 0
             hits_en = count_hits(h.get("tokens_en", []), kws_en) if kws_en else 0
@@ -1297,7 +1449,8 @@ def build_evidence_pack(user_input: str, plan: dict):
             })
 
     # 5) Books
-    for b in search_books(kws_ar, kws_en, phrase_ar, limit=BOOKS_TOP_K):
+    for b in (search_books(kws_ar, kws_en, phrase_ar, limit=BOOKS_TOP_K)
+              if scope_allows_books(plan) else []):
         hits_ar = count_hits(b.get("tokens_ar", []), kws_ar) if kws_ar else 0
         hits_en = count_hits(b.get("tokens_en", []), kws_en) if kws_en else 0
         sc = hits_ar * 120 + hits_en * 70 + (220 if phrase_ar and phrase_ar in (b.get("norm_ar") or "") else 0)
@@ -1343,18 +1496,24 @@ def build_evidence_pack(user_input: str, plan: dict):
                         })
 
         evidence["tafsir_passages"] = []
-        for it in search_tafsir(kws_ar2, phrase_ar2, limit=TAFSIR_TOP_K):
+        _tafsir_hits2 = (
+            search_tafsir_per_book(kws_ar2, phrase_ar2, per_book=TAFSIR_PER_BOOK_K)
+            if scope_of(plan) == "quran_tafsir"
+            else search_tafsir(kws_ar2, phrase_ar2, limit=TAFSIR_TOP_K)
+        )
+        for it in _tafsir_hits2:
             hits = count_hits(it.get("tokens_ar", []), kws_ar2)
-            if hits < TAFSIR_MIN_HITS_AR:
+            if it.get("sc") is None and hits < TAFSIR_MIN_HITS_AR:
                 continue
-            sc = hits * 140 + (200 if phrase_ar2 and phrase_ar2 in it.get("norm","") else 0)
+            sc = it.get("sc") if it.get("sc") is not None else (
+                hits * 140 + (200 if phrase_ar2 and phrase_ar2 in it.get("norm","") else 0))
             evidence["tafsir_passages"].append({
                 "source": it["source"], "surah": it["surah"], "ayah": it["ayah"],
                 "text": it["text"], "score": sc,
                 "source_id": it["source_id"], "loc": it["loc"], "label": it["label"],
             })
 
-        if plan.get("include_hadith", False):
+        if scope_allows_hadith(plan):
             evidence["hadith_passages"] = []
             for h in search_hadith(kws_ar2, kws_en2, limit=HADITH_TOP_K):
                 hits_ar = count_hits(h.get("tokens_ar", []), kws_ar2) if kws_ar2 else 0
@@ -1368,7 +1527,8 @@ def build_evidence_pack(user_input: str, plan: dict):
                 })
 
         evidence["book_passages"] = []
-        for b in search_books(kws_ar2, kws_en2, phrase_ar2, limit=BOOKS_TOP_K):
+        for b in (search_books(kws_ar2, kws_en2, phrase_ar2, limit=BOOKS_TOP_K)
+                  if scope_allows_books(plan) else []):
             hits_ar = count_hits(b.get("tokens_ar", []), kws_ar2) if kws_ar2 else 0
             if kws_ar2 and hits_ar < BOOKS_MIN_HITS_AR:
                 continue
@@ -1412,8 +1572,14 @@ def build_retrieval(user_input: str, plan: dict):
             "source_id": c.get("source_id"), "loc": c.get("loc"), "label": c.get("label"),
         })
 
-    # Tafsir passages
-    for t in sorted(evidence["tafsir_passages"], key=lambda x: x.get("score", 0), reverse=True)[:TAFSIR_TOP_K]:
+    # Tafsir passages. For the app's scope the pack's order IS the balance —
+    # round-robin per book (patch 0004) — and re-sorting by global score here
+    # would hand the slots straight back to the longest books.
+    if scope_of(plan) == "quran_tafsir":
+        _tafsir_out = evidence["tafsir_passages"][: TAFSIR_PER_BOOK_K * 7]
+    else:
+        _tafsir_out = sorted(evidence["tafsir_passages"], key=lambda x: x.get("score", 0), reverse=True)[:TAFSIR_TOP_K]
+    for t in _tafsir_out:
         results.append({
             "type": "tafsir_passage",
             "tafsir": t["source"],
@@ -1583,6 +1749,114 @@ def build_intent_instructions(plan: dict) -> str:
         return "Answer thoroughly, but do not add anything not supported by the evidence."
     return "Answer clearly and directly based only on the evidence."
 
+# ---------------------------------------------------------
+# Ordered prose/verse blocks  (ADDED — Spec §5.1.3)
+# ---------------------------------------------------------
+# Spec §5.1.3 is a provenance guarantee, not a layout preference: the verse
+# blocks are interleaved with the prose rather than collected at the bottom, so
+# NO CLAIM IS EVER MORE THAN ONE BLOCK AWAY FROM ITS EVIDENCE.
+#
+# Nothing in the current response says where a verse belongs inside the prose —
+# `arabic_answer` is one string and `citations` is an unordered list — so a
+# client can only render prose-then-all-verses, which is a weaker promise than
+# the design makes. Splitting the prose client-side was rejected outright: it
+# would invent structure the model never expressed, adjacent to Quranic text.
+#
+# ── Why a marker inside the prose, and not a separate blocks array ───────────
+#
+# The obvious alternative is a parallel "blocks_ar": [{type,text}|{type,ref}].
+# It is cleaner data, and it loses on the two things that matter here:
+#
+#   · STREAMING. Fields are emitted as they COMPLETE. A blocks array completes
+#     after arabic_answer, so the client would paint prose and then re-flow it
+#     when the array arrived — a visible jump, on the one screen the app is
+#     asking the reader to trust. A marker travels inside the prose stream
+#     itself, in order, so a verse block lands the moment its marker closes.
+#   · RISK. This is a live backend, and the reason for folding this in now is
+#     that it costs ONE deployment. A marker is a prompt change and nothing
+#     else; the array needs a schema change, a new scan in the streaming path,
+#     and a new field in the done event.
+#
+# What it costs: `arabic_answer` stops being clean prose for any caller that
+# does not strip markers. That is exactly why it is flag-gated — the website
+# never asks for it, so its responses are unchanged.
+#
+# The marker carries a REFERENCE ONLY and never verse text. That is what keeps
+# the client's guarantee intact end to end: the app renders scripture by looking
+# up two numbers in its own copy of the Quran, and no model output token has a
+# path into a verse block.
+def build_blocks_instruction(plan: dict) -> str:
+    if not (plan or {}).get("blocks"):
+        return ""
+    return """
+VERSE PLACEMENT (Arabic answer only):
+Inside "arabic_answer", mark where each cited Quranic verse belongs by putting a
+marker ON ITS OWN LINE at that point:
+
+[[VERSE:QURAN:<surah>:<ayah>]]
+
+Verse placement rules:
+- The marker carries a REFERENCE ONLY. Never write the verse text — not before
+  the marker, not after it, not inside it. The reader's app renders the verse
+  from its own copy of the Quran, and any verse text you write is discarded.
+- Use only source_id values that appear in EVIDENCE as [SRC:QURAN:...]. Never
+  mark a tafsir, hadith or book source this way; those belong in "citations".
+- Put the marker immediately after the sentence that rests on that verse, so
+  that no claim is ever more than one block away from its evidence.
+- Every marked verse must also appear in "citations".
+- The prose on either side of a marker must read as continuous Arabic once the
+  marker is removed.
+- If you are unsure where a verse belongs, DO NOT mark it. An unmarked verse
+  still reaches the reader through "citations"; a misplaced one attributes a
+  claim to the wrong ayah, which is worse than no placement at all.
+"""
+
+
+# ---------------------------------------------------------
+# Answer depth  (ADDED — round-2 §11b)
+# ---------------------------------------------------------
+# The native app's reader asked for answers "built from the Quran and the
+# seven tafsirs the app already carries — thorough, and citing the verses it
+# draws on." The base prompt permits a thin reply; this raises the floor, and
+# ONLY for the app's own scope: `scope_of(plan) == "quran_tafsir"` is the
+# request shape 0001 introduced for the native app, so the website's prompt
+# stays byte-identical.
+def build_depth_instruction(plan: dict) -> str:
+    if scope_of(plan) != "quran_tafsir":
+        return ""
+    return """
+ANSWER DEPTH (Quran + tafsir scope):
+This reader's question is answered from the Quran verses and the tafsir
+excerpts in EVIDENCE, and from nothing else.
+- Be thorough. Work through every relevant evidence block before writing:
+  synthesize what the tafsirs agree on into the answer, and put genuine
+  differences between them into "tafsir_differences_ar"/"tafsir_differences_en"
+  — each attributed via its [SRC:] source, never from memory.
+- Ground every substantive claim in a cited verse or tafsir block. A paragraph
+  that rests on no [SRC:] block does not belong in the answer — with one
+  exception: a clearly-labelled brief general clarification, kept to one or
+  two sentences.
+- Walk through the cited verses in Mushaf order where it helps the reader, and
+  let the answer's structure follow the evidence rather than a template.
+- "arabic_answer" should read as a complete short lesson — the question's
+  context, what the verses teach, how the tafsirs explain them — never a
+  two-line reply. Length follows the evidence: rich evidence, fuller answer.
+- The tafsir excerpts are the PRIMARY source of this answer. Work through the
+  block of EACH book present in EVIDENCE and let the answer say which books
+  agree, which differ, and — where a book's excerpt does not address the
+  question — that it is silent here. Never characterise a book from memory;
+  only from its [SRC:] block.
+- "tafsir_differences_ar" is REQUIRED for this scope, filled from the blocks
+  and attributed via [SRC:]. If the cited books genuinely agree, say exactly
+  that as its first item — an empty list is not an answer.
+- When you rely on a scholar's wording, copy it into that citation's
+  "quote_ar" field EXACTLY as it appears inside its [SRC:] block — character
+  for character, no paraphrase, no elisions, no fixes. Quotes are checked
+  against the blocks and a changed quote is discarded. A citation may omit
+  "quote_ar"; it must never contain words its block does not.
+"""
+
+
 def build_prompt(retrieval: dict, user_question: str, plan: dict) -> str:
     intent = plan.get("intent", "GENERAL_QA")
     language = plan.get("language", "both")
@@ -1599,22 +1873,46 @@ def build_prompt(retrieval: dict, user_question: str, plan: dict) -> str:
 
     evidence_lines = []
 
-    for c in (retrieval.get("candidates") or [])[:3]:
+    # Round-2 §11b: the app's scope carries two more Quran candidates into the
+    # evidence — a thorough answer needs the verses, and five references cost
+    # far less than one tafsir block. Website requests keep the original 3.
+    for c in (retrieval.get("candidates") or [])[: (5 if scope_of(plan) == "quran_tafsir" else 3)]:
         sid = c.get("source_id") or f"QURAN:{c.get('surah')}:{c.get('ayah')}"
         label = c.get("label") or f"Quran {c.get('surah')}:{c.get('ayah')}"
         evidence_lines.append(f"[SRC:{sid}] {label}\n{clip(c.get('quran_text',''))}")
 
-    for r in (retrieval.get("results") or [])[:MAX_EVIDENCE_BLOCKS]:
+    # Patch 0004: the app's scope carries 7 books × TAFSIR_PER_BOOK_K blocks,
+    # each long enough to be QUOTABLE. Website requests keep 10 × 1200.
+    _blocks_cap = MAX_EVIDENCE_BLOCKS_APP if scope_of(plan) == "quran_tafsir" else MAX_EVIDENCE_BLOCKS
+    _chars_cap = (MAX_EVIDENCE_CHARS_PER_BLOCK_APP
+                  if scope_of(plan) == "quran_tafsir" else MAX_EVIDENCE_CHARS_PER_BLOCK)
+    for r in (retrieval.get("results") or [])[:_blocks_cap]:
         sid = r.get("source_id") or _safe_id_piece(r.get("label_override") or r.get("tafsir") or r.get("type") or "SRC")
         label = r.get("label_override") or r.get("tafsir") or r.get("type") or "source"
 
         # IMPORTANT CHANGE: use snippet-only text to keep it relevant + cheaper
         raw_text = r.get("text", "")
-        snippet = best_snippet(raw_text, kws_ar, max_len=MAX_EVIDENCE_CHARS_PER_BLOCK)
+        snippet = best_snippet(raw_text, kws_ar, max_len=_chars_cap)
         evidence_lines.append(f"[SRC:{sid}] {label}\n{snippet}")
 
     evidence_block = "\n\n".join(evidence_lines) if evidence_lines else "N/A"
+    # Patch 0004: for the app's scope every citation may carry the scholar's
+    # EXACT wording, and up to 14 citations cover 7 books. Interpolating the
+    # original strings for every other request keeps the website's prompt
+    # byte-identical.
+    if scope_of(plan) == "quran_tafsir":
+        citations_schema = ('{"source_id":"string","note":"what you used",'
+                            '"quote_ar":"exact sentence(s) copied verbatim from that block (may be omitted)"}')
+        max_citations = 14
+    else:
+        citations_schema = '{"source_id":"string","note":"what you used"}'
+        max_citations = 8
     intent_instructions = build_intent_instructions(plan)
+    # ADDED (Spec §5.1.3). Empty unless the caller asked for verse placement, so
+    # the website's prompt is byte-identical to what it is today.
+    blocks_instruction = build_blocks_instruction(plan)
+    # ADDED (round-2 §11b). Same discipline: empty outside the app's scope.
+    depth_instruction = build_depth_instruction(plan)
 
     return f"""
 You are a careful Islamic studies assistant.
@@ -1626,6 +1924,7 @@ Instead: (1) clearly state the limitation, (2) give the best-evidence-based guid
 Task type (intent): {intent}
 Style: {style}
 {intent_instructions}
+{depth_instruction}
 {lang_instruction}
 
 User question:
@@ -1644,16 +1943,84 @@ Return STRICT JSON ONLY with exactly these keys:
   "tafsir_differences_ar": ["string"],
   "tafsir_differences_en": ["string"],
   "citations": [
-    {{"source_id":"string","note":"what you used"}}
+    {citations_schema}
   ]
 }}
 
 Citation rules:
 - Every citation MUST use a source_id that appears exactly in EVIDENCE as [SRC:...].
 - Include ONLY sources you actually used in the answer.
-- If you used multiple evidence blocks, include multiple citations (max 8).
+- If you used multiple evidence blocks, include multiple citations (max {max_citations}).
 - Do not output anything outside JSON.
+{blocks_instruction}
 """.strip()
+
+# ---------------------------------------------------------
+# Verbatim quotes  (ADDED — patch 0004)
+# ---------------------------------------------------------
+# The schema's "note" is ABOUT what was used; "quote_ar" is what the scholar
+# SAID, and a paraphrase presented as a quote is a fabrication. The contract
+# is checkable, so it is checked: a quote survives only if it is literally
+# inside the exact snippet the model was shown for that source_id — raw
+# first, then with whitespace runs collapsed on both sides (JSON strings fold
+# newlines). The citation itself is never dropped; only its failed quote is.
+
+def _collapse_ws(txt: str) -> str:
+    return re.sub(r"\s+", " ", str(txt or "")).strip()
+
+
+def evidence_snippets(retrieval: dict, plan: dict) -> dict:
+    """source_id -> the exact snippet text build_prompt showed the model.
+
+    Recomputed with the same inputs and the same functions, so it is the same
+    strings — best_snippet and clip are deterministic. Duplicate source_ids
+    concatenate: a quote may come from either occurrence.
+    """
+    kws_ar = (retrieval.get("retrieval_keywords") or {}).get("ar") or []
+    scope_app = scope_of(plan) == "quran_tafsir"
+    blocks_cap = MAX_EVIDENCE_BLOCKS_APP if scope_app else MAX_EVIDENCE_BLOCKS
+    chars_cap = MAX_EVIDENCE_CHARS_PER_BLOCK_APP if scope_app else MAX_EVIDENCE_CHARS_PER_BLOCK
+    snips = {}
+
+    def add(sid, txt):
+        if not sid:
+            return
+        snips[sid] = (snips.get(sid, "") + "\n" + txt) if sid in snips else txt
+
+    for c in (retrieval.get("candidates") or [])[: (5 if scope_app else 3)]:
+        sid = c.get("source_id") or f"QURAN:{c.get('surah')}:{c.get('ayah')}"
+        add(str(sid), clip(c.get("quran_text", "")))
+    for r in (retrieval.get("results") or [])[:blocks_cap]:
+        sid = r.get("source_id") or _safe_id_piece(r.get("label_override") or r.get("tafsir") or r.get("type") or "SRC")
+        add(str(sid), best_snippet(r.get("text", ""), kws_ar, max_len=chars_cap))
+    return snips
+
+
+def enforce_verbatim_quotes(citations, snips: dict):
+    """Strip every quote_ar that is not a literal substring of its block.
+
+    Returns (citations, dropped_count). Mutates in place — the callers hold
+    the same list the response will carry.
+    """
+    if not isinstance(citations, list):
+        return citations, 0
+    dropped = 0
+    for c in citations:
+        if not isinstance(c, dict):
+            continue
+        q = c.get("quote_ar")
+        if q is None or q == "":
+            c.pop("quote_ar", None)
+            continue
+        block = snips.get(str(c.get("source_id") or ""), "")
+        if isinstance(q, str) and q in block:
+            continue
+        if isinstance(q, str) and _collapse_ws(q) and _collapse_ws(q) in _collapse_ws(block):
+            continue
+        c.pop("quote_ar", None)
+        dropped += 1
+    return citations, dropped
+
 
 def run_gemini(retrieval: dict, user_question: str, plan: dict) -> dict:
     """
@@ -1670,7 +2037,10 @@ def run_gemini(retrieval: dict, user_question: str, plan: dict) -> dict:
         print("DEBUG_PROMPT_CHARS =", len(prompt))
         print("DEBUG_EVIDENCE_RESULTS_COUNT =", results_count)
         print("DEBUG_EVIDENCE_CANDIDATES_COUNT =", candidates_count)
-        print("DEBUG_PROMPT_PREVIEW =", prompt[:500])
+        # No prompt preview. The prompt embeds the user's question, and its
+        # offset is NOT FIXED — it moves with {intent_instructions} and
+        # {lang_instruction}. A bounded slice of a string that contains user
+        # content is a privacy claim resting on an arithmetic accident.
     except Exception as e:
         print("DEBUG_PRINT_FAILED:", str(e))
 
@@ -1688,18 +2058,21 @@ def run_gemini(retrieval: dict, user_question: str, plan: dict) -> dict:
 
     resp = _call(prompt)
     text = (resp.text or "").strip()
-    print("DEBUG_GEMINI_RAW_START =", text[:1200])
+    # Shape, not content: the answer is written for one person about their own
+    # question. Truncation and malformed JSON are both visible without it.
+    print("DEBUG_GEMINI_RAW_CHARS =", len(text))
 
     parsed = safe_json_from_text(text)
     print("DEBUG_PARSE_OK =", isinstance(parsed, dict))
 
     # If parsing failed, do ONE repair retry with extra constraints
     if not isinstance(parsed, dict):
-        print("DEBUG_GEMINI_RAW_END =", text[-400:])
+        print("DEBUG_GEMINI_ENDS_WITH_BRACE =", text.endswith("}"))
         repair_prompt = prompt + "\n\nIMPORTANT: Your previous output was not valid JSON. Return ONLY valid JSON and make sure it ends with a closing '}' and matches the required keys exactly."
         resp2 = _call(repair_prompt)
         text2 = (resp2.text or "").strip()
-        print("DEBUG_GEMINI_RETRY_RAW_START =", text2[:1200])
+        print("DEBUG_GEMINI_RETRY_CHARS =", len(text2))
+        print("DEBUG_GEMINI_RETRY_ENDS_WITH_BRACE =", text2.endswith("}"))
         parsed = safe_json_from_text(text2)
         print("DEBUG_RETRY_PARSE_OK =", isinstance(parsed, dict))
         if isinstance(parsed, dict):
@@ -1715,6 +2088,12 @@ def run_gemini(retrieval: dict, user_question: str, plan: dict) -> dict:
         parsed.setdefault("tafsir_differences_ar", [])
         parsed.setdefault("tafsir_differences_en", [])
         parsed.setdefault("citations", [])
+        # Patch 0004: a quote either matches its block or it does not ship.
+        if scope_of(plan) == "quran_tafsir":
+            _, _q_dropped = enforce_verbatim_quotes(
+                parsed.get("citations"), evidence_snippets(retrieval, plan))
+            if _q_dropped:
+                print("DEBUG_QUOTES_DROPPED =", _q_dropped)
         return {
             "arabic_answer": clean_model_text(parsed.get("arabic_answer", "")),
             "english_answer": clean_model_text(parsed.get("english_answer", "")),
@@ -1941,6 +2320,157 @@ User question:
 Evidence:
 {evidence}
 """.strip()
+
+
+# ---------------------------------------------------------
+# JSON streaming  (ADDED — PLAN.md §7.2)
+# ---------------------------------------------------------
+# The existing streaming path (build_prompt_stream / run_gemini_stream) asks for
+# PLAIN PROSE — "No markdown", no JSON, no citations — and then hard-codes
+# "citations": [] in its done event. So the streamed answer has never carried
+# the [SRC:] citation contract that the non-streaming /ai path enforces.
+#
+# This adds a second streaming path that keeps build_prompt's schema and its
+# citation rules verbatim, and emits fields over SSE as they COMPLETE, so the
+# مسنودة إلى chip row can render before a word of prose exists (Spec §5.1.3:
+# "the references arrive BEFORE the sentence").
+#
+# Selected by {"format": "json"} on the request. /ai/stream without that flag is
+# untouched and behaves exactly as it does today.
+
+
+_JSON_STR_FIELDS = ("arabic_answer", "english_answer")
+_JSON_LIST_FIELDS = ("key_points_ar", "key_points_en",
+                     "tafsir_differences_ar", "tafsir_differences_en")
+
+
+def _scan_complete_string(buf: str, field: str):
+    """Return the value of "field": "..." once its closing quote has arrived."""
+    m = re.search(r'"%s"\s*:\s*"' % re.escape(field), buf)
+    if not m:
+        return None
+    i = m.end()
+    out = []
+    while i < len(buf):
+        c = buf[i]
+        if c == "\\" and i + 1 < len(buf):
+            out.append(buf[i:i + 2]); i += 2; continue
+        if c == '"':
+            try:
+                return json.loads('"' + "".join(out) + '"')
+            except Exception:
+                return None
+        out.append(c); i += 1
+    return None
+
+
+def _scan_complete_array(buf: str, field: str):
+    """Return the value of "field": [...] once its matching ] has arrived."""
+    m = re.search(r'"%s"\s*:\s*\[' % re.escape(field), buf)
+    if not m:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    start = m.end() - 1
+    for i in range(start, len(buf)):
+        c = buf[i]
+        if in_str:
+            if esc: esc = False
+            elif c == "\\": esc = True
+            elif c == '"': in_str = False
+            continue
+        if c == '"': in_str = True
+        elif c == "[": depth += 1
+        elif c == "]":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(buf[start:i + 1])
+                except Exception:
+                    return None
+    return None
+
+
+def run_gemini_stream_json(retrieval: dict, user_question: str, plan: dict):
+    """Streams the SAME JSON contract build_prompt enforces, field by field.
+
+    Order is deliberate: citations first (Spec §5.1.3 streams the مسنودة إلى
+    chips before the prose), then the answer text, then the rest.
+    """
+    client = genai_client()
+    # The identical prompt the non-streaming path uses — same schema, same
+    # citation rules. That is the whole point: this is not a second contract.
+    prompt = build_prompt(retrieval, user_question, plan)
+
+    # Patch 0004: the chip row streams before the prose, so the verbatim-quote
+    # check must run the moment the citations array completes — a fabricated
+    # quote must never be on the wire at all. Snippets are deterministic, so
+    # computing them here checks the exact strings the prompt carried.
+    _q_snips = evidence_snippets(retrieval, plan) if scope_of(plan) == "quran_tafsir" else None
+
+    buf = ""
+    sent = set()
+    try:
+        stream = client.models.generate_content_stream(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "temperature": 0.2,
+                "max_output_tokens": 1800,
+                "response_mime_type": "application/json",
+            },
+        )
+        for part in stream:
+            chunk = getattr(part, "text", None)
+            if not chunk:
+                try:
+                    chunk = part.candidates[0].content.parts[0].text
+                except Exception:
+                    chunk = ""
+            if not chunk:
+                continue
+            buf += chunk
+
+            if "citations" not in sent:
+                cites = _scan_complete_array(buf, "citations")
+                if cites is not None:
+                    sent.add("citations")
+                    if _q_snips is not None:
+                        cites, _qd = enforce_verbatim_quotes(cites, _q_snips)
+                        if _qd:
+                            print("DEBUG_QUOTES_DROPPED_STREAM =", _qd)
+                    yield ("citations", {"citations": cites})
+
+            for f in _JSON_STR_FIELDS:
+                if f in sent:
+                    continue
+                val = _scan_complete_string(buf, f)
+                if val is not None:
+                    sent.add(f)
+                    yield ("field", {"name": f, "value": val})
+
+            for f in _JSON_LIST_FIELDS:
+                if f in sent:
+                    continue
+                val = _scan_complete_array(buf, f)
+                if val is not None:
+                    sent.add(f)
+                    yield ("field", {"name": f, "value": val})
+    except Exception as e:
+        yield ("error", {"error": str(e)})
+        return
+
+    # Authoritative final object, parsed with the same tolerant parser /ai uses.
+    ai = parse_model_json(buf) or {}
+    ai.setdefault("arabic_answer", "")
+    ai.setdefault("english_answer", "")
+    for f in _JSON_LIST_FIELDS:
+        ai.setdefault(f, [])
+    ai.setdefault("citations", [])
+    if _q_snips is not None:
+        enforce_verbatim_quotes(ai.get("citations"), _q_snips)
+    yield ("done", {"ai": ai, "raw_text": buf[:4000]})
 
 
 def run_gemini_stream(retrieval: dict, user_question: str, plan: dict):
@@ -2620,6 +3150,11 @@ def _hello_http_logic(req):
 
                     t_route = time.time()
                     plan = route_intent(user_input)
+                    # ADDED (PLAN.md §7.1): caller-supplied retrieval scope.
+                    # Absent -> "all" -> unchanged behaviour.
+                    plan["scope"] = (body or {}).get("scope") or "all"
+                    # ADDED (Spec §5.1.3): opt-in verse placement. Absent -> off.
+                    plan["blocks"] = bool((body or {}).get("blocks"))
                     yield _sse("meta", {"stage": "routed", "ms": int((time.time()-t_route)*1000), "plan": plan})
 
                     t_ret = time.time()
@@ -2630,8 +3165,14 @@ def _hello_http_logic(req):
                         yield _sse("final", {"status": retrieval.get("status"), "retrieval": retrieval})
                         return
 
-                    # Stream model output
-                    for ev, payload in run_gemini_stream(retrieval, user_input, plan):
+                    # Stream model output.
+                    # ADDED (PLAN.md §7.2): {"format":"json"} selects the path
+                    # that keeps build_prompt's [SRC:] citation contract and
+                    # emits citations before prose. Anything else -> the
+                    # existing prose stream, untouched.
+                    _fmt = str((body or {}).get("format") or "").strip().lower()
+                    _gen = run_gemini_stream_json if _fmt == "json" else run_gemini_stream
+                    for ev, payload in _gen(retrieval, user_input, plan):
                         yield _sse(ev, payload)
 
                     yield _sse("final", {"status": "ok", "total_ms": int((time.time()-t0)*1000)})
@@ -2656,6 +3197,10 @@ def _hello_http_logic(req):
 
             t_route = time.time()
             plan = route_intent(user_input)
+            # ADDED (PLAN.md §7.1). Absent -> "all" -> unchanged behaviour.
+            plan["scope"] = (body or {}).get("scope") or "all"
+            # ADDED (Spec §5.1.3): opt-in verse placement. Absent -> off.
+            plan["blocks"] = bool((body or {}).get("blocks"))
             print("T_ROUTE_MS =", int((time.time() - t_route) * 1000))
 
             t_ret = time.time()
