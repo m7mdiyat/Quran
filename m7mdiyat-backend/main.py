@@ -3235,3 +3235,45 @@ def _hello_http_logic(req):
         return (json.dumps(retrieval, ensure_ascii=False), 200, headers)
     except Exception as e:
         return (json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False), 500, headers)
+
+# ---------------------------------------------------------
+# EAGER LOAD AT IMPORT  (B55, 2026-08-02)
+# ---------------------------------------------------------
+# `initialize_data()` was called only from inside request handlers — three of
+# them (the SSE stream, the non-streaming /ai, and the retrieval-only tail) —
+# and never at import. So the corpus was loaded lazily, by whichever unlucky
+# request first hit a cold instance, INSIDE that request.
+#
+# Measured on the patched build: the load takes ~31.4s, and gunicorn's default
+# worker timeout is 30s. The arbiter murders the worker mid-load — SIGABRT then
+# SIGKILL — so the request dies at `📥 Loading data...` and every cold instance
+# fails the same way. The familiar "Worker was sent SIGKILL! Perhaps out of
+# memory?" line is gunicorn guessing; the last frame of the traceback is
+# `gunicorn/workers/base.py:198 handle_abort`, which is the SIGABRT handler the
+# arbiter uses for a TIMEOUT. It is not memory: it fails identically at 4 GiB,
+# and Cloud Run logs no memory message above 1 GiB.
+#
+# Raising the timeout would only hide it — the first user of every cold
+# instance would wait 31s instead of getting an error, which is a worse failure
+# because it looks like it works.
+#
+# Loading here, at import, moves the cost into container startup:
+#
+#   · no request ever waits on it — the module is imported before the worker
+#     serves anything
+#   · a load that FAILS now fails at deploy, when the revision never goes
+#     healthy, instead of at 3am for whoever hits the cold instance
+#   · Cloud Run's startup budget (240s by default) governs the boot, not
+#     gunicorn's per-request worker timeout
+#
+# The three request-side calls are LEFT IN PLACE deliberately. `initialize_data`
+# opens with `if GLOBAL_DATA.get("loaded"): return`, so they become no-ops in
+# production — and they remain the correct behaviour under `flask run`, under
+# tests that import this module without booting a server, and if a future
+# refactor ever unloads the globals. Removing them would trade a free guard for
+# nothing.
+#
+# NOT wrapped in try/except, deliberately: a corpus that cannot load is not a
+# degraded service, it is a service with no answers in it, and the deploy should
+# say so rather than come up empty.
+initialize_data()
