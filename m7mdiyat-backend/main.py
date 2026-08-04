@@ -1419,6 +1419,62 @@ def build_evidence_pack(user_input: str, plan: dict):
                 "source_id": f"QURAN:{s}:{a}", "loc": f"{s}:{a}", "label": f"Quran {s}:{a}"
             })
 
+    # 2b) ── Anchor tafsir retrieval to the RESOLVED verse (2026-08-04) ───────
+    #
+    # «ما سبب نزول الآية ليس لك من الامر شيء» resolves its quoted verse in
+    # step 2 — 3:128 at 180 against the 120 threshold, runner-up 120 — and
+    # until this block that answer was THROWN AWAY: step 3 scanned on the
+    # question's own words, which for a سبب-نزول phrasing are tafsir
+    # boilerplate («سبب», «نزول», «الايه») plus function-grade words, so
+    # scores saturated at the keyword ceiling and the `ORDER BY sc DESC,
+    # surah, ayah` tiebreak returned al-Fatiha rows as the evidence pack.
+    # Measured across the seven books: 1 of 14 blocks was about 3:128 on the
+    # plain question, 13 of 14 on the fully-vowelled one — and the vowelled
+    # form only ever worked BY ACCIDENT: when the question IS the verse,
+    # phrase_ar matches the tafsirs quoting it.
+    #
+    # So when the top Quran hit is CONFIDENT — an explicit reference (9999),
+    # an exact substring containment (>= 800), or over the threshold AND
+    # clear of the runner-up — its own seven tafsir rows are fetched BY KEY
+    # (the same lookup /tafsir serves) and seeded ahead of the keyword scan.
+    # `build_retrieval`'s app-scope cap keeps the FIRST TAFSIR_PER_BOOK_K*7
+    # passages, so the anchor takes the front slots and the scan still fills
+    # what remains for breadth. A question that resolves no verse takes
+    # exactly the path it always did.
+    anchor = None
+    if evidence["quran_candidates"]:
+        _q_sorted = sorted(evidence["quran_candidates"], key=lambda c: c.get("score", 0), reverse=True)
+        _top = _q_sorted[0]
+        _runner = _q_sorted[1].get("score", 0) if len(_q_sorted) > 1 else 0
+        _sc = _top.get("score", 0)
+        if _sc == 9999 or _sc >= 800 or (_sc >= QURAN_CONFIDENCE_THRESHOLD and _sc - _runner >= 40):
+            anchor = _top
+
+    seeded_ids = set()
+    if anchor is not None and scope_of(plan) == "quran_tafsir":
+        try:
+            _conn = get_db_connection()
+            if _conn is not None:
+                _ensure_tafsir_norm(_conn)
+                _rows = _conn.cursor().execute(
+                    "SELECT source, text FROM tafsir WHERE surah=? AND ayah=?",
+                    (anchor["surah"], anchor["ayah"]),
+                ).fetchall()
+                for _src, _txt in _rows:
+                    if not _txt or _src not in TAFSIR_DB_KEYS:
+                        continue
+                    _sid = f"TAFSIR:{_src}:{anchor['surah']}:{anchor['ayah']}"
+                    seeded_ids.add(_sid)
+                    evidence["tafsir_passages"].append({
+                        "source": _src, "surah": anchor["surah"], "ayah": anchor["ayah"],
+                        "text": _txt, "score": 5000,
+                        "source_id": _sid,
+                        "loc": f"{anchor['surah']}:{anchor['ayah']}",
+                        "label": f"Tafsir {_src} ({anchor['surah']}:{anchor['ayah']})",
+                    })
+        except Exception as _e:
+            print("⚠️ primary-anchored tafsir seed failed:", _e)
+
     # 3) Tafsir — per-book for the app's scope (patch 0004), global otherwise.
     _tafsir_hits = (
         search_tafsir_per_book(kws_ar, phrase_ar, per_book=TAFSIR_PER_BOOK_K)
@@ -1426,6 +1482,9 @@ def build_evidence_pack(user_input: str, plan: dict):
         else search_tafsir(kws_ar, phrase_ar, limit=TAFSIR_TOP_K)
     )
     for it in _tafsir_hits:
+        # A scan row the anchor already seeded is the same passage twice.
+        if it.get("source_id") in seeded_ids:
+            continue
         hits = count_hits(it.get("tokens_ar", []), kws_ar)
         sc = it.get("sc") if it.get("sc") is not None else (
             hits * 140 + (200 if phrase_ar and phrase_ar in it.get("norm","") else 0))
