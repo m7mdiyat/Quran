@@ -60,6 +60,56 @@ BOOKS_PREFIX = os.environ.get("BOOKS_PREFIX", os.environ.get("QAYIM_PREFIX", "Qa
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 ROUTER_MODEL = os.environ.get("ROUTER_MODEL", "gemini-2.5-flash")
 
+# B58 — max_output_tokens is a budget for THINKING plus output, not output.
+#
+# On a thinking model the tokens spent reasoning are charged against
+# max_output_tokens before the first character of the answer is written, and if
+# they exhaust it the response comes back with finish_reason=MAX_TOKENS, zero
+# text parts and NO ERROR. Downstream that is indistinguishable from a model
+# that had nothing to say: parse_model_json("") -> None -> {} -> every field
+# defaults to "" and the app renders an empty answer.
+#
+# Measured against this file's own build_prompt output (15,425 chars, the
+# app's scope: 14 tafsir blocks + 3 Quran candidates), Vertex global, SDK
+# google-genai 1.75.0, api_version=v1 — 3 runs each, 2 questions:
+#
+#   model                   config              valid  thoughts  output
+#   gemini-3.6-flash        @1800               0/6     ~1725      ~68
+#   gemini-2.5-flash        @1800               0/3     ~1725      ~61
+#   gemini-3.1-flash-lite   @1800               6/6        0     ~1200
+#   gemini-3.6-flash        @1800 + budget 0    1/6        0     ~1790  (capped)
+#   gemini-3.6-flash        @8192 + budget 0   16/16       0   1532-2781
+#
+# So it is not a 3.6 bug: gemini-2.5-flash — the DEFAULT above — fails
+# identically. gemini-3.1-flash-lite passes only because a lite model does no
+# thinking at all, which is why this was invisible until the model changed.
+#
+# Two knobs could fix it and only one of them works. Raising the ceiling alone
+# does not: thinking expands to fill whatever room it is given (@8192 with
+# thinking on spent 6,137 tokens on thoughts and still returned MAX_TOKENS,
+# 27.7s to first token). thinking_level=LOW is not a cap either — it still
+# thought 945-1,271 tokens and pushed time-to-first-token to 5.7s. An explicit
+# budget of 512 was ignored upward, returning 957-1,133. Only 0 is honoured
+# exactly, on every run, on every model tested.
+#
+# The budget stays an env var so thinking can be bought back without a deploy
+# of code — but note that anything above 0 was measured as advisory, so a
+# non-zero value needs its own max_output_tokens headroom.
+GEMINI_THINKING_BUDGET = int(os.environ.get("GEMINI_THINKING_BUDGET", "0"))
+
+
+def gen_config(max_output_tokens: int, **extra) -> dict:
+    """The config every GEMINI_MODEL call site passes, with thinking pinned.
+
+    `extra` carries whatever that call site already set (temperature,
+    response_mime_type); this only owns the two keys that interact.
+    """
+    return {
+        "max_output_tokens": max_output_tokens,
+        "thinking_config": {"thinking_budget": GEMINI_THINKING_BUDGET},
+        **extra,
+    }
+
 # Retrieval tuning
 TAFSIR_TOP_K = int(os.environ.get("TAFSIR_TOP_K", "6"))
 HADITH_TOP_K = int(os.environ.get("HADITH_TOP_K", "4"))
@@ -1249,6 +1299,143 @@ def search_books(kws_ar: list, kws_en: list, phrase_ar: str, limit: int):
     return [it for _, it in scored[:limit]]
 
 # Quran scan is only ~6236 ayat, safe to keep simple
+# ---------------------------------------------------------
+# TOPICAL QURAN SEARCH  (ADDED — patch 0008)
+# ---------------------------------------------------------
+# Reported from the app, 2026-08-23: answers are "diluted" — they do not
+# respect the question's intent. Reproduced with this file's own functions
+# over the same Quran index, and the mechanism is score_quran_match:
+#
+#   «ايات تتحدث عن الرزق والوسع فيه»
+#       Every ayah containing «ايات» or «فيه» scores 120 (2 hits x 60); every
+#       ayah actually about الرزق scores 60. The verses handed to the model
+#       were about THE SIGNS OF ALLAH — the request's own boilerplate outvoted
+#       its topic. 17:30 «ان ربك يبسط الرزق لمن يشاء» ranked #297; 28:82
+#       ranked #437. No prompt can cite what retrieval withholds.
+#
+#   «من هو يعقوب»  (and «من هو ايوب» identically)
+#       Every ayah NAMING the prophet ties at 60, sorted stably -> Mushaf
+#       order -> the prophet-LIST verses (4:163, 6:84, 2:132...) outrank the
+#       STORY verses (21:83, 38:41). All tied -> no anchor -> the tafsir scan
+#       saturated and returned AL-FATIHA rows — measured on the live server's
+#       own retrieval meta event: candidates [2:132, 2:133, 2:136], tafsir
+#       locs [1:1, 1:1, 1:1, 2:40, 1:1, 2:40]. The model was asked who
+#       Yaqub is and handed commentary on the Fatiha.
+#
+# Three deterministic repairs, used ONLY for scope == "quran_tafsir" so the
+# website's ranking stays byte-identical:
+#
+#   1. REQUEST WORDS ARE NOT TOPIC WORDS. «آيات/تتحدث/فيه/اذكر/قصة...» name
+#      the request; they are stripped before scoring, so the topic is what
+#      gets matched.
+#   2. EXACTNESS AND DEDICATION OUTRANK COINCIDENCE. An ayah whose own token
+#      is the topic word beats a substring inflection; a short ayah ABOUT the
+#      topic beats a long one that mentions it once in a list. Ties stop
+#      falling back to Mushaf order.
+#   3. THE QURAN'S OWN IDIOM BRIDGES ONE LEXICAL GAP AT A TIME.
+#      QURAN_TOPIC_SYNONYMS follows AR_SYNONYM_PHRASES' precedent (modern ->
+#      classical), one defensible entry: وسع -> بسط, because abundance of
+#      provision in the Quran is «يبسط الرزق», and no lexical match crosses
+#      that. Extend it term by term, never speculatively.
+#
+# Verified before/after over all 6,236 ayat (harness in the patch series
+# README): the رزق question's top 5 becomes 42:27 / 17:30 / 29:62 / 30:37 /
+# 34:36 — the يبسط-الرزق family — where it was five verses about الآيات;
+# both prophets' story verses now lead their lists; the 0005 anchor case
+# «سبب نزول ليس لك من الامر شيء» keeps 3:128 at #1 with clearance 47 (was
+# 60, threshold 40); a verbatim quote still resolves 112:1 at 814.
+
+ASK_BOILERPLATE_AR = {
+    # the REQUEST, not the topic — measured above outvoting it
+    "ايه","اية","ايات","الايه","الاية","الايات","سوره","سورة","السوره","السورة",
+    "تتحدث","تتكلم","يتحدث","يتكلم","تحدثت","تكلمت","تذكر","ذكرت","وردت","ورد",
+    "جاء","جاءت","اعطني","هات","اذكر","اريد","ابحث","ابغي","عايز","محتاج",
+    "موجود","موجوده","فيه","فيها","عنه","عنها","حول","بخصوص","يقول","تقول",
+    "معني","معنى","تفسير","شرح","توضيح","اشرح","وضح","قصه","قصة","القصه","القصة",
+}
+
+QURAN_TOPIC_SYNONYMS = {
+    "وسع": ["بسط"],  # يبسط الرزق — the Quran's phrasing for وسع الرزق
+}
+
+def _strip_quran_particles(t: str) -> str:
+    # at most one conjunction then one preposition, mirroring the orthography
+    if t[:1] in "وف" and len(t) > 3:
+        t = t[1:]
+    if t[:1] in "بكل" and len(t) > 3:
+        t = t[1:]
+    return t
+
+def quran_topic_terms(query_norm: str):
+    """[(word, variants)] for each TOPIC word of the question.
+
+    Variants are substring-matched, so «رزق» reaches يرزق/رزقنا/الرزاق the
+    way the old scorer's raw word never could once it carried its article.
+    """
+    out = []
+    for w in query_norm.split():
+        if len(w) < 3 or w in AR_STOPWORDS or w in ASK_BOILERPLATE_AR:
+            continue
+        variants = [w]
+        b = w
+        if b[:1] in "وف" and len(b) > 4:
+            b = b[1:]
+            variants.append(b)
+        if b.startswith("ال") and len(b) > 4:
+            b = b[2:]
+            variants.append(b)
+        for syn in QURAN_TOPIC_SYNONYMS.get(b, []):
+            variants.append(syn)
+        if not any(x[0] == w for x in out):
+            out.append((w, variants))
+    return out[:10]
+
+def score_quran_topical(query_norm: str, terms, ayah_norm: str, ayah_tokens) -> int:
+    if not ayah_norm:
+        return 0
+    # The deployed fast path, verbatim — a quoted verse must keep resolving
+    # exactly as it does today (112:1 at 814, the 0005 anchor at 800+).
+    if query_norm and query_norm in ayah_norm:
+        return 800 + min(len(query_norm), 250)
+    if not terms:
+        return 0
+    distinct = 0
+    occ = 0
+    exact = 0
+    for _w, variants in terms:
+        best = 0
+        for v in variants:
+            c = ayah_norm.count(v)
+            if c > best:
+                best = c
+        if best:
+            distinct += 1
+            occ += min(best, 3)
+            wl = set(variants)
+            if any(t in wl or _strip_quran_particles(t) in wl for t in ayah_tokens):
+                exact += 1
+    if distinct == 0:
+        return 0
+    # dedication: how much of the ayah IS the topic — this is what puts
+    # «واذكر عبدنا ايوب» above a 30-word prophet list that names him once.
+    dedication = min(40, round(300 * occ / max(len(ayah_tokens), 8)))
+    return 60 * distinct + 25 * exact + 12 * min(occ - distinct, 4) + dedication
+
+def search_quran_topical(query_norm: str, limit: int = 8):
+    if not query_norm:
+        return []
+    terms = quran_topic_terms(query_norm)
+    scored = []
+    for item in GLOBAL_DATA["quran_index"]:
+        toks = item.get("toks")
+        if toks is None:
+            toks = item["toks"] = item.get("norm", "").split()
+        sc = score_quran_topical(query_norm, terms, item.get("norm", ""), toks)
+        if sc > 0:
+            scored.append((sc, item))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[:limit]
+
 def score_quran_match(query_norm: str, ayah_norm: str) -> int:
     if not query_norm or not ayah_norm:
         return 0
@@ -1411,8 +1598,14 @@ def build_evidence_pack(user_input: str, plan: dict):
                 })
 
     # 2) Quran search
+    # Patch 0008: the app's scope ranks by TOPIC (see search_quran_topical's
+    # header for the two measured failures); the website keeps the scorer it
+    # has always had, byte for byte.
     if not evidence["quran_candidates"] and query_norm_ar:
-        for sc, it in search_quran_top(query_norm_ar, limit=QURAN_TOP_K):
+        _scope_app = scope_of(plan) == "quran_tafsir"
+        _q_hits = (search_quran_topical(query_norm_ar, limit=8) if _scope_app
+                   else search_quran_top(query_norm_ar, limit=QURAN_TOP_K))
+        for sc, it in _q_hits:
             s = it["s"]; a = it["a"]
             evidence["quran_candidates"].append({
                 "surah": s, "ayah": a, "quran_text": it["txt"], "score": sc,
@@ -1474,6 +1667,49 @@ def build_evidence_pack(user_input: str, plan: dict):
                     })
         except Exception as _e:
             print("⚠️ primary-anchored tafsir seed failed:", _e)
+
+    # 2c) ── No confident anchor: seed the TOP-RANKED verses' tafsir (0008) ──
+    #
+    # The «من هو يعقوب» failure's second half. With every candidate tied, no
+    # anchor fired and the keyword scan's `ORDER BY sc DESC, surah, ayah`
+    # returned AL-FATIHA rows as the evidence — measured on the live server:
+    # candidates [2:132, 2:133, 2:136], tafsir locs [1:1, 1:1, 1:1, 2:40, …].
+    # An answer about يعقوب was written from commentary on the Fatiha.
+    #
+    # So when the question resolved TOPICAL verses but no single confident
+    # one, the tafsir evidence follows the top TWO ranked candidates — one
+    # row per book each, ahead of the scan, through the same DB lookup the
+    # confident anchor uses. The scan still fills whatever the per-book cap
+    # leaves. App scope only; a confident anchor takes the 2b path unchanged.
+    if (anchor is None and scope_of(plan) == "quran_tafsir"
+            and evidence["quran_candidates"]):
+        _tops = sorted(evidence["quran_candidates"],
+                       key=lambda c: c.get("score", 0), reverse=True)[:2]
+        try:
+            _conn = get_db_connection()
+            if _conn is not None:
+                _ensure_tafsir_norm(_conn)
+                for _rank, _cand in enumerate(_tops):
+                    _rows = _conn.cursor().execute(
+                        "SELECT source, text FROM tafsir WHERE surah=? AND ayah=?",
+                        (_cand["surah"], _cand["ayah"]),
+                    ).fetchall()
+                    for _src, _txt in _rows:
+                        if not _txt or _src not in TAFSIR_DB_KEYS:
+                            continue
+                        _sid = f"TAFSIR:{_src}:{_cand['surah']}:{_cand['ayah']}"
+                        if _sid in seeded_ids:
+                            continue
+                        seeded_ids.add(_sid)
+                        evidence["tafsir_passages"].append({
+                            "source": _src, "surah": _cand["surah"], "ayah": _cand["ayah"],
+                            "text": _txt, "score": 4800 - _rank * 100,
+                            "source_id": _sid,
+                            "loc": f"{_cand['surah']}:{_cand['ayah']}",
+                            "label": f"Tafsir {_src} ({_cand['surah']}:{_cand['ayah']})",
+                        })
+        except Exception as _e:
+            print("⚠️ topical tafsir seed failed:", _e)
 
     # 3) Tafsir — per-book for the app's scope (patch 0004), global otherwise.
     _tafsir_hits = (
@@ -1623,9 +1859,12 @@ def build_retrieval(user_input: str, plan: dict):
 
     results = []
 
-    # Quran candidates (top 3)
+    # Quran candidates — top 3, and 8 for the app's scope (patch 0008: the
+    # topical ranking makes the extra candidates worth carrying; the caps in
+    # build_prompt and evidence_snippets match).
     candidates_out = []
-    for c in sorted(evidence["quran_candidates"], key=lambda x: x.get("score", 0), reverse=True)[:3]:
+    _cand_cap = 8 if scope_of(plan) == "quran_tafsir" else 3
+    for c in sorted(evidence["quran_candidates"], key=lambda x: x.get("score", 0), reverse=True)[:_cand_cap]:
         candidates_out.append({
             "surah": c["surah"], "ayah": c["ayah"], "quran_text": c["quran_text"], "score": c["score"],
             "source_id": c.get("source_id"), "loc": c.get("loc"), "label": c.get("label"),
@@ -1908,6 +2147,13 @@ excerpts in EVIDENCE, and from nothing else.
 - "tafsir_differences_ar" is REQUIRED for this scope, filled from the blocks
   and attributed via [SRC:]. If the cited books genuinely agree, say exactly
   that as its first item — an empty list is not an answer.
+- When the question asks for verses about a topic or a person, LEAD with the
+  verses most directly ABOUT it — verses whose own subject is the topic — and
+  give each its context from the tafsir blocks: who is speaking, what story it
+  sits in, what it teaches. A passing mention (a name inside a list of
+  prophets, a shared word in an unrelated ruling) is supporting material at
+  most, never the lead. Fewer precisely-on-topic verses, each with its story,
+  beat many loosely related ones.
 - When you rely on a scholar's wording, copy it into that citation's
   "quote_ar" field EXACTLY as it appears inside its [SRC:] block — character
   for character, no paraphrase, no elisions, no fixes. Quotes are checked
@@ -1935,7 +2181,7 @@ def build_prompt(retrieval: dict, user_question: str, plan: dict) -> str:
     # Round-2 §11b: the app's scope carries two more Quran candidates into the
     # evidence — a thorough answer needs the verses, and five references cost
     # far less than one tafsir block. Website requests keep the original 3.
-    for c in (retrieval.get("candidates") or [])[: (5 if scope_of(plan) == "quran_tafsir" else 3)]:
+    for c in (retrieval.get("candidates") or [])[: (8 if scope_of(plan) == "quran_tafsir" else 3)]:
         sid = c.get("source_id") or f"QURAN:{c.get('surah')}:{c.get('ayah')}"
         label = c.get("label") or f"Quran {c.get('surah')}:{c.get('ayah')}"
         evidence_lines.append(f"[SRC:{sid}] {label}\n{clip(c.get('quran_text',''))}")
@@ -2046,7 +2292,7 @@ def evidence_snippets(retrieval: dict, plan: dict) -> dict:
             return
         snips[sid] = (snips.get(sid, "") + "\n" + txt) if sid in snips else txt
 
-    for c in (retrieval.get("candidates") or [])[: (5 if scope_app else 3)]:
+    for c in (retrieval.get("candidates") or [])[: (8 if scope_app else 3)]:
         sid = c.get("source_id") or f"QURAN:{c.get('surah')}:{c.get('ayah')}"
         add(str(sid), clip(c.get("quran_text", "")))
     for r in (retrieval.get("results") or [])[:blocks_cap]:
@@ -2107,12 +2353,14 @@ def run_gemini(retrieval: dict, user_question: str, plan: dict) -> dict:
         return client.models.generate_content(
             model=GEMINI_MODEL,
             contents=p,
-            config={
-                # Give enough room so the model can close JSON properly
-                "max_output_tokens": int(os.environ.get("GEMINI_MAX_TOKENS_JSON", "1400")),
-                "temperature": 0.15,
-                "response_mime_type": "application/json",
-            },
+            config=gen_config(
+                # Give enough room so the model can close JSON properly.
+                # B58: same contract as the streaming path, so the same 8192 —
+                # 1400 could not hold it even with thinking off.
+                int(os.environ.get("GEMINI_MAX_TOKENS_JSON", "8192")),
+                temperature=0.15,
+                response_mime_type="application/json",
+            ),
         )
 
     resp = _call(prompt)
@@ -2287,10 +2535,7 @@ def run_compare_model(surah: int, ayah: int, quran_text: str, tafsir_items: list
         resp = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config={
-                "temperature": 0.2,
-                "max_output_tokens": max_total,
-            },
+            config=gen_config(max_total, temperature=0.2),
         )
         
         # Safety Check: Ensure we actually got a response text
@@ -2471,14 +2716,20 @@ def run_gemini_stream_json(retrieval: dict, user_question: str, plan: dict):
     buf = ""
     sent = set()
     try:
+        # B58: 1800 was never a limit on the ANSWER — with thinking on it was
+        # spent before the answer started. With the budget pinned to 0 it is a
+        # plain ceiling again, and the ceiling has to clear what this contract
+        # actually costs: two prose answers, four lists and up to 14 citations
+        # carrying verbatim quotes measured at 1,532-2,781 output tokens across
+        # 16 runs, with one 3,761-token outlier.
         stream = client.models.generate_content_stream(
             model=GEMINI_MODEL,
             contents=prompt,
-            config={
-                "temperature": 0.2,
-                "max_output_tokens": 1800,
-                "response_mime_type": "application/json",
-            },
+            config=gen_config(
+                int(os.environ.get("GEMINI_MAX_TOKENS_STREAM_JSON", "8192")),
+                temperature=0.2,
+                response_mime_type="application/json",
+            ),
         )
         for part in stream:
             chunk = getattr(part, "text", None)
@@ -2546,13 +2797,16 @@ def run_gemini_stream(retrieval: dict, user_question: str, plan: dict):
 
     buf = []
     try:
+        # B58: prose, not JSON, so a truncation here degrades instead of
+        # blanking — but it is the same budget and the same models, and a
+        # thinking model spends 1400 before it writes anything.
         stream = client.models.generate_content_stream(
             model=GEMINI_MODEL,
             contents=prompt,
-            config={
-                "temperature": 0.2,
-                "max_output_tokens": 1400,
-            },
+            config=gen_config(
+                int(os.environ.get("GEMINI_MAX_TOKENS_STREAM", "4096")),
+                temperature=0.2,
+            ),
         )
         for part in stream:
             chunk = getattr(part, "text", None)
@@ -3167,6 +3421,11 @@ def _hello_http_logic(req):
                 "models": {
                     "gemini": GEMINI_MODEL,
                     "router": ROUTER_MODEL,
+                    # B58: the failure this guards against is silent — an empty
+                    # answer and a 200. Report the setting so a deploy can be
+                    # checked without asking a question and reading the prose.
+                    "thinking_budget": GEMINI_THINKING_BUDGET,
+                    "max_tokens_stream_json": int(os.environ.get("GEMINI_MAX_TOKENS_STREAM_JSON", "8192")),
                 },
                 "limits": {
                     "MAX_EVIDENCE_BLOCKS": MAX_EVIDENCE_BLOCKS,
