@@ -16,11 +16,21 @@ npm run preview      # Preview the dist/ build locally
 Backend (Python Flask, deployed to Google Cloud Run):
 ```bash
 # Deploy backend
-gcloud run deploy tafsir-api-sqlite --source m7mdiyat-backend/ --region me-central1 --allow-unauthenticated
+gcloud run deploy tafsir-api-sqlite --source m7mdiyat-backend/ --region me-central1 \
+  --project=handy-digit-482820-m6 --allow-unauthenticated
 
 # Health check
 curl -i "https://tafsir-api-sqlite-317751773286.me-central1.run.app/health"
 ```
+
+**Always pass `--project=handy-digit-482820-m6`.** That project holds the whole
+backend — the `tafsir-api-sqlite` service, `m7mdiyat-tafsir-data`, and
+`recitations-bucket-data`. It is owned by `m7mdiyat@gmail.com`, which also owns
+`zubdah-502622` and `hakam-501212`, so an unpinned `gcloud` command silently
+targets whatever `gcloud config get-value project` happens to return and
+succeeds against the wrong project. Account separation used to make that a
+permission error; it no longer does. TASMEE-PLAN.md's "never touch hakam-501212"
+now rests on this flag.
 
 **Deploy gotcha — the Python runtime, CORRECTED 2026-08-02 by measurement.**
 
@@ -60,7 +70,7 @@ available to what production runs — and treat any redeploy as an interpreter
 upgrade that needs testing. See BLOCKERS B54 in `m7mdiyat-native`.
 
 Diagnose the persisted pin with:
-`gcloud run services describe tafsir-api-sqlite --region me-central1 --format="value(metadata.annotations['run.googleapis.com/build-environment-variables'])"`.
+`gcloud run services describe tafsir-api-sqlite --region me-central1 --project=handy-digit-482820-m6 --format="value(metadata.annotations['run.googleapis.com/build-environment-variables'])"`.
 
 ## Architecture
 
