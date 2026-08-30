@@ -828,9 +828,40 @@ export function openAskPanelWith(question) {
   askQuestion(question);
 }
 
+/* The example questions that used to be chips — now they live INSIDE the
+ * field as a rotating hint (the .ai-ph overlay). */
+const EXAMPLE_QUESTIONS = [
+  "ما معنى الصبر في القرآن؟",
+  "هل الصدقة واجبة؟",
+  "ما آيات التوكل على الله؟",
+];
+const PH_ROTATE_MS = 4500;
+const PH_FADE_MS = 500;
+
+function startPlaceholderCycle() {
+  const ph = document.getElementById("aiPlaceholderCycle");
+  if (!ph) return;
+  let i = 0;
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  setInterval(() => {
+    i = (i + 1) % EXAMPLE_QUESTIONS.length;
+    if (reduced) {
+      ph.textContent = EXAMPLE_QUESTIONS[i];
+      return;
+    }
+    ph.classList.add("is-fading");
+    setTimeout(() => {
+      ph.textContent = EXAMPLE_QUESTIONS[i];
+      ph.classList.remove("is-fading");
+    }, PH_FADE_MS);
+  }, PH_ROTATE_MS);
+}
+
 export function initAsk(deps) {
   DEPS = { ...DEPS, ...deps, els: { ...(deps.els || {}) } };
   const els = DEPS.els;
+
+  startPlaceholderCycle();
 
   els.askBtn?.addEventListener("click", () => askQuestion(els.question?.value));
   els.question?.addEventListener("keydown", (e) => {

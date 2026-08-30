@@ -952,6 +952,7 @@
      * pill's LEFT end (chat idiom); the clear-X appears between them only
      * once there is text (:placeholder-shown, no JS). */
     .ai-composer {
+      position: relative;
       display: flex;
       align-items: flex-end;
       gap: 4px;
@@ -962,6 +963,47 @@
       backdrop-filter: blur(8px);
       box-shadow: 0 10px 28px rgba(15, 23, 42, .07);
       transition: border-color .2s ease, box-shadow .2s ease;
+    }
+
+    /* The visible hint: a full example question, right-anchored over the
+       field, rotated by src/ask.js with a gentle cross-fade. The REAL
+       placeholder underneath is transparent but still drives the
+       :placeholder-shown states (clear-X, send wake, this hint's own
+       visibility). */
+    #aiQuestion::placeholder {
+      color: transparent;
+    }
+
+    .ai-ph {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      right: 21px;
+      left: 100px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 16px;
+      line-height: 24px;
+      color: #94a3b8;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity .5s ease;
+    }
+
+    .ai-ph.is-fading {
+      opacity: 0;
+    }
+
+    #aiQuestion:not(:placeholder-shown)~.ai-ph {
+      visibility: hidden;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ai-ph {
+        transition: none;
+      }
     }
 
     .ai-composer:focus-within {
@@ -1027,31 +1069,6 @@
       display: flex;
     }
 
-    .ai-chips {
-      margin-top: 14px;
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .ai-chip {
-      padding: 7px 15px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: transparent;
-      font-size: 12px;
-      font-weight: 700;
-      color: #64748b;
-      transition: color .15s ease, border-color .15s ease, background .15s ease;
-    }
-
-    .ai-chip:hover {
-      color: #7c3aed;
-      border-color: rgba(124, 58, 237, .35);
-      background: rgba(124, 58, 237, .05);
-    }
-
     body.dark .ai-spark {
       color: #a78bfa;
     }
@@ -1071,24 +1088,13 @@
       color: #e2e8f0;
     }
 
-    body.dark .ai-composer #aiQuestion::placeholder {
+    body.dark .ai-ph {
       color: #64748b;
     }
 
     body.dark .ai-composer-clear:hover {
       background: rgba(226, 232, 240, .08);
       color: #cbd5e1;
-    }
-
-    body.dark .ai-chip {
-      border-color: rgba(148, 163, 184, .18);
-      color: #94a3b8;
-    }
-
-    body.dark .ai-chip:hover {
-      color: #a78bfa;
-      border-color: rgba(167, 139, 250, .40);
-      background: rgba(124, 58, 237, .10);
     }
 
     body.dark .ai-answer-question,
@@ -7032,9 +7038,15 @@
                  :placeholder-shown) + violet send. IDs unchanged — app.js and
                  src/ask.js wire these. -->
             <div class="ai-composer">
-              <textarea id="aiQuestion" rows="1" dir="auto"
-                class="w-full resize-none bg-transparent outline-none text-slate-900 placeholder:text-slate-400 text-base leading-6"
+              <!-- dir="rtl", not "auto": an EMPTY field resolves auto to LTR,
+                   which parked the placeholder at the left edge. The real
+                   placeholder is transparent (it still drives the
+                   :placeholder-shown states); the visible hint is the rotating
+                   example question in .ai-ph, cycled by src/ask.js. -->
+              <textarea id="aiQuestion" rows="1" dir="rtl" aria-label="اسأل سؤالًا قرآنيًا"
+                class="w-full resize-none bg-transparent outline-none text-slate-900 text-base leading-6"
                 placeholder="اسأل سؤالًا قرآنيًا"></textarea>
+              <span class="ai-ph" id="aiPlaceholderCycle" aria-hidden="true">ما معنى الصبر في القرآن؟</span>
               <button type="button" id="aiClearBtn" class="ai-composer-clear" aria-label="مسح" title="مسح">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"
                   stroke-linecap="round" aria-hidden="true">
@@ -7047,12 +7059,6 @@
                   <path d="M12 19V5M5 12l7-7 7 7" />
                 </svg>
               </button>
-            </div>
-
-            <div class="ai-chips">
-              <button type="button" class="ai-chip" data-ai-prompt="ما معنى الصبر في القرآن؟">الصبر</button>
-              <button type="button" class="ai-chip" data-ai-prompt="هل الصدقة واجبة؟">الصدقة</button>
-              <button type="button" class="ai-chip" data-ai-prompt="ما آيات التوكل على الله؟">التوكل</button>
             </div>
 
             <div id="aiStatus" class="mt-2 text-xs font-bold text-slate-500 text-center px-2" aria-live="polite"></div>

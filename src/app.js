@@ -56,7 +56,7 @@ import {
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, getRepeatPref, setRepeatPref, subscribeRepeat } from "./repeat.js";
 
 /* سؤال الذكاء الاصطناعي — grounded ask experience (ported from the native app) */
-import { initAsk, askQuestion, openAskPanelWith, inferIntent, isReference } from "./ask.js";
+import { initAsk, openAskPanelWith, inferIntent, isReference } from "./ask.js";
 
 /* Resume reading position — APP ONLY. The website never enters this code
  * path; the import is dynamic + behind isApp(), and these are no-op by
@@ -421,9 +421,6 @@ const themeLabel = el("themeLabel");
 const aiToggleBtn = el("aiToggleBtn");
 const aiPanel = el("aiPanel");
 const aiChevron = el("aiChevron");
-
-/* AI quick prompts (optional) */
-const aiQuickBtns = Array.from(document.querySelectorAll("[data-ai-prompt]"));
 
 /* SEO meta */
 const pageTitle = el("pageTitle");
@@ -5115,15 +5112,6 @@ async function init() {
   // are gone — the locked pill text is the selection display, the surah
   // selector is the change-ayah control, and clicking the locked pill
   // dissolves it for a fresh search (wired below with the lock listeners).
-
-  // AI quick prompts (chips)
-  for (const b of aiQuickBtns) {
-    b.addEventListener("click", () => {
-      const v = b.getAttribute("data-ai-prompt") || "";
-      if (aiQuestion) aiQuestion.value = v;
-      askQuestion(v);
-    });
-  }
 
   // tafsir change
   tafsirSelect?.addEventListener("change", () => {
