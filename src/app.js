@@ -24,7 +24,7 @@ window.addEventListener("unhandledrejection", (e) => {
 const el = (id) => document.getElementById(id);
 
 /** ✅ Your deployed backend endpoint (AI search) */
-const API_BASE = import.meta.env.VITE_API_BASE || "https://tafsir-api-317751773286.me-central1.run.app";
+const API_BASE = import.meta.env.VITE_API_BASE || "https://tafsir-api-sqlite-317751773286.me-central1.run.app";
 const TAFSIR_API_URL = `${API_BASE}/ai`;
 export const API_ROOT = API_BASE.replace(/\/$/, "");
 
