@@ -56,6 +56,9 @@ import {
 /* Repeat / loop preference + active-loop counter (shared website + app) */
 import { startLoopFor as repeatStart, consumeOne as repeatConsume, resetLoop as repeatReset, getRepeatPref, setRepeatPref, subscribeRepeat } from "./repeat.js";
 
+/* سؤال الذكاء الاصطناعي — grounded ask experience (ported from the native app) */
+import { initAsk, askQuestion, openAskPanelWith, inferIntent, isReference } from "./ask.js";
+
 /* Resume reading position — APP ONLY. The website never enters this code
  * path; the import is dynamic + behind isApp(), and these are no-op by
  * default so the website's setPrimaryAyah / Mushaf hooks can call them
@@ -4695,6 +4698,11 @@ function setPrimaryAyah(surahNo, ayahNo, { replaceUrl = false, track = true, scr
     results.classList.add("is-empty", "collapsed");
     resultsShell?.classList.add("is-empty", "collapsed");
   }
+  // A chosen ayah ends the search flow — the ask affordance's captured
+  // query is stale now, whatever path set the ayah (search pick, deep link,
+  // citation pill, next/prev).
+  const askRow = el("searchAskRow");
+  if (askRow) askRow.hidden = true;
   // Keep the search-pill surah selector's label (visible in both modes)
   // tracking the surah being read, and LAST_VIEWED_AYAH fresh for a later
   // toggle into Mushaf.
@@ -5368,6 +5376,10 @@ async function init() {
   // Dark mode preference
   try { setDarkMode(localStorage.getItem('darkMode') === '1'); } catch { }
 
+  // Wake the backend early: a cold Cloud Run instance takes ~70s to boot, so
+  // this pays that cost before the reader's first question, not during it.
+  try { fetch(`${API_ROOT}/health`, { cache: "no-store" }).catch(() => { }); } catch { }
+
   // Round 2, Fix 5: the top bar is position:fixed; body padding-top
   // re-reserves its flow space via --m7-header-h. Measure the REAL height
   // (web ~63px; app adds the safe-area inset) and keep it fresh across
@@ -5747,6 +5759,8 @@ async function init() {
   }
 
   // search input
+  const searchAskRow = el("searchAskRow");
+  const searchAskBtn = el("searchAskBtn");
   const runSearch = () => {
     const q = textSearch.value || "";
     const found = searchText(q);
@@ -5756,8 +5770,29 @@ async function init() {
     // the box stays fully closed instead of leaving a residual strip. Going
     // results→empty now animates shut (1fr→0fr) via the grid instead.
     if (found.length) expandResultsList();
+
+    // The one exit into the AI panel: a question-shaped query offers the ask
+    // outright; a dead-end query (nothing matched, not a 2:255 reference)
+    // offers it as the correction path — the zero-results state itself stays
+    // collapsed by design, so the affordance lives here under the pill.
+    if (searchAskRow && searchAskBtn) {
+      const isAsk = inferIntent(q) === "ask";
+      const show = q.trim().length >= 2 && !isReference(q) && (isAsk || !found.length);
+      searchAskRow.hidden = !show;
+      if (show) {
+        // The query is captured on the button: once an ayah is picked the
+        // input holds the LOCKED ayah text, which must never become the ask.
+        searchAskBtn.dataset.q = q.trim();
+        searchAskBtn.textContent = isAsk
+          ? "اسأل الذكاء الاصطناعي ↗"
+          : "لم نجد آية… اسأل بدل ذلك؟";
+      }
+    }
   };
   textSearch.oninput = debounce(() => { runSearch(); }, 180);
+  searchAskBtn?.addEventListener("click", () => {
+    openAskPanelWith(searchAskBtn.dataset.q || "");
+  });
 
   // Warm up API on first keystroke to reduce latency when ayah is selected
   textSearch.addEventListener("input", () => {
@@ -5778,6 +5813,7 @@ async function init() {
     resultsShell?.classList.add("is-empty");
     results.classList.add("collapsed");
     resultsShell?.classList.add("collapsed");
+    if (searchAskRow) searchAskRow.hidden = true;
 
     stopAudio();              // Tafsir per-ayah <audio> + surahAudio engine
     resetMushafHomeState();   // close Mushaf panel, drop its anchor ayah, toggle → تفسير
@@ -6000,8 +6036,7 @@ async function init() {
     b.addEventListener("click", () => {
       const v = b.getAttribute("data-ai-prompt") || "";
       if (aiQuestion) aiQuestion.value = v;
-      // optional: auto-run
-      handleAiAsk();
+      askQuestion(v);
     });
   }
 
@@ -6141,11 +6176,28 @@ async function init() {
   window.addEventListener("offline", updateNetworkBadge);
   updateNetworkBadge();
 
-  // AI events
-  aiAskBtn?.addEventListener("click", handleAiAsk);
-  aiClearBtn?.addEventListener("click", handleAiClear);
-  aiQuestion?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAiAsk(); }
+  // AI ask (src/ask.js) owns the panel's input, clear, status and results —
+  // including the ask-button click and Enter-to-ask wiring.
+  initAsk({
+    apiRoot: API_ROOT,
+    isValidRef: (s, a) => {
+      const meta = SURAH_META.find((x) => x.number === s);
+      return !!meta && Number.isInteger(a) && a >= 1 && a <= meta.ayahs;
+    },
+    getBookLabel: (key) => TAFSIRS[key]?.shortLabel || "",
+    getSurahName: (s) => SURAH_META.find((x) => x.number === s)?.name_ar || `سورة ${s}`,
+    getAyahText: getAyahTextFromQuran,
+    getBasmala: getAyahBasmalaFromQuran,
+    openAyah: (s, a) => setPrimaryAyah(s, a),
+    els: {
+      question: aiQuestion,
+      askBtn: aiAskBtn,
+      clearBtn: aiClearBtn,
+      status: aiStatus,
+      results: aiResults,
+      panel: aiPanel,
+      toggleBtn: aiToggleBtn,
+    },
   });
 
   // Background loads: English + tafsir files (won't break UI if missing)
