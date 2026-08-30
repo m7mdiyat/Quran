@@ -10,6 +10,12 @@ _timing_analysis/
 # macOS folder metadata
 .DS_Store
 
+# Python bytecode (backend runs from source on Cloud Run buildpacks)
+m7mdiyat-backend/__pycache__/
+
+# IDE metadata
+dist-app/.idea/
+
 # compare_generator regeneration artifacts (canonical = comparisons.sqlite; the
 # fixed copy + backups live in GCS, not git)
 compare_generator/comparisons.fixed.*
