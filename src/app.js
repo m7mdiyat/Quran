@@ -4860,7 +4860,9 @@ async function init() {
     // collapsed by design, so the affordance lives here under the pill.
     if (searchAskRow && searchAskBtn) {
       const isAsk = inferIntent(q) === "ask";
-      const show = q.trim().length >= 2 && !isReference(q) && (isAsk || !found.length);
+      // Website only: the app hides the whole AI section (html.is-app rule in
+      // mushaf.css), so an affordance that opens it must never show there.
+      const show = !isApp() && q.trim().length >= 2 && !isReference(q) && (isAsk || !found.length);
       searchAskRow.hidden = !show;
       if (show) {
         // The query is captured on the button: once an ayah is picked the
