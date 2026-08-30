@@ -487,6 +487,12 @@ function cancelAsk() {
   controller = null;
 }
 
+/* Programmatic value changes don't fire `input`, so the composer's auto-grow
+ * would keep a stale height — nudge it. */
+function syncQuestionField() {
+  try { DEPS.els.question?.dispatchEvent(new Event("input", { bubbles: true })); } catch { }
+}
+
 export function askQuestion(rawQuestion, { bypassCache = false } = {}) {
   const question = String(rawQuestion || "").trim();
   const els = DEPS.els;
@@ -496,7 +502,10 @@ export function askQuestion(rawQuestion, { bypassCache = false } = {}) {
     return;
   }
   if (els.status) els.status.textContent = "";
-  if (els.question && els.question.value !== question) els.question.value = question;
+  if (els.question && els.question.value !== question) {
+    els.question.value = question;
+    syncQuestionField();
+  }
 
   cancelAsk();
 
@@ -813,6 +822,7 @@ function openPanel() {
 export function openAskPanelWith(question) {
   const els = DEPS.els;
   if (els.question) els.question.value = String(question || "");
+  syncQuestionField();
   openPanel();
   try { els.panel?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { }
   askQuestion(question);
@@ -832,6 +842,7 @@ export function initAsk(deps) {
   els.clearBtn?.addEventListener("click", () => {
     cancelAsk();
     if (els.question) els.question.value = "";
+    syncQuestionField();
     if (els.status) els.status.textContent = "";
     setState({ phase: "idle" });
     els.question?.focus();
