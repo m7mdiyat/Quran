@@ -716,8 +716,34 @@ def initialize_data():
                 pass
     GLOBAL_DATA["quran_index"] = q_index
 
-    # Tafsir dict (all 7 sources)
-    GLOBAL_DATA["quran_index"] = q_index
+    # ── Surah-name → number map, for the surah-locked retrieval (2026-09-01) ─
+    #
+    # «ماهي الاية التي في سورة النحل …» retrieved verses from يوسف: the
+    # scorers know words, not surah constraints, so a question that NAMES a
+    # surah was answered from whichever surah matched its keywords. The lock
+    # (detect_surah_lock + the filters in build_evidence_pack) needs the
+    # names. They arrive fully vowelled in Quranic orthography — ٱ (wasla)
+    # and ٰ (dagger alef, «الرحمٰن») survive normalize_arabic — so both are
+    # folded here; the keys then match what a TYPED question normalizes to.
+    surah_names = {}
+    for surah in surahs_list or []:
+        try:
+            s_num = int(surah.get("number"))
+        except Exception:
+            continue
+        raw_name = str(surah.get("name") or "")
+        n = normalize_arabic(raw_name.replace("ٱ", "ا").replace("ٰ", ""))
+        toks = n.split()
+        if toks and toks[0] in ("سوره", "سورت"):
+            toks = toks[1:]
+        if not toks:
+            continue
+        surah_names[tuple(toks)] = s_num
+        # «سورة نحل» / bare-article spellings: alias without the ال, kept only
+        # while unambiguous (setdefault — first surah wins, later dupes drop).
+        if toks[0].startswith("ال") and len(toks[0]) > 4:
+            surah_names.setdefault((toks[0][2:],) + tuple(toks[1:]), s_num)
+    GLOBAL_DATA["surah_name_map"] = surah_names
     
     # Tafsir loading REMOVED in favor of SQLite (tafsir.db) to fix OOM.
     # Tafsirs are now accessed via get_db_connection() in the /tafsir endpoint.
@@ -1356,6 +1382,10 @@ ASK_BOILERPLATE_AR = {
 
 QURAN_TOPIC_SYNONYMS = {
     "وسع": ["بسط"],  # يبسط الرزق — the Quran's phrasing for وسع الرزق
+    # «ليخبر الناس ماعملوا» — the Quran says ينبئ/نبأ where a modern reader
+    # says يخبر («ثم ينبئهم بما كانوا يعملون»). Measured on the النحل
+    # question of 2026-09-01; same modern→classical shape as وسع→بسط.
+    "يخبر": ["ينبئ", "نبا"],
 }
 
 def _strip_quran_particles(t: str) -> str:
@@ -1381,6 +1411,12 @@ def quran_topic_terms(query_norm: str):
         if b[:1] in "وف" and len(b) > 4:
             b = b[1:]
             variants.append(b)
+        # ب/ك/ل prefixes, mirroring _strip_quran_particles — «ليخبر» never
+        # reached «يخبر» (or its synonyms) without this. Additive: the raw
+        # word stays first in the list, so nothing that matched stops matching.
+        if b[:1] in "بكل" and len(b) > 4:
+            b = b[1:]
+            variants.append(b)
         if b.startswith("ال") and len(b) > 4:
             b = b[2:]
             variants.append(b)
@@ -1389,6 +1425,32 @@ def quran_topic_terms(query_norm: str):
         if not any(x[0] == w for x in out):
             out.append((w, variants))
     return out[:10]
+
+# The word «سورة» in every normalized spelling a question uses. «سورت» is the
+# construct orthography; particles (بسورة، لسورة، وسورة) come off through
+# _strip_quran_particles before the check.
+SURAH_WORD_FORMS = {"سوره", "السوره", "سورت"}
+
+def detect_surah_lock(query_norm: str):
+    """(surah_number, matched_name) when the question NAMES a surah — «في
+    سورة النحل», «بسورة يوسف» — else None.
+
+    Explicit wording only, on purpose: a bare surah name without the word
+    سورة stays un-locked, because too many surah names are ordinary words a
+    topical question uses innocently (النور، محمد، الحديد، القصص)."""
+    name_map = GLOBAL_DATA.get("surah_name_map") or {}
+    if not name_map or not query_norm:
+        return None
+    toks = query_norm.split()
+    for i, t in enumerate(toks[:-1]):
+        if t not in SURAH_WORD_FORMS and _strip_quran_particles(t) not in SURAH_WORD_FORMS:
+            continue
+        # Longest name first: «سورة ال عمران» must not stop at a one-token miss.
+        for take in (2, 1):
+            cand = tuple(toks[i + 1:i + 1 + take])
+            if len(cand) == take and cand in name_map:
+                return name_map[cand], " ".join(cand)
+    return None
 
 def score_quran_topical(query_norm: str, terms, ayah_norm: str, ayah_tokens) -> int:
     if not ayah_norm:
@@ -1421,12 +1483,17 @@ def score_quran_topical(query_norm: str, terms, ayah_norm: str, ayah_tokens) -> 
     dedication = min(40, round(300 * occ / max(len(ayah_tokens), 8)))
     return 60 * distinct + 25 * exact + 12 * min(occ - distinct, 4) + dedication
 
-def search_quran_topical(query_norm: str, limit: int = 8):
+def search_quran_topical(query_norm: str, limit: int = 8, surah=None):
     if not query_norm:
         return []
     terms = quran_topic_terms(query_norm)
     scored = []
     for item in GLOBAL_DATA["quran_index"]:
+        # Surah lock: a question that names a surah is answered from that
+        # surah — a higher score elsewhere is a better keyword match for a
+        # DIFFERENT question than the one that was asked.
+        if surah is not None and item["s"] != surah:
+            continue
         toks = item.get("toks")
         if toks is None:
             toks = item["toks"] = item.get("norm", "").split()
@@ -1568,6 +1635,18 @@ def build_evidence_pack(user_input: str, plan: dict):
     query_norm_ar = normalize_arabic(user_input)
     phrase_ar = query_norm_ar if len(query_norm_ar.split()) >= 3 else ""
 
+    # ── Surah lock (2026-09-01) ──────────────────────────────────────────────
+    # «ماهي الاية التي في سورة النحل، قال الله فيها انه هناك اخرة ليخبر الناس
+    # ماعملوا» came back with verses from يوسف: the keyword scan does not
+    # understand «في سورة النحل», so evidence from other surahs outscored the
+    # surah the reader named, and the model — held to the evidence — wrote an
+    # apology AND cited the wrong verses anyway. When the question names a
+    # surah, every retrieval stage below is held to it: the Quran scan, the
+    # tafsir scan, and the expander's suggested refs. App scope only, like
+    # every retrieval change since 0001 — the website's legacy scope stays
+    # byte-identical.
+    surah_lock = detect_surah_lock(query_norm_ar) if scope_of(plan) == "quran_tafsir" else None
+
     evidence = {
         "quran_candidates": [],
         "tafsir_passages": [],
@@ -1603,7 +1682,9 @@ def build_evidence_pack(user_input: str, plan: dict):
     # has always had, byte for byte.
     if not evidence["quran_candidates"] and query_norm_ar:
         _scope_app = scope_of(plan) == "quran_tafsir"
-        _q_hits = (search_quran_topical(query_norm_ar, limit=8) if _scope_app
+        _q_hits = (search_quran_topical(query_norm_ar, limit=8,
+                                        surah=(surah_lock[0] if surah_lock else None))
+                   if _scope_app
                    else search_quran_top(query_norm_ar, limit=QURAN_TOP_K))
         for sc, it in _q_hits:
             s = it["s"]; a = it["a"]
@@ -1611,6 +1692,51 @@ def build_evidence_pack(user_input: str, plan: dict):
                 "surah": s, "ayah": a, "quran_text": it["txt"], "score": sc,
                 "source_id": f"QURAN:{s}:{a}", "loc": f"{s}:{a}", "label": f"Quran {s}:{a}"
             })
+
+    # 2a-lock) ── Under a surah lock, the expander's refs become CHECKED
+    # anchors (2026-09-01) ────────────────────────────────────────────────────
+    #
+    # In the النحل failure the model KNEW the verse — its apology named
+    # النحل: 39 from its own knowledge — but the pipeline gave that knowledge
+    # no path into the evidence, so the answer could not cite it. The
+    # expander is that path, made safe: its suggested refs are kept only if
+    # they parse, only if they sit INSIDE the locked surah, and only if the
+    # verse exists in the local corpus (get_quran_item). What survives enters
+    # at 9999 and takes the 2b anchor, so the verse's own seven tafsir rows
+    # lead the evidence. The model's knowledge proposes; the corpus disposes.
+    #
+    # Skipped when a verbatim/explicit match (>= 800) already resolved inside
+    # the surah — the quote is stronger evidence than the model's memory.
+    _exp_cached = None
+    if surah_lock:
+        _top_sc = max((c.get("score", 0) for c in evidence["quran_candidates"]), default=0)
+        if _top_sc < 800:
+            try:
+                _exp_cached = expand_query_with_ai(user_input, plan)
+            except Exception as _e:
+                print("⚠️ surah-lock expander failed:", _e)
+                _exp_cached = {}
+            for _ref in (_exp_cached.get("ayah_refs") or [])[:4]:
+                _m = AYAH_REF_RE.search(_ref)
+                if not _m:
+                    continue
+                _s = int(_m.group(1)); _a = int(_m.group(2))
+                if _s != surah_lock[0]:
+                    continue
+                if any(c["surah"] == _s and c["ayah"] == _a for c in evidence["quran_candidates"]):
+                    # Already found by the scan — promote it to explicit.
+                    for c in evidence["quran_candidates"]:
+                        if c["surah"] == _s and c["ayah"] == _a:
+                            c["score"] = 9999
+                    continue
+                _item = get_quran_item(_s, _a)
+                if _item:
+                    evidence["quran_candidates"].append({
+                        "surah": _item["s"], "ayah": _item["a"],
+                        "quran_text": _item["txt"], "score": 9999,
+                        "source_id": f"QURAN:{_s}:{_a}", "loc": f"{_s}:{_a}",
+                        "label": f"Quran {_s}:{_a}",
+                    })
 
     # 2b) ── Anchor tafsir retrieval to the RESOLVED verse (2026-08-04) ───────
     #
@@ -1721,6 +1847,10 @@ def build_evidence_pack(user_input: str, plan: dict):
         # A scan row the anchor already seeded is the same passage twice.
         if it.get("source_id") in seeded_ids:
             continue
+        # Surah lock: commentary on other surahs is what misled the model in
+        # the النحل failure — the evidence must stay inside the named surah.
+        if surah_lock and it.get("surah") != surah_lock[0]:
+            continue
         hits = count_hits(it.get("tokens_ar", []), kws_ar)
         sc = it.get("sc") if it.get("sc") is not None else (
             hits * 140 + (200 if phrase_ar and phrase_ar in it.get("norm","") else 0))
@@ -1772,7 +1902,8 @@ def build_evidence_pack(user_input: str, plan: dict):
 
     # Retry once with AI term expansion if weak
     if not evidence_strength(evidence):
-        exp = expand_query_with_ai(user_input, plan)
+        # The 2a-lock block may already have paid for this call — reuse it.
+        exp = _exp_cached if _exp_cached is not None else expand_query_with_ai(user_input, plan)
         kws_ar2 = list(dict.fromkeys([*kws_ar, *(exp.get("terms_ar", []) or [])]))[:12]
         kws_en2 = list(dict.fromkeys([*kws_en, *(exp.get("terms_en", []) or [])]))[:12]
         phrase_ar2 = normalize_arabic(user_input) if len(normalize_arabic(user_input).split()) >= 3 else ""
@@ -1782,6 +1913,11 @@ def build_evidence_pack(user_input: str, plan: dict):
                 m = AYAH_REF_RE.search(ref)
                 if m:
                     s = int(m.group(1)); a = int(m.group(2))
+                    # The expander's refs obey the surah lock too — a ref it
+                    # knows from memory in another surah is not what a «في
+                    # سورة X» question asked for.
+                    if surah_lock and s != surah_lock[0]:
+                        continue
                     item = get_quran_item(s, a)
                     if item:
                         evidence["quran_candidates"].append({
@@ -1797,6 +1933,8 @@ def build_evidence_pack(user_input: str, plan: dict):
             else search_tafsir(kws_ar2, phrase_ar2, limit=TAFSIR_TOP_K)
         )
         for it in _tafsir_hits2:
+            if surah_lock and it.get("surah") != surah_lock[0]:
+                continue
             hits = count_hits(it.get("tokens_ar", []), kws_ar2)
             if it.get("sc") is None and hits < TAFSIR_MIN_HITS_AR:
                 continue
@@ -1852,10 +1990,10 @@ def build_evidence_pack(user_input: str, plan: dict):
         if best.get("score", 0) == 9999 or best.get("score", 0) >= QURAN_CONFIDENCE_THRESHOLD:
             primary = best
 
-    return evidence, primary, kws_ar, kws_en
+    return evidence, primary, kws_ar, kws_en, surah_lock
 
 def build_retrieval(user_input: str, plan: dict):
-    evidence, primary, kws_ar, kws_en = build_evidence_pack(user_input, plan)
+    evidence, primary, kws_ar, kws_en, surah_lock = build_evidence_pack(user_input, plan)
 
     results = []
 
@@ -1970,6 +2108,7 @@ def build_retrieval(user_input: str, plan: dict):
             "intent_plan": plan,
             "evidence_counts": evidence_counts,
             "retrieval_keywords": {"ar": kws_ar, "en": kws_en},
+            "surah_lock": ({"surah": surah_lock[0], "name": surah_lock[1]} if surah_lock else None),
             "message": "No direct evidence was retrieved. The assistant will answer with limitations and a follow-up question.",
         }
 
@@ -1983,6 +2122,7 @@ def build_retrieval(user_input: str, plan: dict):
         "intent_plan": plan,
         "evidence_counts": evidence_counts,
         "retrieval_keywords": {"ar": kws_ar, "en": kws_en},
+        "surah_lock": ({"surah": surah_lock[0], "name": surah_lock[1]} if surah_lock else None),
     }
 
 # ---------------------------------------------------------
@@ -2159,6 +2299,23 @@ excerpts in EVIDENCE, and from nothing else.
   for character, no paraphrase, no elisions, no fixes. Quotes are checked
   against the blocks and a changed quote is discarded. A citation may omit
   "quote_ar"; it must never contain words its block does not.
+- LEAD WITH THE ANSWER. When the evidence contains what was asked, the FIRST
+  sentence of "arabic_answer" is the direct answer — the verse, the ruling,
+  the name — never meta-commentary about the sources, never a «تنويه» or
+  coverage preamble, never a description of what the evidence does or does
+  not include. A caveat that is genuinely needed comes AFTER the answer, in
+  one short sentence. The reader asked a question, not for a report on the
+  retrieval.
+- HONESTY OVER COVERAGE — this rule OVERRIDES the general "answer with
+  limitations" instruction above. When the EVIDENCE does not actually contain
+  what the question asks for — above all when the question names a specific
+  surah or verse and the evidence blocks are about other verses — do NOT
+  assemble an answer from off-target verses. Instead: set "arabic_answer" to
+  one or two short sentences saying plainly that the requested verse was not
+  found in the attached sources, set "citations" to an EMPTY list, use no
+  [[VERSE:]] markers, and leave every list field empty. The reader's app
+  renders that as its honest "no evidence" state. A short honest miss is a
+  correct answer; a long answer resting on unrelated verses is a wrong one.
 """
 
 
@@ -2218,6 +2375,18 @@ def build_prompt(retrieval: dict, user_question: str, plan: dict) -> str:
     blocks_instruction = build_blocks_instruction(plan)
     # ADDED (round-2 §11b). Same discipline: empty outside the app's scope.
     depth_instruction = build_depth_instruction(plan)
+    # ADDED (2026-09-01): the surah lock, stated to the model. The evidence
+    # below is already filtered to the named surah; this line makes the
+    # honesty rule's trigger explicit instead of leaving it inferred.
+    surah_lock_note = ""
+    _lock = (retrieval or {}).get("surah_lock")
+    if _lock:
+        surah_lock_note = (
+            f"\nSURAH CONSTRAINT: the user asked specifically about سورة {_lock.get('name', '')} "
+            f"(surah {_lock.get('surah')}), and the evidence below is restricted to that surah. "
+            "If none of it contains what was asked, follow the HONESTY OVER COVERAGE rule — "
+            "never answer from other surahs.\n"
+        )
 
     return f"""
 You are a careful Islamic studies assistant.
@@ -2230,6 +2399,7 @@ Task type (intent): {intent}
 Style: {style}
 {intent_instructions}
 {depth_instruction}
+{surah_lock_note}
 {lang_instruction}
 
 User question:
